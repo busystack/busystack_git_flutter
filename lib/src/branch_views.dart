@@ -52,6 +52,15 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       states(refresh: refresh),
+      if (session.snapshot != null && !session.canWriteMetadata)
+        const GitLabel(
+          'Repository metadata is read-only. Branch inspection and comparison remain available.',
+        ),
+      if (session.canWriteMetadata &&
+          session.snapshot?.capabilities.replaceWorkingFiles == false)
+        const GitLabel(
+          'Working files are unavailable or read-only. Branch switching and merging are unavailable.',
+        ),
       Row(
         children: [
           Expanded(
@@ -64,7 +73,11 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
             ),
           ),
           TextButton.icon(
-            onPressed: loading || reviewed?.head == null
+            onPressed:
+                loading ||
+                    reviewed?.head == null ||
+                    !session.canWriteMetadata ||
+                    session.snapshot?.capabilities.replaceWorkingFiles != true
                 ? null
                 : () => unawaited(createBranch()),
             icon: const Icon(Icons.add),
@@ -115,6 +128,8 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                   ),
                   trailing: GitMenuButton(
                     host: session.host,
+                    enabled: !loading,
+                    disabledReason: 'Refreshing branch metadata',
                     onSelected: (action) => unawaited(act(reference, action)),
                     entries: [
                       if (prefix == 'refs/heads/' && !reference.current)
@@ -123,23 +138,64 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                           reference.worktreePath == null
                               ? 'Switch to ${reference.shortName}'
                               : 'Open occupied worktree',
-                          enabled:
-                              reference.worktreePath == null ||
-                              widget.onOpenFolder != null ||
-                              session.host.openFolder != null,
+                          enabled: reference.worktreePath == null
+                              ? session.canWriteMetadata &&
+                                    session
+                                            .snapshot
+                                            ?.capabilities
+                                            .replaceWorkingFiles ==
+                                        true
+                              : widget.onOpenFolder != null ||
+                                    session.host.openFolder != null,
                         ),
                       if (prefix == 'refs/remotes/')
-                        GitMenuEntry('track', 'Create local tracking branch…'),
+                        GitMenuEntry(
+                          'track',
+                          'Create local tracking branch…',
+                          enabled:
+                              session.canWriteMetadata &&
+                              session
+                                      .snapshot
+                                      ?.capabilities
+                                      .replaceWorkingFiles ==
+                                  true,
+                        ),
                       GitMenuEntry('compare', 'Compare to current HEAD'),
-                      GitMenuEntry('merge', 'Merge into current branch…'),
+                      GitMenuEntry(
+                        'merge',
+                        'Merge into current branch…',
+                        enabled:
+                            session.canWriteMetadata &&
+                            session
+                                    .snapshot
+                                    ?.capabilities
+                                    .replaceWorkingFiles ==
+                                true,
+                      ),
                       if (prefix == 'refs/heads/') ...[
-                        GitMenuEntry('rename', 'Rename…'),
-                        GitMenuEntry('upstream', 'Change upstream…'),
+                        GitMenuEntry(
+                          'rename',
+                          'Rename…',
+                          enabled: session.canWriteMetadata,
+                        ),
+                        GitMenuEntry(
+                          'upstream',
+                          'Change upstream…',
+                          enabled: session.canWriteMetadata,
+                        ),
                       ],
                       const GitMenuEntry.separator(),
                       if (prefix != 'refs/remotes/')
-                        GitMenuEntry('delete', 'Delete…'),
-                      GitMenuEntry('remoteDelete', 'Delete from remote…'),
+                        GitMenuEntry(
+                          'delete',
+                          'Delete…',
+                          enabled: session.canWriteMetadata,
+                        ),
+                      GitMenuEntry(
+                        'remoteDelete',
+                        'Delete from remote…',
+                        enabled: session.canWriteMetadata,
+                      ),
                     ],
                     tooltip: 'Actions for ${reference.name}',
                   ),

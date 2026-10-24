@@ -500,12 +500,16 @@ final class GitMenuButton extends StatelessWidget {
     required this.onSelected,
     this.tooltip = 'Actions',
     this.child,
+    this.enabled = true,
+    this.disabledReason,
   });
   final GitHost host;
   final List<GitMenuEntry> entries;
   final ValueChanged<String> onSelected;
   final String tooltip;
   final Widget? child;
+  final bool enabled;
+  final String? disabledReason;
   @override
   Widget build(BuildContext context) {
     Future<void> open() async {
@@ -522,16 +526,20 @@ final class GitMenuButton extends StatelessWidget {
       if (context.mounted && value != null) onSelected(value);
     }
 
+    final available = enabled && entries.isNotEmpty;
+    final description = !available && disabledReason != null
+        ? '$tooltip · ${gitString(context, disabledReason!)}'
+        : tooltip;
     return child == null
         ? GitIconButton(
-            tooltip: tooltip,
-            onPressed: entries.isEmpty ? null : () => open(),
+            tooltip: description,
+            onPressed: available ? () => open() : null,
             icon: const Icon(Icons.more_vert, size: 18),
           )
         : Tooltip(
-            message: gitString(context, tooltip),
+            message: gitString(context, description),
             child: TextButton(
-              onPressed: entries.isEmpty ? null : () => open(),
+              onPressed: available ? () => open() : null,
               child: child!,
             ),
           );
