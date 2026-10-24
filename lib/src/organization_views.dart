@@ -342,11 +342,15 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
       Align(
         alignment: Alignment.centerRight,
         child: TextButton.icon(
-          onPressed: loading ? null : () => unawaited(create()),
+          onPressed: loading || session.snapshot?.head == null
+              ? null
+              : () => unawaited(create()),
           icon: const Icon(Icons.add),
           label: const GitLabel('Create worktree…'),
         ),
       ),
+      if (!loading && session.snapshot?.head == null)
+        const GitLabel('Create a commit before creating a worktree at HEAD.'),
       Expanded(
         child: ListView(
           children: [
@@ -399,6 +403,8 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
     ],
   );
   Future<void> create() async {
+    final reviewed = session.snapshot;
+    if (reviewed == null || reviewed.head == null) return;
     final parent = await session.host.chooseDirectory(context);
     if (!mounted || parent == null) return;
     final folder = await gitTextInput(
@@ -417,18 +423,18 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
       context,
       session,
       'New worktree branch',
-      explanation: 'Create a new local branch at the current HEAD.',
+      explanation:
+          'Create a new local branch at ${reviewed.head!.abbreviated} (${reviewed.branch ?? 'detached HEAD'}).',
     );
     if (!mounted || branch == null || branch.isEmpty) return;
-    final s = session.snapshot!;
     await apply(
       WorktreeMutation(
         WorktreeAction.create,
         '$parent/$folder',
         branch: branch,
-        start: s.head,
-        expectedHead: s.head,
-        expectedIndex: s.indexToken,
+        start: reviewed.head,
+        expectedHead: reviewed.head,
+        expectedIndex: reviewed.indexToken,
       ),
     );
     if (error == null) await refresh();
