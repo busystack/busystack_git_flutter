@@ -232,7 +232,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   GitIconButton(
                     tooltip: 'Refresh comparison',
                     onPressed: () => unawaited(_load()),
-                    icon: const Icon(Icons.refresh),
+                    icon: const GitIcon(GitGlyph.refresh),
                   ),
                 ],
               ),
@@ -245,23 +245,23 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     GitIconButton(
                       tooltip: 'Previous changed file',
                       onPressed: widget.onPreviousFile,
-                      icon: const Icon(Icons.chevron_left),
+                      icon: const GitIcon(GitGlyph.previous),
                     ),
                     GitIconButton(
                       tooltip: 'Next changed file',
                       onPressed: widget.onNextFile,
-                      icon: const Icon(Icons.chevron_right),
+                      icon: const GitIcon(GitGlyph.next),
                     ),
                   ],
                   GitIconButton(
                     tooltip: 'Previous difference',
                     onPressed: () => _jump(-1),
-                    icon: const Icon(Icons.arrow_upward, size: 18),
+                    icon: const GitIcon(GitGlyph.up, size: 18),
                   ),
                   GitIconButton(
                     tooltip: 'Next difference',
                     onPressed: () => _jump(1),
-                    icon: const Icon(Icons.arrow_downward, size: 18),
+                    icon: const GitIcon(GitGlyph.down, size: 18),
                   ),
                   SegmentedButton<bool>(
                     segments: const [

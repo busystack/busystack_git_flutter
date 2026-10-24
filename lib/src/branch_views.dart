@@ -66,7 +66,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
           Expanded(
             child: TextField(
               decoration: InputDecoration(
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: GitIcon(GitGlyph.search),
                 labelText: gitString(context, 'Search branches and tags'),
               ),
               onChanged: (value) => setState(() => search = value),
@@ -80,7 +80,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                     session.snapshot?.capabilities.replaceWorkingFiles != true
                 ? null
                 : () => unawaited(createBranch()),
-            icon: const Icon(Icons.add),
+            icon: const GitIcon(GitGlyph.add),
             label: const GitLabel('New branch…'),
           ),
         ],
@@ -108,12 +108,12 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
               ))
                 ListTile(
                   dense: true,
-                  leading: Icon(
+                  leading: GitIcon(
                     reference.current
-                        ? Icons.check
+                        ? GitGlyph.check
                         : prefix == 'refs/tags/'
-                        ? Icons.sell_outlined
-                        : Icons.account_tree_outlined,
+                        ? GitGlyph.tag
+                        : GitGlyph.branch,
                     size: 18,
                   ),
                   title: Text(reference.name.substring(prefix.length)),
@@ -567,7 +567,7 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
           onPressed: loading
               ? null
               : () => unawaited(edit(null, RemoteAction.add)),
-          icon: const Icon(Icons.add),
+          icon: const GitIcon(GitGlyph.add),
           label: const GitLabel('Add remote…'),
         ),
       ),

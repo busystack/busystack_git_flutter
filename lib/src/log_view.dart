@@ -295,7 +295,7 @@ final class _GitLogViewState extends State<GitLogView> {
                     GitIconButton(
                       tooltip: 'Refresh Log',
                       onPressed: _loading ? null : () => unawaited(_load()),
-                      icon: const Icon(Icons.refresh),
+                      icon: const GitIcon(GitGlyph.refresh),
                     ),
                     TextButton(
                       onPressed: () => unawaited(_goto()),
@@ -348,7 +348,7 @@ final class _GitLogViewState extends State<GitLogView> {
                       onPressed: bounds.maxWidth >= 1150
                           ? () => setState(() => _branches = !_branches)
                           : () => unawaited(_showBranchFilter()),
-                      icon: const Icon(Icons.account_tree_outlined),
+                      icon: const GitIcon(GitGlyph.branch),
                     ),
                     if (!showDetails && _selected != null)
                       TextButton(
@@ -412,7 +412,7 @@ final class _GitLogViewState extends State<GitLogView> {
           controller: _referenceSearch,
           decoration: InputDecoration(
             labelText: gitString(context, 'Branch or tag'),
-            prefixIcon: Icon(Icons.search),
+            prefixIcon: GitIcon(GitGlyph.search),
           ),
           onChanged: (_) => setState(() {}),
         ),
@@ -447,12 +447,12 @@ final class _GitLogViewState extends State<GitLogView> {
                     ))
                       ListTile(
                         dense: true,
-                        leading: Icon(
+                        leading: GitIcon(
                           ref.current
-                              ? Icons.check
+                              ? GitGlyph.check
                               : group == 'Tags'
-                              ? Icons.label_outline
-                              : Icons.account_tree_outlined,
+                              ? GitGlyph.tag
+                              : GitGlyph.branch,
                           size: 16,
                         ),
                         title: Text(

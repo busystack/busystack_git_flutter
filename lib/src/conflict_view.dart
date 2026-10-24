@@ -63,12 +63,12 @@ final class _OperationState extends GitDialogState<GitOperationView> {
               for (final change
                   in state?.changes.where((e) => e.conflicted) ?? <GitChange>[])
                 ListTile(
-                  leading: const Icon(Icons.warning_amber_outlined),
+                  leading: const GitIcon(GitGlyph.warning),
                   title: Text(change.path.display),
                   subtitle: Text(
                     '${change.index}${change.worktree} · unmerged stages ${change.conflictStages.keys.join(', ')}',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const GitIcon(GitGlyph.next),
                   onTap: () =>
                       GitWorkflowUi(context, session).conflict(change.path),
                 ),
@@ -343,12 +343,12 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
               GitIconButton(
                 tooltip: 'Previous conflict region',
                 onPressed: regions.isEmpty ? null : () => navigate(-1),
-                icon: const Icon(Icons.keyboard_arrow_up),
+                icon: const GitIcon(GitGlyph.up),
               ),
               GitIconButton(
                 tooltip: 'Next conflict region',
                 onPressed: regions.isEmpty ? null : () => navigate(1),
-                icon: const Icon(Icons.keyboard_arrow_down),
+                icon: const GitIcon(GitGlyph.down),
               ),
               Text(
                 regions.isEmpty

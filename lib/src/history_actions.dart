@@ -881,7 +881,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                         commits.removeAt(i);
                         selected = selected.clamp(0, commits.length - 1);
                       }),
-                icon: const Icon(Icons.close),
+                icon: const GitIcon(GitGlyph.close),
               ),
             ),
           ),

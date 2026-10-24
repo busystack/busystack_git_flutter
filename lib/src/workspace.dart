@@ -50,7 +50,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
           if (widget.onReturn != null)
             TextButton.icon(
               onPressed: widget.onReturn,
-              icon: const Icon(Icons.arrow_back),
+              icon: const GitIcon(GitGlyph.back),
               label: const GitLabel('Return to Files'),
             ),
           Expanded(

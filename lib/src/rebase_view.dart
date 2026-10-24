@@ -345,12 +345,12 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                         children: [
                           TextButton.icon(
                             onPressed: canMove(-1) ? () => move(-1) : null,
-                            icon: const Icon(Icons.arrow_upward),
+                            icon: const GitIcon(GitGlyph.up),
                             label: const GitLabel('Move up'),
                           ),
                           TextButton.icon(
                             onPressed: canMove(1) ? () => move(1) : null,
-                            icon: const Icon(Icons.arrow_downward),
+                            icon: const GitIcon(GitGlyph.down),
                             label: const GitLabel('Move down'),
                           ),
                           TextButton(

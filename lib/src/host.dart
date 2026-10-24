@@ -141,7 +141,7 @@ final class GitHost {
                     : SizedBox(
                         width: 18,
                         child: e.checked!
-                            ? const Icon(Icons.check, size: 18)
+                            ? const GitIcon(GitGlyph.check, size: 18)
                             : null,
                       ),
                 title: Text(e.label),
@@ -168,7 +168,10 @@ final class GitHost {
   final String Function(String key, String fallback)? translate;
   final double spacing, minimumRowHeight;
   final double Function(BuildContext context, TextStyle? style)? measureText;
-  final Map<String, IconData> icons;
+
+  /// Override every shared control using semantic [GitGlyph] keys. Applications
+  /// supply their existing semantic glyph catalog; no icon font is imposed.
+  final Map<GitGlyph, IconData> icons;
   final Future<Map<String, Object>?> Function(String worktreeKey)?
   readViewState;
   final Future<void> Function(String worktreeKey, Map<String, Object> values)?
@@ -199,6 +202,62 @@ final class GitHostScope extends InheritedWidget {
       context.dependOnInheritedWidgetOfExactType<GitHostScope>()?.host;
   @override
   bool updateShouldNotify(GitHostScope oldWidget) => oldWidget.host != host;
+}
+
+enum GitGlyph {
+  back,
+  branch,
+  history,
+  refresh,
+  more,
+  expand,
+  previous,
+  next,
+  up,
+  down,
+  search,
+  add,
+  remove,
+  check,
+  tag,
+  error,
+  warning,
+  close;
+
+  IconData get fallback => switch (this) {
+    back => Icons.arrow_back,
+    branch => Icons.account_tree_outlined,
+    history => Icons.history,
+    refresh => Icons.refresh,
+    more => Icons.more_vert,
+    expand => Icons.expand_more,
+    previous => Icons.chevron_left,
+    next => Icons.chevron_right,
+    up => Icons.arrow_upward,
+    down => Icons.arrow_downward,
+    search => Icons.search,
+    add => Icons.add,
+    remove => Icons.remove,
+    check => Icons.check,
+    tag => Icons.label_outline,
+    error => Icons.error_outline,
+    warning => Icons.warning_amber_outlined,
+    close => Icons.close,
+  };
+}
+
+/// Inherits the active theme and resolves artwork through the host's catalog.
+final class GitIcon extends StatelessWidget {
+  const GitIcon(this.glyph, {super.key, this.size, this.color});
+  final GitGlyph glyph;
+  final double? size;
+  final Color? color;
+  @override
+  Widget build(BuildContext context) => Icon(
+    GitHostScope.of(context)?.icons[glyph] ?? glyph.fallback,
+    size: size,
+    color: color,
+  );
 }
 
 String gitString(
@@ -401,7 +460,7 @@ final class GitFailurePanel extends StatelessWidget {
   final VoidCallback? onAuthorize;
   @override
   Widget build(BuildContext context) => MaterialBanner(
-    leading: const Icon(Icons.error_outline),
+    leading: const GitIcon(GitGlyph.error),
     content: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -534,7 +593,7 @@ final class GitMenuButton extends StatelessWidget {
         ? GitIconButton(
             tooltip: description,
             onPressed: available ? () => open() : null,
-            icon: const Icon(Icons.more_vert, size: 18),
+            icon: const GitIcon(GitGlyph.more, size: 18),
           )
         : Tooltip(
             message: gitString(context, description),

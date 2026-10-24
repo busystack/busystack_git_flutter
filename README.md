@@ -18,6 +18,8 @@ selection, native contextual menus, mutation/inspection preflight, draft persist
 and notifications. Native menu cancellation remains distinct from an unavailable
 menu service; only the latter falls back to the host dialog presenter.
 It also supplies host density, text measurement, icons and translation hooks.
+Every shared icon uses a semantic `GitGlyph` key in `GitHost.icons`, so hosts can
+use their existing glyph catalog throughout Commit, Log and workflow dialogs.
 BusyMark's optional message drafting remains a host action. Native Git prompts
 use `presentGitPrompt` with the host's own dialog presenter. BusyFiles transports
 those prompts through its authenticated private daemon channel.

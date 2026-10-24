@@ -51,7 +51,7 @@ mixin _MetadataRefresh<T extends StatefulWidget> on GitDialogState<T> {
       GitIconButton(
         tooltip: 'Refresh',
         onPressed: session.running ? null : () => unawaited(refreshMetadata()),
-        icon: const Icon(Icons.refresh),
+        icon: const GitIcon(GitGlyph.refresh),
       ),
     ],
   );
@@ -134,7 +134,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
                   );
                   await refresh();
                 },
-          icon: const Icon(Icons.add),
+          icon: const GitIcon(GitGlyph.add),
           label: const GitLabel('Create stash…'),
         ),
       ),
@@ -426,7 +426,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
           onPressed: loading || session.snapshot?.head == null
               ? null
               : () => unawaited(create()),
-          icon: const Icon(Icons.add),
+          icon: const GitIcon(GitGlyph.add),
           label: const GitLabel('Create worktree…'),
         ),
       ),

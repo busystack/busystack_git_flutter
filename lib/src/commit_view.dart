@@ -195,10 +195,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     Expanded(
                       child: TextButton.icon(
                         onPressed: widget.onBranches,
-                        icon: Icon(
-                          host.icons['branch'] ?? Icons.account_tree_outlined,
-                          size: 16,
-                        ),
+                        icon: GitIcon(GitGlyph.branch, size: 16),
                         label: Text(
                           snapshot?.branch ??
                               (snapshot?.head == null
@@ -212,10 +209,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     GitIconButton(
                       tooltip: 'Log',
                       onPressed: widget.onLog,
-                      icon: Icon(
-                        host.icons['history'] ?? Icons.history,
-                        size: 18,
-                      ),
+                      icon: GitIcon(GitGlyph.history, size: 18),
                     ),
                     GitIconButton(
                       tooltip: 'Refresh',
@@ -224,13 +218,13 @@ final class _GitCommitViewState extends State<GitCommitView> {
                           : () => unawaited(
                               session.refresh(clearOperationFailure: true),
                             ),
-                      icon: const Icon(Icons.refresh, size: 18),
+                      icon: const GitIcon(GitGlyph.refresh, size: 18),
                     ),
                     Builder(
                       builder: (anchor) => GitIconButton(
                         tooltip: 'Repository actions',
                         onPressed: () => widget.onMore(anchor),
-                        icon: const Icon(Icons.more_vert, size: 18),
+                        icon: const GitIcon(GitGlyph.more, size: 18),
                       ),
                     ),
                   ],
@@ -988,10 +982,10 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                           child: Row(
                             children: [
                               if (change == null)
-                                Icon(
+                                GitIcon(
                                   _collapsed.contains(row.key)
-                                      ? Icons.chevron_right
-                                      : Icons.expand_more,
+                                      ? GitGlyph.next
+                                      : GitGlyph.expand,
                                   size: 16,
                                 )
                               else
@@ -1055,10 +1049,10 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                             _stage(row.group == 'Staged', rows),
                                           );
                                         },
-                                  icon: Icon(
+                                  icon: GitIcon(
                                     row.group == 'Staged'
-                                        ? Icons.remove
-                                        : Icons.add,
+                                        ? GitGlyph.remove
+                                        : GitGlyph.add,
                                     size: 16,
                                   ),
                                 ),
