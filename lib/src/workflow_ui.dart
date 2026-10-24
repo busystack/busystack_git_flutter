@@ -35,6 +35,11 @@ final class GitWorkflowUi {
     GitConflictView(session: session, path: path),
     expanded: true,
   );
+  Future<void> operation() => present(
+    'Current operation',
+    GitOperationView(session: session),
+    expanded: true,
+  );
   Future<void> rebase({GitOid? boundary}) => present(
     'Rebase commits',
     GitRebaseView(session: session, boundary: boundary),
@@ -110,11 +115,7 @@ final class GitWorkflowUi {
       case 'rebase':
         await rebase();
       case 'conflicts':
-        await present(
-          'Current operation',
-          GitOperationView(session: session),
-          expanded: true,
-        );
+        await operation();
       case 'stashes':
         await present(
           'Stashes',

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'commit_view.dart';
@@ -108,9 +109,15 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                       onPush:
                           widget.onPush ??
                           () => GitWorkflowUi(context, widget.session).push(),
-                      onMore:
-                          widget.onMore ??
-                          () => GitWorkflowUi(context, widget.session).more(),
+                      onMore: (anchor) {
+                        if (widget.onMore != null) {
+                          widget.onMore!();
+                        } else {
+                          unawaited(
+                            GitWorkflowUi(anchor, widget.session).more(),
+                          );
+                        }
+                      },
                     ),
                     second: _comparison == null
                         ? const Center(

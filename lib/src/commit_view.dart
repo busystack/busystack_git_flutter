@@ -24,7 +24,8 @@ final class GitCommitView extends StatefulWidget {
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
   final Widget? notice;
-  final VoidCallback onLog, onBranches, onPush, onMore;
+  final VoidCallback onLog, onBranches, onPush;
+  final ValueChanged<BuildContext> onMore;
   @override
   State<GitCommitView> createState() => _GitCommitViewState();
 }
@@ -225,10 +226,12 @@ final class _GitCommitViewState extends State<GitCommitView> {
                             ),
                       icon: const Icon(Icons.refresh, size: 18),
                     ),
-                    GitIconButton(
-                      tooltip: 'Repository actions',
-                      onPressed: widget.onMore,
-                      icon: const Icon(Icons.more_vert, size: 18),
+                    Builder(
+                      builder: (anchor) => GitIconButton(
+                        tooltip: 'Repository actions',
+                        onPressed: () => widget.onMore(anchor),
+                        icon: const Icon(Icons.more_vert, size: 18),
+                      ),
                     ),
                   ],
                 ),
@@ -289,7 +292,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
               ),
               actions: [
                 TextButton(
-                  onPressed: widget.onMore,
+                  onPressed: () =>
+                      unawaited(GitWorkflowUi(context, session).operation()),
                   child: const GitLabel('Review operation'),
                 ),
               ],

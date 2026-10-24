@@ -19,6 +19,100 @@ GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
 
 void main() {
   testWidgets(
+    'repository menu uses the invoking control as its native anchor',
+    (tester) async {
+      Size? anchorSize;
+      final original = host();
+      final configured = GitHost(
+        present: original.present,
+        openDocument: original.openDocument,
+        prepareMutation: original.prepareMutation,
+        chooseDirectory: original.chooseDirectory,
+        notify: original.notify,
+        drafts: original.drafts,
+        presentMenu: (context, entries, {position}) async {
+          anchorSize = (context.findRenderObject()! as RenderBox).size;
+          expect(
+            entries.map((e) => e.id),
+            containsAll(['fetch', 'pull', 'push', 'recovery']),
+          );
+          return null;
+        },
+      );
+      final session = GitSession(
+        client: FixtureClient(),
+        repository: repo,
+        host: configured,
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 350,
+                child: GitCommitView(
+                  session: session,
+                  onReview: (_) {},
+                  onLog: () {},
+                  onBranches: () {},
+                  onPush: () {},
+                  onMore: (anchor) => GitWorkflowUi(anchor, session).more(),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Repository actions'));
+      await tester.pumpAndSettle();
+      expect(anchorSize, isNotNull);
+      expect(anchorSize!.width, lessThanOrEqualTo(56));
+      expect(anchorSize!.height, lessThanOrEqualTo(56));
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets('operation banner opens actual continuation controls directly', (
+    tester,
+  ) async {
+    var menuCalls = 0;
+    final session = GitSession(
+      client: _ContinuingClient(),
+      repository: repo,
+      host: host(),
+    );
+    await session.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GitCommitView(
+            session: session,
+            onReview: (_) {},
+            onLog: () {},
+            onBranches: () {},
+            onPush: () {},
+            onMore: (_) => menuCalls++,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Review operation'));
+    await tester.pumpAndSettle();
+    expect(find.byType(GitOperationView), findsOneWidget);
+    expect(find.text('abort…'), findsOneWidget);
+    expect(find.text('skip…'), findsNothing);
+    expect(menuCalls, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
+
+  testWidgets(
     'native menus preserve checked states, raw refs and cancellation',
     (tester) async {
       List<GitMenuEntry>? received;
@@ -200,7 +294,7 @@ void main() {
                       onLog: () {},
                       onBranches: () {},
                       onPush: () {},
-                      onMore: () {},
+                      onMore: (_) {},
                     ),
                   ),
                 ),
@@ -215,5 +309,26 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       session.dispose();
     },
+  );
+}
+
+final class _ContinuingClient extends FixtureClient {
+  @override
+  Future<GitSnapshot> status(
+    RepositoryId repository, {
+    GitCancellation? cancellation,
+    GitReadPolicy policy = GitReadPolicy.restricted,
+  }) async => GitSnapshot(
+    repository: repository,
+    token: 'merge',
+    indexToken: 'unmerged',
+    changes: [
+      GitChange(path: RepoPath.text('conflict.md'), index: 'U', worktree: 'U'),
+    ],
+    operation: const RepositoryOperation(
+      GitOperationKind.merge,
+      unmerged: true,
+    ),
+    observedAt: DateTime.utc(2026),
   );
 }
