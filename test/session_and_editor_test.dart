@@ -425,4 +425,73 @@ void main() {
       semantics.dispose();
     },
   );
+  testWidgets(
+    'Log keeps branch identity and a recovered operation visible across refresh',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = ControlledClient()
+        ..state = GitSnapshot.fromJson({
+          ...snapshot().toJson(),
+          'branch': 'writing/main',
+          'head': 'a' * 40,
+        });
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      var branchReviews = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitWorkspace(
+              session: session,
+              onBranches: () => branchReviews++,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'preserved commit draft');
+      await tester.tap(find.text('Log').first);
+      await tester.pumpAndSettle();
+      expect(find.text(repo.root), findsOneWidget);
+      expect(find.text('writing/main'), findsOneWidget);
+      await tester.tap(find.text('writing/main'));
+      expect(branchReviews, 1);
+      final filter = find.widgetWithText(TextField, 'Message');
+      await tester.enterText(filter, 'preserved history filter');
+      client.state = GitSnapshot.fromJson({
+        ...snapshot().toJson(),
+        'head': 'b' * 40,
+        'operation': const RepositoryOperation(
+          GitOperationKind.merge,
+          unmerged: true,
+        ).toJson(),
+      });
+      await session.refresh();
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Detached HEAD · ${GitOid('b' * 40).abbreviated}'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Merge in progress · unresolved conflicts'),
+        findsOneWidget,
+      );
+      expect(find.text('Review operation'), findsOneWidget);
+      expect(find.text('preserved history filter'), findsOneWidget);
+      await tester.tap(find.text('Commit').first);
+      await tester.pumpAndSettle();
+      expect(find.text('preserved commit draft'), findsOneWidget);
+      expect(find.text('Review operation'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
 }

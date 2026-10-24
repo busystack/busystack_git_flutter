@@ -5,6 +5,7 @@ import 'commit_view.dart';
 import 'diff_view.dart';
 import 'host.dart';
 import 'log_view.dart';
+import 'operation_banner.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
 
@@ -45,36 +46,68 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
   );
   Widget _build(BuildContext context) => Column(
     children: [
-      Row(
-        children: [
-          if (widget.onReturn != null)
-            TextButton.icon(
-              onPressed: widget.onReturn,
-              icon: const GitIcon(GitGlyph.back),
-              label: const GitLabel('Return to Files'),
+      ListenableBuilder(
+        listenable: widget.session,
+        builder: (context, _) => Column(
+          children: [
+            Row(
+              children: [
+                if (widget.onReturn != null)
+                  TextButton.icon(
+                    onPressed: widget.onReturn,
+                    icon: const GitIcon(GitGlyph.back),
+                    label: const GitLabel('Return to Files'),
+                  ),
+                Expanded(
+                  child: Tooltip(
+                    message: widget.session.repository.root,
+                    child: _log
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.session.repository.root,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              TextButton.icon(
+                                onPressed:
+                                    widget.onBranches ??
+                                    () => unawaited(
+                                      GitWorkflowUi(
+                                        context,
+                                        widget.session,
+                                      ).branches(),
+                                    ),
+                                icon: const GitIcon(GitGlyph.branch),
+                                label: Text(
+                                  _branchLabel(context),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const GitLabel('Git'),
+                  ),
+                ),
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: GitLabel('Commit')),
+                    ButtonSegment(value: true, label: GitLabel('Log')),
+                  ],
+                  selected: {_log},
+                  onSelectionChanged: (s) => setState(() {
+                    _log = s.single;
+                    _logVisited |= _log;
+                  }),
+                ),
+              ],
             ),
-          Expanded(
-            child: Tooltip(
-              message: widget.session.repository.root,
-              child: Text(
-                _log ? widget.session.repository.root : 'Git',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ),
-          SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: GitLabel('Commit')),
-              ButtonSegment(value: true, label: GitLabel('Log')),
-            ],
-            selected: {_log},
-            onSelectionChanged: (s) => setState(() {
-              _log = s.single;
-              _logVisited |= _log;
-            }),
-          ),
-        ],
+            if (_log) GitOperationBanner(session: widget.session),
+          ],
+        ),
       ),
       const Divider(height: 1),
       Expanded(
@@ -155,4 +188,22 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
       ),
     ],
   );
+
+  String _branchLabel(BuildContext context) {
+    final session = widget.session, snapshot = session.snapshot;
+    if (snapshot == null) {
+      return gitString(
+        context,
+        session.loading ? 'Loading branch…' : 'Branch unavailable',
+      );
+    }
+    return snapshot.branch ??
+        (snapshot.head == null
+            ? gitString(context, 'Unborn HEAD')
+            : gitString(
+                context,
+                'Detached HEAD · {revision}',
+                values: {'revision': snapshot.head!.abbreviated},
+              ));
+  }
 }

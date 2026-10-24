@@ -12,6 +12,8 @@ fetch/pull/push review, history/snapshots/blame, conflict results, Git rebase pl
 stashes, worktrees, submodules and reflog recovery. `GitWorkflowUi` connects
 context actions to those views. `GitSession` owns one immutable worktree identity,
 presentation lifecycle, drafts and refresh/cancellation state.
+The full Git workspace keeps its worktree root, current branch or detached HEAD,
+and recovered operation visible in Log. Returning to Commit retains its draft.
 
 `GitHost` supplies native application dialogs, document/folder opening, directory
 selection, native contextual menus, mutation/inspection preflight, draft persistence

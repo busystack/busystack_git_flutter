@@ -8,6 +8,7 @@ import 'session.dart';
 import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'native_table.dart';
+import 'operation_banner.dart';
 
 final class GitCommitView extends StatefulWidget {
   const GitCommitView({
@@ -295,18 +296,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
             ),
           if (snapshot?.operation.kind != null &&
               snapshot!.operation.kind != GitOperationKind.none)
-            MaterialBanner(
-              content: Text(
-                '${snapshot.operation.kind.name} in progress${snapshot.operation.unmerged ? ' · unresolved conflicts' : ''}',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () =>
-                      unawaited(GitWorkflowUi(context, session).operation()),
-                  child: const GitLabel('Review operation'),
-                ),
-              ],
-            ),
+            GitOperationBanner(session: session),
           Expanded(
             child: GitSplitter(
               axis: Axis.vertical,
