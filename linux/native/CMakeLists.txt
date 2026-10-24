@@ -2,7 +2,10 @@ cmake_minimum_required(VERSION 3.24)
 project(busystack_git_accessibility LANGUAGES CXX)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK_ACCESSIBILITY REQUIRED IMPORTED_TARGET gtk+-3.0>=3.24 atk>=2.30)
-add_library(busystack_git_accessibility STATIC git_table.cc)
+# Link the objects directly. A distribution's BFD archive plugin can belong to
+# another LLVM version and fail to index Clang LTO objects even when the final
+# compiler/linker pair supports them. Keep the caller's LTO/hardening flags.
+add_library(busystack_git_accessibility OBJECT git_table.cc)
 set_target_properties(busystack_git_accessibility PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(busystack_git_accessibility PUBLIC cxx_std_17)
 target_compile_options(busystack_git_accessibility PRIVATE -Wall -Wextra -Werror)
