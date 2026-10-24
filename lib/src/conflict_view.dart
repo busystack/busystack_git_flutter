@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'diff_view.dart';
 import 'host.dart';
 import 'session.dart';
+import 'text_encoding.dart';
 import 'workflow_ui.dart';
 
 final class GitOperationView extends StatefulWidget {
@@ -439,6 +440,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           const GitLabel(
             'Result saved to disk. The index still determines whether this file is resolved.',
           ),
+        if (text) GitLabel(gitUtf8EncodingLabel(result.text)),
         if (text)
           Wrap(
             alignment: WrapAlignment.end,
@@ -602,15 +604,27 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   }
 
   Future<void> save(bool stage) async {
+    final bomChange = gitUtf8BomChange(working!.text ?? '', result.text);
     if (stage &&
         !await gitConfirm(
           context,
           session,
           'Stage this conflict resolution?',
-          'Use the entire edited Result as ${widget.path.display}. Git records the path resolved when it is staged. Review all intended content first.',
+          'Use the entire edited Result as ${widget.path.display}. Git records the path resolved when it is staged. Review all intended content first.${bomChange == null ? '' : '\n\n$bomChange'}',
           action: 'Apply and stage',
         ))
       return;
+    if (!stage &&
+        bomChange != null &&
+        !await gitConfirm(
+          context,
+          session,
+          'Change result byte-order mark?',
+          bomChange,
+          action: 'Save changed encoding',
+        ))
+      return;
+    if (!mounted) return;
     await resolve(
       ConflictChoice.edited,
       bytes: Uint8List.fromList(utf8.encode(result.text)),

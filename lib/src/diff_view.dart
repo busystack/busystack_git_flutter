@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'host.dart';
 import 'session.dart';
 import 'text_pane.dart';
+import 'text_encoding.dart';
+import 'workflow_ui.dart' show gitConfirm;
 export 'text_pane.dart';
 
 Future<TextDiff> _backgroundDiff(String left, String right) =>
@@ -1046,6 +1048,11 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
               const GitLabel(
                 'Working files remain on disk. Index text is UTF-8; line endings are preserved.',
               ),
+              ListenableBuilder(
+                listenable: _result,
+                builder: (context, _) =>
+                    GitLabel(gitUtf8EncodingLabel(_result.text)),
+              ),
             ],
           ),
         ),
@@ -1054,6 +1061,17 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   }
 
   Future<void> _apply() async {
+    final bomChange = gitUtf8BomChange(_index!.text ?? '', _result.text);
+    if (bomChange != null &&
+        !await gitConfirm(
+          context,
+          widget.session,
+          'Change index byte-order mark?',
+          bomChange,
+          action: 'Write changed encoding',
+        ))
+      return;
+    if (!mounted) return;
     setState(() => _saving = true);
     final result = await widget.session.mutate(
       WriteIndex(

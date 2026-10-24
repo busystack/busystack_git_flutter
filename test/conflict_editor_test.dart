@@ -8,6 +8,7 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
   final path = RepoPath.text('prose.md');
   final ids = [for (var i = 1; i <= 3; i++) GitOid('$i' * 40)];
   bool raced = false;
+  String prefix = '';
   int reads = 0;
   String left = 'Introduction\nCurrent prose\nConclusion\n',
       right = 'Introduction\nIncoming prose\nConclusion\n';
@@ -71,15 +72,17 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
     token: version.kind == ContentKind.workingTree
         ? 'working-bytes'
         : version.label,
-    bytes: utf8.encode(switch (version.kind) {
-      ContentKind.mergePreview => preview,
-      ContentKind.workingTree => working,
-      _ => switch (version.stage) {
-        2 => left,
-        3 => right,
-        _ => 'Introduction\nOriginal prose\nConclusion\n',
-      },
-    }),
+    bytes: utf8.encode(
+      '$prefix${switch (version.kind) {
+        ContentKind.mergePreview => preview,
+        ContentKind.workingTree => working,
+        _ => switch (version.stage) {
+          2 => left,
+          3 => right,
+          _ => 'Introduction\nOriginal prose\nConclusion\n',
+        },
+      }}',
+    ),
   );
   @override
   Future<GitCreationOutcome> create(
@@ -90,6 +93,71 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
 }
 
 void main() {
+  for (final removeBom in [false, true]) {
+    testWidgets(
+      removeBom
+          ? 'conflict draft reviews BOM removal without losing manual text on cancel'
+          : 'conflict draft preserves BOM and CRLF working bytes',
+      (tester) async {
+        tester.view.physicalSize = const Size(1440, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final client = ConflictClient()..prefix = '\uFEFF';
+        final session = GitSession(
+          client: client,
+          repository: repo,
+          host: host(),
+        );
+        await session.start();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: GitConflictView(session: session, path: client.path),
+            ),
+          ),
+        );
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 100)),
+        );
+        await tester.pumpAndSettle();
+        final editable = find.byWidgetPredicate(
+          (w) => w is TextField && !w.readOnly,
+        );
+        expect(
+          tester.widget<TextField>(editable).controller!.text,
+          '\uFEFF${client.working}',
+        );
+        expect(find.text('UTF-8 with byte-order mark (BOM)'), findsOneWidget);
+        final edited = '${removeBom ? '' : '\uFEFF'}Manual prose\r\n';
+        await tester.enterText(editable, edited);
+        await tester.tap(find.text('Save result draft'));
+        await tester.pumpAndSettle();
+        if (removeBom) {
+          expect(client.mutations, isEmpty);
+          expect(
+            find.textContaining('removes the UTF-8 byte-order mark'),
+            findsOneWidget,
+          );
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          expect(tester.widget<TextField>(editable).controller!.text, edited);
+          expect(client.mutations, isEmpty);
+          await tester.tap(find.text('Save result draft'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Save changed encoding'));
+          await tester.pumpAndSettle();
+        }
+        final request = client.mutations.single as ResolveConflict;
+        expect(request.bytes, utf8.encode(edited));
+        expect(request.stageResult, isFalse);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        session.dispose();
+      },
+    );
+  }
+
   testWidgets(
     'authoritative stage contents load off the UI isolate and region acceptance retains manual editing',
     (tester) async {
