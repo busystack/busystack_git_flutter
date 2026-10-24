@@ -82,7 +82,7 @@ flutter analyze
 flutter test
 cmake -S linux/native -B build/native -G Ninja
 cmake --build build/native
-xvfb-run -a ctest --test-dir build/native --output-on-failure
+dbus-run-session -- xvfb-run -a ctest --test-dir build/native --output-on-failure
 ```
 
 Widget tests verify presentation interactions. Native accessibility, input,
