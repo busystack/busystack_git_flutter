@@ -132,18 +132,29 @@ final class _PushState extends GitDialogState<GitPushView> {
 
   Future<void> initialize() async {
     await load(const GitInspection(GitInspectionKind.remotes));
+    if (!mounted || error != null) return;
     final refs = await query(
       () => session.client.references(session.repository),
     );
-    if (!mounted || refs == null) return;
+    final options = await query(
+      () => workflows.inspect(
+        session.repository,
+        const GitInspection(GitInspectionKind.commitOptions),
+      ),
+    );
+    if (!mounted || refs == null || options == null) return;
     setState(() {
       remotes = (data?['remotes'] as List? ?? []).cast<Json>();
-      final tracking = reviewed.upstream?.split('/');
-      remote = tracking == null
+      final configured = options['pushRemote'] as String?;
+      remote = configured == null
           ? (remotes.length == 1 ? remotes.single['name'] as String : null)
-          : tracking.first;
-      if (tracking != null)
-        destination.text = 'refs/heads/${tracking.skip(1).join('/')}';
+          : remotes.any((e) => e['name'] == configured)
+          ? configured
+          : null;
+      final tracking = options['upstreamBranch'] as String?;
+      if (remote == options['upstreamRemote'] &&
+          tracking?.startsWith('refs/heads/') == true)
+        destination.text = tracking!;
       tags = refs.where((e) => e.name.startsWith('refs/tags/')).toList();
       data = null;
       upstream = reviewed.upstream == null && reviewed.branch != null;
@@ -684,34 +695,70 @@ final class _PullState extends GitDialogState<GitPullView> {
   String? remote;
   final branch = TextEditingController();
   PullStrategy strategy = PullStrategy.fastForwardOnly;
+  bool initializing = true,
+      preserveMerges = false,
+      noFastForward = false,
+      interactivePreference = false;
   @override
   void initState() {
     super.initState();
     reviewed = session.snapshot!;
-    final tracking = reviewed.upstream?.split('/');
-    remote = tracking?.first;
-    branch.text = tracking?.skip(1).join('/') ?? reviewed.branch ?? '';
+    branch.text = reviewed.branch ?? '';
     unawaited(initialize());
   }
 
   Future<void> initialize() async {
     await load(const GitInspection(GitInspectionKind.remotes));
+    if (!mounted || error != null) {
+      if (mounted) setState(() => initializing = false);
+      return;
+    }
     final options = await query(
       () => workflows.inspect(
         session.repository,
         const GitInspection(GitInspectionKind.commitOptions),
       ),
     );
-    if (mounted && options != null)
-      setState(
-        () => strategy = options['pullFf'] == 'only'
-            ? PullStrategy.fastForwardOnly
-            : options['pullRebase'] == 'true'
-            ? PullStrategy.rebase
-            : options['pullRebase'] == 'false'
-            ? PullStrategy.merge
-            : PullStrategy.fastForwardOnly,
-      );
+    if (!mounted) return;
+    setState(() {
+      initializing = false;
+      if (options == null) return;
+      final names = (data?['remotes'] as List? ?? [])
+          .cast<Json>()
+          .map((e) => e['name'] as String)
+          .toList();
+      final configured = options['upstreamRemote'] as String?;
+      remote = configured == null
+          ? (names.length == 1 ? names.single : null)
+          : names.contains(configured)
+          ? configured
+          : null;
+      final tracking = options['upstreamBranch'] as String?;
+      if (tracking?.startsWith('refs/heads/') == true)
+        branch.text = tracking!.substring('refs/heads/'.length);
+      final rebase = (options['pullRebase'] as String?)?.toLowerCase();
+      preserveMerges = const {'merges', 'm'}.contains(rebase);
+      interactivePreference = const {'interactive', 'i'}.contains(rebase);
+      final useRebase =
+          preserveMerges ||
+          interactivePreference ||
+          const {'true', 'yes', 'on', '1'}.contains(rebase);
+      final useMerge = const {'false', 'no', 'off', '0'}.contains(rebase);
+      noFastForward = const {
+        'false',
+        'no',
+        'off',
+        '0',
+      }.contains((options['pullFf'] as String?)?.toLowerCase());
+      strategy = options['pullFf'] == 'only'
+          ? PullStrategy.fastForwardOnly
+          : useRebase
+          ? PullStrategy.rebase
+          : useMerge || noFastForward
+          ? PullStrategy.merge
+          : PullStrategy.fastForwardOnly;
+      if (strategy != PullStrategy.rebase) interactivePreference = false;
+    });
   }
 
   @override
@@ -730,6 +777,7 @@ final class _PullState extends GitDialogState<GitPullView> {
       ),
       states(),
       DropdownButtonFormField<String>(
+        key: ValueKey(remote),
         initialValue: remote,
         isExpanded: true,
         decoration: InputDecoration(
@@ -742,11 +790,14 @@ final class _PullState extends GitDialogState<GitPullView> {
               child: Text(value['name'] as String),
             ),
         ],
-        onChanged: loading ? null : (value) => setState(() => remote = value),
+        onChanged: loading || initializing
+            ? null
+            : (value) => setState(() => remote = value),
       ),
       SizedBox(height: session.host.spacing),
       TextField(
         controller: branch,
+        enabled: !loading && !initializing,
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
           labelText: gitString(context, 'Source branch'),
@@ -770,10 +821,60 @@ final class _PullState extends GitDialogState<GitPullView> {
               }),
             ),
         ],
-        onChanged: loading
+        onChanged: loading || initializing
             ? null
-            : (value) => setState(() => strategy = value!),
+            : (value) => setState(() {
+                strategy = value!;
+                interactivePreference = false;
+              }),
       ),
+      Text(switch (strategy) {
+        PullStrategy.fastForwardOnly =>
+          'Stop if the destination cannot fast-forward; never merge or rebase.',
+        PullStrategy.merge =>
+          noFastForward
+              ? 'Merge with a merge commit, including when fast-forward is possible.'
+              : 'Merge; allow fast-forward when possible.',
+        PullStrategy.rebase =>
+          preserveMerges
+              ? 'Rebase local history while preserving local merge commits.'
+              : 'Rebase local commits as a linear history.',
+      }),
+      if (interactivePreference) ...[
+        const GitLabel(
+          'Git is configured for interactive rebase. Select a pull strategy explicitly here, or fetch and open Rebase… to review a plan.',
+        ),
+        TextButton(
+          onPressed: () => setState(() => interactivePreference = false),
+          child: const GitLabel('Use reviewed ordinary rebase for this pull'),
+        ),
+      ],
+      if (strategy != PullStrategy.fastForwardOnly)
+        ExpansionTile(
+          title: const GitLabel('Options'),
+          children: [
+            if (strategy == PullStrategy.merge)
+              CheckboxListTile(
+                dense: true,
+                value: noFastForward,
+                title: const GitLabel(
+                  'Always create a merge commit (no fast-forward)',
+                ),
+                onChanged: loading || initializing
+                    ? null
+                    : (value) => setState(() => noFastForward = value!),
+              ),
+            if (strategy == PullStrategy.rebase)
+              CheckboxListTile(
+                dense: true,
+                value: preserveMerges,
+                title: const GitLabel('Preserve local merge commits'),
+                onChanged: loading || initializing
+                    ? null
+                    : (value) => setState(() => preserveMerges = value!),
+              ),
+          ],
+        ),
       if (reviewed.changes.isNotEmpty)
         Wrap(
           children: [
@@ -807,6 +908,8 @@ final class _PullState extends GitDialogState<GitPullView> {
       FilledButton(
         onPressed:
             loading ||
+                initializing ||
+                interactivePreference ||
                 remote == null ||
                 reviewed.branch == null ||
                 branch.text.trim().isEmpty ||
@@ -820,6 +923,10 @@ final class _PullState extends GitDialogState<GitPullView> {
                     strategy,
                     expectedHead: reviewed.head,
                     expectedIndex: reviewed.indexToken,
+                    preserveMerges:
+                        strategy == PullStrategy.rebase && preserveMerges,
+                    noFastForward:
+                        strategy == PullStrategy.merge && noFastForward,
                   ),
                 );
                 if (mounted &&
