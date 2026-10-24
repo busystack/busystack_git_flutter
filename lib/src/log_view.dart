@@ -861,24 +861,33 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Future<void> _goto() async {
-    final entry = TextEditingController();
-    final value = await widget.session.host.present<String>(
+    final value = await gitTextInput(
       context,
+      widget.session,
       'Go to commit/reference',
-      TextField(
-        controller: entry,
-        autofocus: true,
-        onSubmitted: (value) => Navigator.of(context).pop(value),
-      ),
-      expanded: false,
+      explanation: 'Enter a commit ID or reference to reveal in Log.',
     );
-    entry.dispose();
-    if (value == null || !mounted) return;
+    if (value == null || value.isEmpty || !mounted) return;
     final target = _commits
         .where((e) => e.oid.value.startsWith(value))
         .firstOrNull;
     if (target != null) {
+      final index = _commits.indexOf(target);
+      _selectedIds
+        ..clear()
+        ..add(target.oid);
+      _selectionAnchor = index;
       await _select(target);
+      if (!mounted) return;
+      _tableFocus.requestFocus();
+      if (_tableScroll.hasClients) {
+        _tableScroll.jumpTo(
+          (index * widget.session.host.rowHeight(context)).clamp(
+            0,
+            _tableScroll.position.maxScrollExtent,
+          ),
+        );
+      }
       return;
     }
     _reference = value;

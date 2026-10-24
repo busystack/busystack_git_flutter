@@ -429,7 +429,9 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
           label: const GitLabel('Create worktree…'),
         ),
       ),
-      if (!loading && session.snapshot?.head == null)
+      if (!loading &&
+          session.snapshot != null &&
+          session.snapshot?.head == null)
         const GitLabel('Create a commit before creating a worktree at HEAD.'),
       Expanded(
         child: ListView(

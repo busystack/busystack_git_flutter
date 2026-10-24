@@ -19,6 +19,59 @@ GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
 }
 
 void main() {
+  testWidgets(
+    'Log navigation submits and closes its message field without losing the review surface',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = FixtureClient()
+        ..historyCommits = [
+          for (final id in ['a', 'b'])
+            GitCommit(
+              oid: GitOid(id * 40),
+              parents: const [],
+              subject: 'Commit $id',
+              author: 'Fixture',
+              email: 'fixture@example.invalid',
+              date: DateTime.utc(2026),
+              message: 'Message $id',
+            ),
+        ];
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: GitLogView(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Go to commit/reference…'));
+      await tester.pumpAndSettle();
+      final input = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(input, 'b' * 40);
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(find.byType(GitLogView), findsOneWidget);
+      expect(find.text('b' * 40), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
   testWidgets('choosing a Log row owns arrow keys and the Git context menu', (
     tester,
   ) async {
