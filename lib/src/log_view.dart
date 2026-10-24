@@ -342,8 +342,12 @@ final class _GitLogViewState extends State<GitLogView> {
                         ),
                       ),
                     GitIconButton(
-                      tooltip: 'Toggle branches pane',
-                      onPressed: () => setState(() => _branches = !_branches),
+                      tooltip: bounds.maxWidth >= 1150
+                          ? 'Toggle branches pane'
+                          : 'Filter branches and tags',
+                      onPressed: bounds.maxWidth >= 1150
+                          ? () => setState(() => _branches = !_branches)
+                          : () => unawaited(_showBranchFilter()),
                       icon: const Icon(Icons.account_tree_outlined),
                     ),
                     if (!showDetails && _selected != null)
@@ -383,7 +387,24 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     },
   );
-  Widget _branchPane() {
+  Future<void> _showBranchFilter() => widget.session.host.present<void>(
+    context,
+    'Filter branches and tags',
+    Builder(
+      builder: (dialogContext) => SizedBox(
+        width: 420,
+        height: (MediaQuery.sizeOf(context).height * .6).clamp(180, 500),
+        child: ListenableBuilder(
+          listenable: _referenceSearch,
+          builder: (_, _) =>
+              _branchPane(onChosen: () => Navigator.of(dialogContext).pop()),
+        ),
+      ),
+    ),
+    expanded: false,
+  );
+
+  Widget _branchPane({VoidCallback? onChosen}) {
     final filter = _referenceSearch.text.toLowerCase();
     return Column(
       children: [
@@ -404,6 +425,7 @@ final class _GitLogViewState extends State<GitLogView> {
                 selected: _reference == null,
                 onTap: () {
                   _reference = null;
+                  onChosen?.call();
                   unawaited(_load());
                 },
               ),
@@ -441,6 +463,7 @@ final class _GitLogViewState extends State<GitLogView> {
                         selected: _reference == ref.name,
                         onTap: () {
                           _reference = ref.name;
+                          onChosen?.call();
                           unawaited(_load());
                         },
                       ),

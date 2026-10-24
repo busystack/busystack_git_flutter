@@ -26,6 +26,8 @@ GitSnapshot snapshot() => GitSnapshot(
 
 class FixtureClient implements GitClient {
   List<GitCommit> historyCommits = [];
+  List<GitReference> historyReferences = [];
+  final historyFilters = <HistoryFilter>[];
   final mutations = <GitMutation>[];
   Completer<GitOutcome>? pending;
   @override
@@ -40,7 +42,8 @@ class FixtureClient implements GitClient {
     GitReadPolicy policy = GitReadPolicy.restricted,
   }) async => snapshot();
   @override
-  Future<List<GitReference>> references(RepositoryId repository) async => [];
+  Future<List<GitReference>> references(RepositoryId repository) async =>
+      historyReferences;
   @override
   Future<HistoryPage> history(
     RepositoryId repository, {
@@ -49,12 +52,16 @@ class FixtureClient implements GitClient {
     int limit = 100,
     String? anchor,
     GitCancellation? cancellation,
-  }) async => HistoryPage(
-    historyCommits,
-    nextOffset: historyCommits.length,
-    hasMore: false,
-    anchor: 'refs',
-  );
+  }) async {
+    historyFilters.add(filter);
+    return HistoryPage(
+      historyCommits,
+      nextOffset: historyCommits.length,
+      hasMore: false,
+      anchor: 'refs',
+    );
+  }
+
   @override
   Future<GitContent> content(
     RepositoryId repository,

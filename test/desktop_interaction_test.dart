@@ -20,6 +20,48 @@ GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
 
 void main() {
   testWidgets(
+    'compact Log keeps searchable reference filters available without checking out a branch',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = FixtureClient()
+        ..historyReferences = [
+          GitReference(name: 'refs/heads/feature', oid: GitOid('a' * 40)),
+        ];
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: GitLogView(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Filter branches and tags'));
+      await tester.pumpAndSettle();
+      final input = find.descendant(
+        of: find.byType(Dialog),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(input, 'feat');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('feature'));
+      await tester.pumpAndSettle();
+      expect(find.byType(Dialog), findsNothing);
+      expect(client.historyFilters.last.reference, 'refs/heads/feature');
+      expect(client.mutations, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'Log navigation submits and closes its message field without losing the review surface',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 900);
