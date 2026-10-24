@@ -8,8 +8,9 @@ import 'history_actions.dart';
 import 'network_views.dart';
 
 final class GitBranchesView extends StatefulWidget {
-  const GitBranchesView({super.key, required this.session});
+  const GitBranchesView({super.key, required this.session, this.onOpenFolder});
   final GitSession session;
+  final ValueChanged<String>? onOpenFolder;
   @override
   State<GitBranchesView> createState() => _BranchesState();
 }
@@ -122,6 +123,10 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                           reference.worktreePath == null
                               ? 'Switch to ${reference.shortName}'
                               : 'Open occupied worktree',
+                          enabled:
+                              reference.worktreePath == null ||
+                              widget.onOpenFolder != null ||
+                              session.host.openFolder != null,
                         ),
                       if (prefix == 'refs/remotes/')
                         GitMenuEntry('track', 'Create local tracking branch…'),
@@ -178,7 +183,11 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
     final name = reference.shortName;
     if (action == 'track') return createBranch(tracking: reference);
     if (action == 'open') {
-      await session.host.openFolder?.call(reference.worktreePath!);
+      if (widget.onOpenFolder case final open?) {
+        open(reference.worktreePath!);
+      } else {
+        await session.host.openFolder?.call(reference.worktreePath!);
+      }
       return;
     }
     if (action == 'compare') {

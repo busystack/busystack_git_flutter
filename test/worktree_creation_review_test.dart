@@ -56,6 +56,78 @@ final class WorktreeClient extends FixtureClient implements GitWorkflowClient {
 
 void main() {
   testWidgets(
+    'worktree naming dialogs preserve both values across route transitions',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = WorktreeClient();
+      final original = host();
+      final configured = GitHost(
+        present: <T>(context, title, child, {bool expanded = false}) =>
+            showDialog<T>(
+              context: context,
+              builder: (_) => Dialog(
+                child: SizedBox(
+                  width: 800,
+                  height: expanded ? 560 : 220,
+                  child: child,
+                ),
+              ),
+            ),
+        presentMenu: (_, entries, {position}) async => 'worktrees',
+        openDocument: original.openDocument,
+        chooseDirectory: (_) async => '/fixture',
+        notify: original.notify,
+        drafts: original.drafts,
+        prepareMutation: original.prepareMutation,
+      );
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: configured,
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => GitWorkflowUi(context, session).more(),
+                child: const Text('Repository'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Repository'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Create worktree…'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'new-folder');
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final branch = find.byWidgetPredicate(
+        (w) =>
+            w is TextField && w.decoration?.labelText == 'New worktree branch',
+      );
+      expect(branch, findsOneWidget);
+      expect(find.textContaining('/fixture/new-folder'), findsOneWidget);
+      await tester.enterText(branch, 'new-branch');
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+      final request = client.mutations.single as WorktreeMutation;
+      expect(request.path, '/fixture/new-folder');
+      expect(request.branch, 'new-branch');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'worktree creation retains the reviewed HEAD while destination dialogs are open',
     (tester) async {
       final client = WorktreeClient();

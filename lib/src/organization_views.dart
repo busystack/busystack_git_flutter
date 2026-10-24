@@ -317,8 +317,9 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
 }
 
 final class GitWorktreesView extends StatefulWidget {
-  const GitWorktreesView({super.key, required this.session});
+  const GitWorktreesView({super.key, required this.session, this.onOpenFolder});
   final GitSession session;
+  final ValueChanged<String>? onOpenFolder;
   @override
   State<GitWorktreesView> createState() => _WorktreesState();
 }
@@ -371,7 +372,13 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
                   host: session.host,
                   onSelected: (action) => unawaited(act(entry, action)),
                   entries: [
-                    GitMenuEntry('open', 'Open working folder'),
+                    GitMenuEntry(
+                      'open',
+                      'Open working folder',
+                      enabled:
+                          widget.onOpenFolder != null ||
+                          session.host.openFolder != null,
+                    ),
                     if (entry['current'] != true) ...[
                       GitMenuEntry('move', 'Move worktree…'),
                       GitMenuEntry(
@@ -424,7 +431,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
       session,
       'New worktree branch',
       explanation:
-          'Create a new local branch at ${reviewed.head!.abbreviated} (${reviewed.branch ?? 'detached HEAD'}).',
+          'Create $parent/$folder with a new local branch at ${reviewed.head!.abbreviated} (${reviewed.branch ?? 'detached HEAD'}).',
     );
     if (!mounted || branch == null || branch.isEmpty) return;
     await apply(
@@ -443,7 +450,11 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
   Future<void> act(Json entry, String action) async {
     final path = entry['path'] as String, s = session.snapshot!;
     if (action == 'open') {
-      await session.host.openFolder?.call(path);
+      if (widget.onOpenFolder case final open?) {
+        open(path);
+      } else {
+        await session.host.openFolder?.call(path);
+      }
       return;
     }
     String? destination;
@@ -496,8 +507,13 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
 }
 
 final class GitSubmodulesView extends StatefulWidget {
-  const GitSubmodulesView({super.key, required this.session});
+  const GitSubmodulesView({
+    super.key,
+    required this.session,
+    this.onOpenFolder,
+  });
   final GitSession session;
+  final ValueChanged<String>? onOpenFolder;
   @override
   State<GitSubmodulesView> createState() => _SubmodulesState();
 }
@@ -551,7 +567,13 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
                       onSelected: (action) => unawaited(act(entry, action)),
                       entries: [
                         if (entry['initialized'] == true)
-                          GitMenuEntry('open', 'Enter nested repository'),
+                          GitMenuEntry(
+                            'open',
+                            'Enter nested repository',
+                            enabled:
+                                widget.onOpenFolder != null ||
+                                session.host.openFolder != null,
+                          ),
                         GitMenuEntry('initialize', 'Initialize configuration'),
                         GitMenuEntry(
                           'updateRecorded',
@@ -596,7 +618,11 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
     final path = RepoPath.fromJson(entry['path']);
     if (action == 'open') {
       final child = RepositoryId.fromJson(entry['repository'] as Json);
-      await session.host.openFolder?.call(child.root);
+      if (widget.onOpenFolder case final open?) {
+        open(child.root);
+      } else {
+        await session.host.openFolder?.call(child.root);
+      }
       return;
     }
     if (action != 'stagePointer' &&

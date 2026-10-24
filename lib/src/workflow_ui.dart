@@ -17,11 +17,11 @@ final class GitWorkflowUi {
   final BuildContext context;
   final GitSession session;
   GitWorkflowClient get workflows => session.client as GitWorkflowClient;
-  Future<void> branches() => present(
+  Future<void> branches() => _folderDialog(
     'Branches',
-    SizedBox(
+    (open) => SizedBox(
       height: MediaQuery.sizeOf(context).height * .62,
-      child: GitBranchesView(session: session),
+      child: GitBranchesView(session: session, onOpenFolder: open),
     ),
   );
   Future<void> push() =>
@@ -58,6 +58,23 @@ final class GitWorkflowUi {
       child,
       expanded: expanded,
     );
+  }
+
+  Future<void> _folderDialog(
+    String title,
+    Widget Function(ValueChanged<String>) build, {
+    bool expanded = false,
+  }) async {
+    final folder = await session.host.present<String>(
+      context,
+      '$title · ${session.repository.root}',
+      Builder(
+        builder: (dialogContext) =>
+            build((folder) => Navigator.of(dialogContext).pop(folder)),
+      ),
+      expanded: expanded,
+    );
+    if (folder != null) await session.host.openFolder?.call(folder);
   }
 
   Future<void> more() async {
@@ -123,15 +140,15 @@ final class GitWorkflowUi {
           expanded: true,
         );
       case 'worktrees':
-        await present(
+        await _folderDialog(
           'Worktrees',
-          GitWorktreesView(session: session),
+          (open) => GitWorktreesView(session: session, onOpenFolder: open),
           expanded: true,
         );
       case 'submodules':
-        await present(
+        await _folderDialog(
           'Submodules',
-          GitSubmodulesView(session: session),
+          (open) => GitSubmodulesView(session: session, onOpenFolder: open),
           expanded: true,
         );
       case 'recovery':
@@ -188,57 +205,83 @@ Future<String?> gitTextInput(
   String initial = '',
   String? explanation,
   bool multiline = false,
-}) async {
-  final controller = TextEditingController(text: initial);
-  try {
-    return await session.host.present<String>(
-      context,
-      title,
-      Builder(
-        builder: (dialogContext) => Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (explanation != null)
-              Padding(
-                padding: EdgeInsets.only(bottom: session.host.spacing),
-                child: Text(explanation),
-              ),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              maxLines: multiline ? 8 : 1,
-              decoration: InputDecoration(
-                labelText: title,
-                border: const OutlineInputBorder(),
-              ),
-              onSubmitted: multiline
-                  ? null
-                  : (value) => Navigator.of(dialogContext).pop(value),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const GitLabel('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () =>
-                      Navigator.of(dialogContext).pop(controller.text),
-                  child: const GitLabel('Apply'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      expanded: false,
-    );
-  } finally {
+}) => session.host.present<String>(
+  context,
+  title,
+  _GitTextInput(
+    title: title,
+    initial: initial,
+    explanation: explanation,
+    multiline: multiline,
+    spacing: session.host.spacing,
+  ),
+  expanded: false,
+);
+
+// A presentation future may resolve before its route's closing animation has
+// removed the field. The dialog owns its controller until actual unmounting.
+final class _GitTextInput extends StatefulWidget {
+  const _GitTextInput({
+    required this.title,
+    required this.initial,
+    required this.explanation,
+    required this.multiline,
+    required this.spacing,
+  });
+  final String title, initial;
+  final String? explanation;
+  final bool multiline;
+  final double spacing;
+  @override
+  State<_GitTextInput> createState() => _GitTextInputState();
+}
+
+final class _GitTextInputState extends State<_GitTextInput> {
+  late final controller = TextEditingController(text: widget.initial);
+  @override
+  void dispose() {
     controller.dispose();
+    super.dispose();
   }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (widget.explanation != null)
+        Padding(
+          padding: EdgeInsets.only(bottom: widget.spacing),
+          child: Text(widget.explanation!),
+        ),
+      TextField(
+        controller: controller,
+        autofocus: true,
+        maxLines: widget.multiline ? 8 : 1,
+        decoration: InputDecoration(
+          labelText: widget.title,
+          border: const OutlineInputBorder(),
+        ),
+        onSubmitted: widget.multiline
+            ? null
+            : (value) => Navigator.of(context).pop(value),
+      ),
+      const SizedBox(height: 12),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const GitLabel('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const GitLabel('Apply'),
+          ),
+        ],
+      ),
+    ],
+  );
 }
 
 Future<bool> gitConfirm(

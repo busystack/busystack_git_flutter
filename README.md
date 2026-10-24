@@ -48,6 +48,9 @@ when editing, and review an explicit BOM addition or removal before applying it.
 Conflict navigation aligns source anchors through the exact merge preview;
 a changed index or working file invalidates a conflict load before editing is
 offered. A saved working Result is kept separate from staging a resolution.
+Management dialogs finish before asking the host to open another worktree or
+nested repository. Embedded branch/worktree/submodule views can supply their own
+`onOpenFolder` callback when they own a different presentation surface.
 
 Consume this package as a sibling path dependency (`../busystack_git_flutter`
 from BusyMark, `../../../busystack_git_flutter` from either BusyFiles app).
