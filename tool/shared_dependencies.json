@@ -6,10 +6,10 @@
       "name": "busystack_git",
       "path": "../busystack_git",
       "archive": "tool/source-dependencies/busystack_git.tar.gz",
-      "sha256": "fc2a36bdaaca0534de0c8299bd50da7ce8c0885d7f4e643740b9dca42901226b",
-      "tree_sha256": "497c3d33d7c17987211e3d77c562d5f275b25ec9a3a0c10b59e974a0a5a60da4",
+      "sha256": "40722ba418e1a1dccc070af14ecd2918aaf790b459a6711bced89ce89cd81ccd",
+      "tree_sha256": "dfe4364f0ab855ad33937112d2879ed2c93eafa05b3a18535829b9c8efb26e8c",
       "repository": "https://github.com/busystack/busystack_git.git",
-      "revision": "71e41009b72563b6e03cdebc606b50c2d817ff78"
+      "revision": "dc6a767d2c26f43e7bbf9959f317ad18005fe8ca"
     }
   ]
 }

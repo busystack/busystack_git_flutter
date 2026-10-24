@@ -298,12 +298,10 @@ void method_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
     entry->bounds = bounds;
     if (created) {
       gtk_widget_set_can_focus(entry->widget, FALSE);
-      gtk_overlay_add_overlay(GTK_OVERLAY(overlay), entry->widget);
-      gtk_overlay_set_overlay_pass_through(GTK_OVERLAY(overlay), entry->widget,
-                                           TRUE);
       // A separate handler per child must ignore other overlay children.
       g_object_set_data(G_OBJECT(entry->widget), "busystack-git-table-entry",
                         entry);
+      busystack_git_ui::AttachGitTable(GTK_OVERLAY(overlay), entry->widget);
     }
     gtk_widget_queue_resize(GTK_WIDGET(overlay));
     gtk_widget_show(entry->widget);

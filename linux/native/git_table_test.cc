@@ -329,6 +329,46 @@ void disposal_notifies_defunct_once() {
   g_assert_cmpint(notifications, ==, 1);
   g_object_unref(f.table);
 }
+
+void host_overlay_has_consistent_accessible_children() {
+  GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  GtkWidget* overlay = gtk_overlay_new();
+  gtk_container_add(GTK_CONTAINER(overlay), gtk_label_new("Host content"));
+  gtk_container_add(GTK_CONTAINER(window), overlay);
+  gtk_widget_show_all(window);
+  AtkObject* parent = gtk_widget_get_accessible(overlay);
+  g_assert_cmpint(atk_object_get_n_accessible_children(parent), ==, 1);
+  int added = 0, removed = 0;
+  g_signal_connect(parent, "children-changed::add",
+                   G_CALLBACK(+[](AtkObject*, guint, gpointer, gpointer count) {
+                     ++*static_cast<int*>(count);
+                   }),
+                   &added);
+  g_signal_connect(parent, "children-changed::remove",
+                   G_CALLBACK(+[](AtkObject*, guint, gpointer, gpointer count) {
+                     ++*static_cast<int*>(count);
+                   }),
+                   &removed);
+  GtkWidget* table = CreateGitTable({});
+  AttachGitTable(GTK_OVERLAY(overlay), table);
+  gtk_widget_show(table);
+  while (g_main_context_pending(nullptr))
+    g_main_context_iteration(nullptr, FALSE);
+  g_assert_cmpint(added, ==, 1);
+  AtkObject* accessible = gtk_widget_get_accessible(table);
+  g_assert_cmpint(atk_object_get_n_accessible_children(parent), ==, 2);
+  const int index = atk_object_get_index_in_parent(accessible);
+  g_assert_cmpint(index, >=, 0);
+  g_assert_cmpint(index, <, atk_object_get_n_accessible_children(parent));
+  g_autoptr(AtkObject) child = atk_object_ref_accessible_child(parent, index);
+  g_assert_true(child == accessible);
+  gtk_widget_destroy(table);
+  while (g_main_context_pending(nullptr))
+    g_main_context_iteration(nullptr, FALSE);
+  g_assert_cmpint(removed, ==, 1);
+  g_assert_cmpint(atk_object_get_n_accessible_children(parent), ==, 1);
+  gtk_widget_destroy(window);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -352,5 +392,7 @@ int main(int argc, char** argv) {
                   rtl_columns_and_replaced_columns);
   g_test_add_func("/git/table/idempotent-disposal",
                   disposal_notifies_defunct_once);
+  g_test_add_func("/git/table/host-overlay-hierarchy",
+                  host_overlay_has_consistent_accessible_children);
   return g_test_run();
 }

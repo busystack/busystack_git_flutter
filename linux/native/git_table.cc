@@ -46,6 +46,7 @@ struct TableData {
   TableCallback callback;
   TableFrame frame;
   bool alive = true;
+  bool overlay_attached = false;
   std::map<int, TableRow> rows;
   std::map<std::pair<int, int>, AtkObject*> cells;
   std::set<int> requested_pages;
@@ -417,6 +418,28 @@ static void bsg_git_table_accessible_class_init(
 }
 static void bsg_git_table_accessible_init(BsgGitTableAccessible*) {}
 
+static void table_dispose(GObject* object) {
+  GtkWidget* widget = GTK_WIDGET(object);
+  auto* data = reinterpret_cast<BsgGitTable*>(widget)->data;
+  g_autoptr(AtkObject) overlay_parent = nullptr;
+  g_autoptr(AtkObject) accessible = nullptr;
+  int overlay_index = -1;
+  if (data->overlay_attached && gtk_widget_get_parent(widget)) {
+    overlay_parent = ATK_OBJECT(
+        g_object_ref(gtk_widget_get_accessible(gtk_widget_get_parent(widget))));
+    accessible = ATK_OBJECT(g_object_ref(gtk_widget_get_accessible(widget)));
+    overlay_index = atk_object_get_index_in_parent(accessible);
+    data->overlay_attached = false;
+  }
+  // GtkWidget::dispose unparents the child before emitting ::destroy. Capture
+  // its old index here, then notify with the updated hierarchy still alive.
+  G_OBJECT_CLASS(bsg_git_table_parent_class)->dispose(object);
+  if (overlay_parent && overlay_index >= 0) {
+    g_signal_emit_by_name(overlay_parent, "children-changed::remove",
+                          overlay_index, accessible);
+  }
+}
+
 static void table_destroy(GtkWidget* widget) {
   auto* data = reinterpret_cast<BsgGitTable*>(widget)->data;
   // GtkWidget disposal can invoke destroy again after an explicit destroy.
@@ -448,6 +471,7 @@ static void table_finalize(GObject* object) {
 
 static void bsg_git_table_class_init(BsgGitTableClass* klass) {
   GTK_WIDGET_CLASS(klass)->destroy = table_destroy;
+  G_OBJECT_CLASS(klass)->dispose = table_dispose;
   G_OBJECT_CLASS(klass)->finalize = table_finalize;
   gtk_widget_class_set_accessible_type(GTK_WIDGET_CLASS(klass),
                                        bsg_git_table_accessible_get_type());
@@ -1071,6 +1095,19 @@ GtkWidget* CreateGitTable(TableCallback callback) {
       g_object_new(bsg_git_table_get_type(), nullptr));
   widget->data->callback = std::move(callback);
   return GTK_WIDGET(widget);
+}
+
+void AttachGitTable(GtkOverlay* host, GtkWidget* table) {
+  g_return_if_fail(GTK_IS_OVERLAY(host));
+  g_return_if_fail(G_TYPE_CHECK_INSTANCE_TYPE(table, bsg_git_table_get_type()));
+  g_return_if_fail(gtk_widget_get_parent(table) == nullptr);
+  AtkObject* parent = gtk_widget_get_accessible(GTK_WIDGET(host));
+  gtk_overlay_add_overlay(host, table);
+  gtk_overlay_set_overlay_pass_through(host, table, TRUE);
+  reinterpret_cast<BsgGitTable*>(table)->data->overlay_attached = true;
+  AtkObject* child = gtk_widget_get_accessible(table);
+  g_signal_emit_by_name(parent, "children-changed::add",
+                        atk_object_get_index_in_parent(child), child);
 }
 
 bool UpdateGitTableRows(GtkWidget* value, int64_t generation,
