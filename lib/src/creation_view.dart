@@ -8,13 +8,11 @@ final class GitCreationView extends StatefulWidget {
     super.key,
     required this.client,
     required this.chooseDirectory,
-    required this.onCreated,
     this.initialize = false,
     this.initialDestination = '',
   });
   final GitWorkflowClient client;
   final Future<String?> Function(BuildContext) chooseDirectory;
-  final Future<void> Function(RepositoryId) onCreated;
   final bool initialize;
   final String initialDestination;
   @override
@@ -184,8 +182,9 @@ final class _CreationState extends State<GitCreationView> {
       });
       if (result.phase == GitOperationPhase.completed &&
           result.repository != null) {
-        await widget.onCreated(result.repository!);
-        if (mounted) Navigator.of(context).pop();
+        // Close this repository-bound surface before a host changes folders.
+        // Its caller opens the result after the presentation future completes.
+        Navigator.of(context).pop(result.repository!);
       }
     } on Object catch (failure) {
       if (mounted)

@@ -141,16 +141,15 @@ final class GitWorkflowUi {
           expanded: true,
         );
       case 'clone':
-        await present(
-          'Clone repository',
+        final created = await session.host.present<RepositoryId>(
+          context,
+          'Clone repository · ${session.repository.root}',
           GitCreationView(
             client: workflows,
             chooseDirectory: session.host.chooseDirectory,
-            onCreated: (repository) async {
-              await session.host.openFolder?.call(repository.root);
-            },
           ),
         );
+        if (created != null) await session.host.openFolder?.call(created.root);
       case 'revokeTrust':
         await session.host.revokeRepositoryTrust?.call(session.repository);
         session.restrictInspection();

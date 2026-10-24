@@ -480,6 +480,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
         path,
         destination: destination,
         forceReviewed: force,
+        expectedTargetToken: entry['reviewToken'] as String?,
         expectedHead: s.head,
         expectedIndex: s.indexToken,
       ),
@@ -586,7 +587,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
     ],
   );
   Future<void> act(Json entry, String action) async {
-    final path = RepoPath.fromJson(entry['path']), s = session.snapshot!;
+    final path = RepoPath.fromJson(entry['path']);
     if (action == 'open') {
       final child = RepositoryId.fromJson(entry['repository'] as Json);
       await session.host.openFolder?.call(child.root);
@@ -605,15 +606,56 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
           action: 'Apply submodule operation',
         ))
       return;
-    await apply(
-      SubmoduleMutation(
-        SubmoduleAction.values.byName(action),
-        [path],
-        recursive: recursive,
-        expectedHead: s.head,
-        expectedIndex: s.indexToken,
-      ),
+    final request = SubmoduleMutation(
+      SubmoduleAction.values.byName(action),
+      [path],
+      recursive: recursive,
+      expectedHead: oidOrNull(data!['head']),
+      expectedIndex: data!['indexToken'] as String,
+      contentTokens: {path.key: entry['workingToken'] as String},
     );
+    // A parent grant does not grant permission to run tools configured by an
+    // already initialized nested repository. Let each host protect its buffers
+    // and obtain a separate repository-scoped grant before the parent update.
+    final approved = <String>{};
+    Future<bool> prepareChild(Json row) async {
+      if (row['repository'] == null) return true;
+      final child = RepositoryId.fromJson(row['repository'] as Json);
+      if (!approved.add(child.key)) return true;
+      if (!await session.host.prepareMutation(child, request) || !mounted)
+        return false;
+      if (recursive) {
+        var childOffset = 0;
+        while (true) {
+          final nested = await (session.client as GitWorkflowClient).inspect(
+            child,
+            GitInspection(GitInspectionKind.submodules, offset: childOffset),
+          );
+          if (!mounted) return false;
+          for (final next in (nested['entries'] as List).cast<Json>()) {
+            if (!await prepareChild(next)) return false;
+          }
+          if (nested['hasMore'] != true) break;
+          childOffset += 100;
+        }
+      }
+      return true;
+    }
+
+    try {
+      if (action != 'stagePointer' && !await prepareChild(entry)) return;
+      if (!mounted) return;
+      await apply(request);
+    } on Object catch (failure) {
+      session.reportFailure(
+        failure is GitException
+            ? failure
+            : GitException(
+                GitErrorCode.commandFailed,
+                diagnostic: sanitizeGitDiagnostic('$failure'),
+              ),
+      );
+    }
     if (error == null) await refresh();
   }
 }

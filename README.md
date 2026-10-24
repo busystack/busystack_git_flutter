@@ -1,6 +1,6 @@
 # busystack_git_flutter
 
-Private specialized desktop Git views for BusyMark and BusyFiles. Depends only
+Shared specialized desktop Git views for BusyMark and BusyFiles. Depends only
 on Flutter and the sibling `busystack_git` engine. Requires Flutter 3.47.5 or
 newer and Dart `>=3.12.1 <4.0.0` within the consuming application's approved
 toolchain. It contains no application shell, nested MaterialApp, independent
