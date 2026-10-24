@@ -10,6 +10,28 @@ const channelName = 'busystack_git_flutter/accessibility';
 const channel = MethodChannel(channelName);
 const codec = StandardMethodCodec();
 
+final class ReloadingHistoryClient extends FixtureClient {
+  Completer<HistoryPage>? nextPage;
+  @override
+  Future<HistoryPage> history(
+    RepositoryId repository, {
+    HistoryFilter filter = const HistoryFilter(),
+    int offset = 0,
+    int limit = 100,
+    String? anchor,
+    GitCancellation? cancellation,
+  }) =>
+      nextPage?.future ??
+      super.history(
+        repository,
+        filter: filter,
+        offset: offset,
+        limit: limit,
+        anchor: anchor,
+        cancellation: cancellation,
+      );
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late List<MethodCall> calls;
@@ -333,6 +355,103 @@ void main() {
     },
     variant: TargetPlatformVariant.only(TargetPlatform.linux),
   );
+
+  testWidgets('a refreshed native Log binds actions to the newly loaded rows', (
+    tester,
+  ) async {
+    final identities = <int, Map<int, String>>{};
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          if (call.method == 'update') {
+            final frame = call.arguments as Map;
+            final bound = identities.putIfAbsent(
+              frame['generation'] as int,
+              () => {},
+            );
+            for (final row in (frame['rows'] as List).cast<Map>()) {
+              final index = row['index'] as int, id = row['id'] as String;
+              if (bound[index] != null && bound[index] != id) {
+                throw PlatformException(
+                  code: 'invalid',
+                  message:
+                      'Row identity changed within its reviewed generation',
+                );
+              }
+              bound[index] = id;
+            }
+          }
+          return true;
+        });
+    GitCommit commit(String id) => GitCommit(
+      oid: GitOid(id * 40),
+      parents: const [],
+      subject: 'Commit $id',
+      author: 'Fixture',
+      email: 'fixture@example.invalid',
+      date: DateTime.utc(2026),
+    );
+    final client = ReloadingHistoryClient()
+      ..historyCommits = [commit('a'), commit('b')];
+    final session = GitSession(client: client, repository: repo, host: host());
+    await session.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: GitLogView(session: session)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final original =
+        calls.lastWhere((c) => c.method == 'update').arguments as Map;
+    client.nextPage = Completer<HistoryPage>();
+    await tester.tap(find.byTooltip('Refresh Log'));
+    await tester.pump();
+    await tester.pump();
+    final pending =
+        calls.lastWhere((c) => c.method == 'update').arguments as Map;
+    expect(pending['busy'], isTrue);
+    expect((pending['rows'] as List).first['id'], GitOid('a' * 40).value);
+    client.nextPage!.complete(
+      HistoryPage(
+        [commit('c'), commit('a')],
+        nextOffset: 2,
+        hasMore: false,
+        anchor: 'new-history',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Native Git table accessibility is unavailable'),
+      findsNothing,
+    );
+    final loaded =
+        calls.lastWhere((c) => c.method == 'update').arguments as Map;
+    expect(loaded['selected'], [1]);
+    expect(
+      await request(tester, {
+        'id': original['id'] as String,
+        'generation': original['generation'] as int,
+        'action': 'select',
+        'row': 0,
+        'column': 0,
+        'rowId': GitOid('a' * 40).value,
+      }),
+      false,
+    );
+    expect(
+      await request(tester, {
+        'id': loaded['id'] as String,
+        'generation': loaded['generation'] as int,
+        'action': 'select',
+        'row': 1,
+        'column': 0,
+        'rowId': GitOid('a' * 40).value,
+      }),
+      true,
+    );
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
   testWidgets(
     'native Commit cells preserve tree parents and explicit staging',

@@ -46,6 +46,7 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _navigationOutsideFilters = false;
   bool _loading = true, _more = true, _branches = true, _details = true;
   int _generation = 0;
+  int _historyRevision = 0;
   int _selectionGeneration = 0;
   GitCancellation? _readCancellation;
   Timer? _referenceRefresh;
@@ -152,6 +153,9 @@ final class _GitLogViewState extends State<GitLogView> {
           : await widget.session.client.references(widget.session.repository);
       if (!mounted || generation != _generation) return;
       setState(() {
+        // The read generation changes before loading, while the old rows stay
+        // visible. Native actions must advance with the applied row identities.
+        _historyRevision++;
         _commits = append ? [..._commits, ...page.commits] : page.commits;
         _references = refs;
         _more = page.hasMore;
@@ -529,7 +533,7 @@ final class _GitLogViewState extends State<GitLogView> {
         return GitNativeTable(
           name: gitString(context, 'Git commits'),
           description: widget.session.repository.root,
-          revision: (widget.session.repository.key, _generation),
+          revision: (widget.session.repository.key, _historyRevision),
           active: widget.active,
           busy: _loading,
           rowCount: _commits.length,
