@@ -256,8 +256,9 @@ final class _StashesState extends GitDialogState<GitStashesView>
       ),
     );
     if (!mounted || result == null) return;
-    selected = null;
-    commit = null;
+    // Apply and conflicted pop retain the original stash. Refresh by its object
+    // identity so its details and follow-up actions remain available; a
+    // successful pop/drop will clear selection when that identity disappears.
     if (result.error == null) await refresh();
     if (result.phase == GitOperationPhase.stopped)
       session.host.notify(
