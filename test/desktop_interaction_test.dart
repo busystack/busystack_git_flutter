@@ -20,6 +20,117 @@ GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
 
 void main() {
   testWidgets(
+    'initial repository actions explain unavailable status while independent clone stays available',
+    (tester) async {
+      final original = host();
+      List<GitMenuEntry> entries = [];
+      final configured = GitHost(
+        present: original.present,
+        openDocument: original.openDocument,
+        prepareMutation: original.prepareMutation,
+        chooseDirectory: original.chooseDirectory,
+        notify: original.notify,
+        drafts: original.drafts,
+        presentMenu: (_, values, {position}) async {
+          entries = values;
+          return null;
+        },
+      );
+      final session = GitSession(
+        client: FixtureClient(),
+        repository: repo,
+        host: configured,
+      );
+      late BuildContext current;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              current = context;
+              return const Scaffold(body: SizedBox());
+            },
+          ),
+        ),
+      );
+      await GitWorkflowUi(current, session).more();
+      expect(entries.firstWhere((e) => e.id == 'clone').enabled, isTrue);
+      expect(entries.firstWhere((e) => e.id == 'stashes').enabled, isFalse);
+      expect(
+        entries.firstWhere((e) => e.id == 'stashes').label,
+        contains('Waiting for repository status'),
+      );
+      await session.start();
+      await GitWorkflowUi(current, session).more();
+      expect(entries.firstWhere((e) => e.id == 'stashes').enabled, isTrue);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
+    'read-only history inspection remains usable while working-tree status is pending',
+    (tester) async {
+      final original = host();
+      final surfaces = <Widget>[];
+      final configured = GitHost(
+        present: <T>(context, title, child, {bool expanded = false}) async {
+          surfaces.add(child);
+          return null;
+        },
+        openDocument: original.openDocument,
+        prepareMutation: original.prepareMutation,
+        chooseDirectory: original.chooseDirectory,
+        notify: original.notify,
+        drafts: original.drafts,
+      );
+      final client = _PendingStatusHistoryClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: configured,
+      );
+      late BuildContext current;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              current = context;
+              return const Scaffold(body: SizedBox());
+            },
+          ),
+        ),
+      );
+      final commit = GitCommit(
+        oid: GitOid('a' * 40),
+        parents: const [],
+        subject: 'Historical revision',
+        author: 'Fixture',
+        email: 'fixture@example.invalid',
+        date: DateTime.utc(2026),
+        message: 'Historical revision',
+      );
+      await GitHistoryActions(
+        GitWorkflowUi(current, session),
+      ).run(commit, 'Open snapshot');
+      await tester.pumpWidget(
+        MaterialApp(home: Scaffold(body: surfaces.single)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<GitSnapshotView>(find.byType(GitSnapshotView)).revision,
+        commit.oid,
+      );
+      expect(client.inspections, 1);
+      expect(session.snapshot, isNull);
+      expect(client.mutations, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'compact Log keeps searchable reference filters available without checking out a branch',
     (tester) async {
       tester.view.physicalSize = const Size(1000, 800);
@@ -480,6 +591,28 @@ void main() {
       session.dispose();
     },
   );
+}
+
+final class _PendingStatusHistoryClient extends FixtureClient
+    implements GitWorkflowClient {
+  int inspections = 0;
+  @override
+  Future<Json> inspect(
+    RepositoryId repository,
+    GitInspection request, {
+    GitCancellation? cancellation,
+    void Function(GitProgress)? onProgress,
+  }) async {
+    inspections++;
+    return {'entries': <Json>[], 'hasMore': false};
+  }
+
+  @override
+  Future<GitCreationOutcome> create(
+    GitCreation request, {
+    GitCancellation? cancellation,
+    void Function(GitProgress)? onProgress,
+  }) => throw StateError('Historical inspection cannot create repositories');
 }
 
 final class _ContinuingClient extends FixtureClient {

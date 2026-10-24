@@ -124,7 +124,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
       Align(
         alignment: Alignment.centerRight,
         child: TextButton.icon(
-          onPressed: loading
+          onPressed: loading || session.snapshot == null || session.running
               ? null
               : () async {
                   await GitWorkflowUi(context, session).present(

@@ -13,9 +13,9 @@ final class GitHistoryActions {
   GitSession get session => ui.session;
   BuildContext get context => ui.context;
   Future<void> run(GitCommit commit, String action) async {
-    final reviewed = session.snapshot!;
     switch (action) {
       case 'Create branch':
+        final reviewed = session.snapshot!;
         final name = await gitTextInput(
           context,
           session,
@@ -377,11 +377,23 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                     trailing: GitMenuButton(
                       host: session.host,
                       onSelected: (action) => unawaited(open(entry, action)),
-                      entries: const [
-                        GitMenuEntry('open', 'Open read-only version'),
-                        GitMenuEntry('history', 'File history and blame…'),
+                      entries: [
+                        const GitMenuEntry('open', 'Open read-only version'),
+                        const GitMenuEntry(
+                          'history',
+                          'File history and blame…',
+                        ),
                         const GitMenuEntry.separator(),
-                        GitMenuEntry('restore', 'Restore this path…'),
+                        GitMenuEntry(
+                          'restore',
+                          session.snapshot == null
+                              ? 'Restore this path… · Waiting for repository status'
+                              : 'Restore this path…',
+                          enabled:
+                              session.snapshot != null &&
+                              session.canWriteMetadata &&
+                              !session.running,
+                        ),
                       ],
                     ),
                     onTap: () => unawaited(open(entry, 'open')),

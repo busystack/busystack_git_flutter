@@ -99,7 +99,13 @@ final class GitWorkflowUi {
       for (final e in actions.entries)
         GitMenuEntry(
           e.key,
-          e.value,
+          session.snapshot != null ||
+                  const {'clone', 'revokeTrust'}.contains(e.key)
+              ? e.value
+              : '${e.value} · ${session.loading ? 'Waiting for repository status' : 'Repository status unavailable; refresh'}',
+          enabled:
+              session.snapshot != null ||
+              const {'clone', 'revokeTrust'}.contains(e.key),
           sectionStart: const {
             'merge',
             'stashes',
