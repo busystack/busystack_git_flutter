@@ -969,6 +969,10 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       return const Center(child: CircularProgressIndicator());
     return Column(
       children: [
+        if (_saving)
+          LinearProgressIndicator(
+            semanticsLabel: gitString(context, 'Writing reviewed index result'),
+          ),
         if (_failure != null)
           Flexible(
             child: SingleChildScrollView(
@@ -987,6 +991,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
               (scroll) => GitTextPane(
                 label: 'Index · editable UTF-8 blob',
                 controller: _result,
+                readOnly: _saving,
                 undoController: _undo,
                 scrollController: scroll,
               ),
@@ -1003,8 +1008,14 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
           child: Wrap(
             spacing: widget.session.host.spacing,
             children: [
-              TextButton(onPressed: _undo.undo, child: const GitLabel('Undo')),
-              TextButton(onPressed: _undo.redo, child: const GitLabel('Redo')),
+              TextButton(
+                onPressed: _saving ? null : _undo.undo,
+                child: const GitLabel('Undo'),
+              ),
+              TextButton(
+                onPressed: _saving ? null : _undo.redo,
+                child: const GitLabel('Redo'),
+              ),
               TextButton(
                 onPressed: _saving
                     ? null
@@ -1046,12 +1057,12 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                 ),
               ),
               const GitLabel(
-                'Working files remain on disk. Index text is UTF-8; line endings are preserved.',
+                'Working files remain on disk. Review the edited index before applying.',
               ),
               ListenableBuilder(
                 listenable: _result,
                 builder: (context, _) =>
-                    GitLabel(gitUtf8EncodingLabel(_result.text)),
+                    GitLabel(gitTextFormatLabel(_result.text)),
               ),
             ],
           ),
@@ -1061,22 +1072,33 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   }
 
   Future<void> _apply() async {
-    final bomChange = gitUtf8BomChange(_index!.text ?? '', _result.text);
-    if (bomChange != null &&
+    final text = _result.text;
+    final formatChange = gitTextFormatChange(_index!.text ?? '', text);
+    if (formatChange != null &&
         !await gitConfirm(
           context,
           widget.session,
-          'Change index byte-order mark?',
-          bomChange,
-          action: 'Write changed encoding',
+          'Review index text format changes',
+          'Update only the reviewed index entry for ${widget.path.display}.\n\n$formatChange',
+          action: 'Write reviewed index result',
         ))
       return;
     if (!mounted) return;
+    if (_result.text != text) {
+      setState(
+        () => _failure = const GitException(
+          GitErrorCode.staleReview,
+          diagnostic:
+              'The edited result changed during format review. Review it again.',
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     final result = await widget.session.mutate(
       WriteIndex(
         widget.path,
-        Uint8List.fromList(utf8.encode(_result.text)),
+        Uint8List.fromList(utf8.encode(text)),
         expectedHead: _snapshot!.head,
         expectedIndex: _snapshot!.indexToken,
         expectedContent: _index!.token,

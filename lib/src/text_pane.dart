@@ -17,6 +17,7 @@ final class GitTextPane extends StatefulWidget {
     this.focusNode,
     this.semanticLabel,
     this.onChanged,
+    this.readOnly = false,
     this.revealOffset,
     this.revealRevision = 0,
   });
@@ -27,6 +28,7 @@ final class GitTextPane extends StatefulWidget {
   final ScrollController? scrollController;
   final FocusNode? focusNode;
   final ValueChanged<String>? onChanged;
+  final bool readOnly;
   final int? revealOffset;
   final int revealRevision;
   @override
@@ -183,7 +185,7 @@ final class _TextPaneState extends State<GitTextPane> {
                     child: TextField(
                       key: _fieldKey,
                       controller: _text,
-                      readOnly: widget.controller == null,
+                      readOnly: widget.controller == null || widget.readOnly,
                       undoController: widget.undoController,
                       scrollController: _scroll,
                       focusNode: widget.focusNode,

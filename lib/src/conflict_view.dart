@@ -440,7 +440,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           const GitLabel(
             'Result saved to disk. The index still determines whether this file is resolved.',
           ),
-        if (text) GitLabel(gitUtf8EncodingLabel(result.text)),
+        if (text) GitLabel(gitTextFormatLabel(result.text)),
         if (text)
           Wrap(
             alignment: WrapAlignment.end,
@@ -468,6 +468,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     label: gitString(context, 'Result · editable UTF-8 working content'),
     semanticLabel: 'Editable conflict result',
     controller: result,
+    readOnly: loading || session.running,
     undoController: undo,
     focusNode: resultFocus,
     scrollController: scroll,
@@ -604,30 +605,41 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   }
 
   Future<void> save(bool stage) async {
-    final bomChange = gitUtf8BomChange(working!.text ?? '', result.text);
+    final text = result.text;
+    final formatChange = gitTextFormatChange(working!.text ?? '', text);
     if (stage &&
         !await gitConfirm(
           context,
           session,
           'Stage this conflict resolution?',
-          'Use the entire edited Result as ${widget.path.display}. Git records the path resolved when it is staged. Review all intended content first.${bomChange == null ? '' : '\n\n$bomChange'}',
+          'Use the entire edited Result as ${widget.path.display}. Git records the path resolved when it is staged. Review all intended content first.${formatChange == null ? '' : '\n\n$formatChange'}',
           action: 'Apply and stage',
         ))
       return;
     if (!stage &&
-        bomChange != null &&
+        formatChange != null &&
         !await gitConfirm(
           context,
           session,
-          'Change result byte-order mark?',
-          bomChange,
-          action: 'Save changed encoding',
+          'Review result text format changes',
+          formatChange,
+          action: 'Save reviewed result',
         ))
       return;
     if (!mounted) return;
+    if (result.text != text) {
+      setState(
+        () => error = const GitException(
+          GitErrorCode.staleReview,
+          diagnostic:
+              'The edited result changed during format review. Review it again.',
+        ),
+      );
+      return;
+    }
     await resolve(
       ConflictChoice.edited,
-      bytes: Uint8List.fromList(utf8.encode(result.text)),
+      bytes: Uint8List.fromList(utf8.encode(text)),
       stage: stage,
     );
   }

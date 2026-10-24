@@ -9,11 +9,13 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
   final ids = [for (var i = 1; i <= 3; i++) GitOid('$i' * 40)];
   bool raced = false;
   String prefix = '';
+  String workingLineEnding = '\n';
   int reads = 0;
   String left = 'Introduction\nCurrent prose\nConclusion\n',
       right = 'Introduction\nIncoming prose\nConclusion\n';
   String get working =>
-      'Introduction\n<<<<<<< HEAD\nCurrent prose\n=======\nIncoming prose\n>>>>>>> incoming\nConclusion\n';
+      'Introduction\n<<<<<<< HEAD\nCurrent prose\n=======\nIncoming prose\n>>>>>>> incoming\nConclusion\n'
+          .replaceAll('\n', workingLineEnding);
   String get preview =>
       'Introduction\n${'<' * 32} FIXTURE_LEFT\nCurrent prose\n${'|' * 32} FIXTURE_BASE\nOriginal prose\n${'=' * 32}\nIncoming prose\n${'>' * 32} FIXTURE_RIGHT\nConclusion\n';
   @override
@@ -93,6 +95,61 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
 }
 
 void main() {
+  testWidgets(
+    'conflict draft reviews line-ending conversion before saving working bytes',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = ConflictClient()..workingLineEnding = '\r\n';
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitConflictView(session: session, path: client.path),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byWidgetPredicate(
+        (w) => w is TextField && !w.readOnly,
+      );
+      const pasted = 'Manual prose\n';
+      await tester.enterText(field, pasted);
+      await tester.tap(find.text('Save result draft'));
+      await tester.pumpAndSettle();
+      expect(client.mutations, isEmpty);
+      expect(
+        find.textContaining('from CRLF line endings to LF line endings'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(field).controller!.text, pasted);
+      expect(client.mutations, isEmpty);
+      await tester.tap(find.text('Save result draft'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save reviewed result'));
+      await tester.pumpAndSettle();
+      expect(
+        (client.mutations.single as ResolveConflict).bytes,
+        utf8.encode(pasted),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
   for (final removeBom in [false, true]) {
     testWidgets(
       removeBom
@@ -103,7 +160,9 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
-        final client = ConflictClient()..prefix = '\uFEFF';
+        final client = ConflictClient()
+          ..prefix = '\uFEFF'
+          ..workingLineEnding = '\r\n';
         final session = GitSession(
           client: client,
           repository: repo,
@@ -128,7 +187,10 @@ void main() {
           tester.widget<TextField>(editable).controller!.text,
           '\uFEFF${client.working}',
         );
-        expect(find.text('UTF-8 with byte-order mark (BOM)'), findsOneWidget);
+        expect(
+          find.textContaining('UTF-8 with byte-order mark (BOM)'),
+          findsOneWidget,
+        );
         final edited = '${removeBom ? '' : '\uFEFF'}Manual prose\r\n';
         await tester.enterText(editable, edited);
         await tester.tap(find.text('Save result draft'));
@@ -145,7 +207,7 @@ void main() {
           expect(client.mutations, isEmpty);
           await tester.tap(find.text('Save result draft'));
           await tester.pumpAndSettle();
-          await tester.tap(find.text('Save changed encoding'));
+          await tester.tap(find.text('Save reviewed result'));
           await tester.pumpAndSettle();
         }
         final request = client.mutations.single as ResolveConflict;

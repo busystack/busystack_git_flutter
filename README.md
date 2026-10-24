@@ -43,8 +43,10 @@ conflict editing labels the editable working result. Failed operations preserve
 user input, and closing a resolution view does not abort Git's operation.
 Revision panes use real IME-aware text fields, logical line-number gutters based
 on actual wrapped text geometry, undo and explicit read-only/editable roles.
-Index and conflict editors disclose UTF-8 BOM state, preserve the original bytes
-when editing, and review an explicit BOM addition or removal before applying it.
+Index and conflict editors disclose UTF-8 BOM state, line-ending format and a
+missing final LF. They review a BOM or newline-format change before applying it,
+including changes introduced by native clipboard text conversion. The reviewed
+result becomes read-only while it is being applied; a failed write retains it.
 Conflict navigation aligns source anchors through the exact merge preview;
 a changed index or working file invalidates a conflict load before editing is
 offered. A saved working Result is kept separate from staging a resolution.
