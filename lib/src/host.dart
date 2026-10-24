@@ -476,6 +476,7 @@ final class GitIconButton extends StatelessWidget {
   final Widget icon;
   @override
   Widget build(BuildContext context) => Semantics(
+    container: true,
     label: gitString(context, tooltip),
     button: true,
     enabled: onPressed != null,

@@ -338,8 +338,13 @@ abstract class GitDialogState<T extends StatefulWidget> extends State<T> {
   }
 
   void _sessionChanged() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+      onSessionChanged();
+    }
   }
+
+  void onSessionChanged() {}
 
   Future<R?> query<R>(Future<R> Function() action) async {
     try {

@@ -7,6 +7,62 @@ import 'network_views.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
 
+/// These list views can refresh metadata without replacing an editing draft.
+/// Mutation dialogs keep their separately captured review identities.
+mixin _MetadataRefresh<T extends StatefulWidget> on GitDialogState<T> {
+  GitSnapshot? _observedSnapshot;
+  Timer? _refreshTimer;
+  Future<void> refreshMetadata();
+
+  @override
+  void initState() {
+    super.initState();
+    _observedSnapshot = session.snapshot;
+  }
+
+  void metadataRefreshStarted() {
+    _refreshTimer?.cancel();
+    _observedSnapshot = session.snapshot;
+  }
+
+  @override
+  void onSessionChanged() {
+    if (error != null ||
+        loading ||
+        session.running ||
+        identical(session.snapshot, _observedSnapshot))
+      return;
+    _observedSnapshot = session.snapshot;
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer(const Duration(milliseconds: 200), () {
+      // Reconciliation can arrive before a failed mutation's result. Keep its
+      // actionable error until the user explicitly refreshes or tries again.
+      if (mounted && error == null && !loading && !session.running) {
+        unawaited(refreshMetadata());
+      }
+    });
+  }
+
+  @override
+  Widget states({VoidCallback? refresh}) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Expanded(child: super.states(refresh: refresh)),
+      GitIconButton(
+        tooltip: 'Refresh',
+        onPressed: session.running ? null : () => unawaited(refreshMetadata()),
+        icon: const Icon(Icons.refresh),
+      ),
+    ],
+  );
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+}
+
 final class GitStashesView extends StatefulWidget {
   const GitStashesView({super.key, required this.session});
   final GitSession session;
@@ -14,7 +70,8 @@ final class GitStashesView extends StatefulWidget {
   State<GitStashesView> createState() => _StashesState();
 }
 
-final class _StashesState extends GitDialogState<GitStashesView> {
+final class _StashesState extends GitDialogState<GitStashesView>
+    with _MetadataRefresh<GitStashesView> {
   @override
   GitSession get session => widget.session;
   Json? selected;
@@ -27,8 +84,23 @@ final class _StashesState extends GitDialogState<GitStashesView> {
     unawaited(refresh());
   }
 
-  Future<void> refresh() =>
-      load(GitInspection(GitInspectionKind.stashes, offset: offset));
+  @override
+  Future<void> refreshMetadata() => refresh();
+  Future<void> refresh() async {
+    metadataRefreshStarted();
+    await load(GitInspection(GitInspectionKind.stashes, offset: offset));
+    if (!mounted || error != null || selected == null) return;
+    final identity = selected!['identity'];
+    final current = (data?['entries'] as List? ?? [])
+        .cast<Json>()
+        .where((e) => e['identity'] == identity)
+        .firstOrNull;
+    setState(() {
+      selected = current;
+      if (current == null) commit = null;
+    });
+  }
+
   Future<void> select(Json value) async {
     setState(() {
       selected = value;
@@ -77,6 +149,7 @@ final class _StashesState extends GitDialogState<GitStashesView> {
               for (final entry
                   in (data?['entries'] as List? ?? []).cast<Json>())
                 ListTile(
+                  key: ValueKey(entry['identity']),
                   dense: true,
                   selected: selected?['identity'] == entry['identity'],
                   title: Text(entry['message'] as String),
@@ -324,7 +397,8 @@ final class GitWorktreesView extends StatefulWidget {
   State<GitWorktreesView> createState() => _WorktreesState();
 }
 
-final class _WorktreesState extends GitDialogState<GitWorktreesView> {
+final class _WorktreesState extends GitDialogState<GitWorktreesView>
+    with _MetadataRefresh<GitWorktreesView> {
   @override
   GitSession get session => widget.session;
   int offset = 0;
@@ -334,8 +408,13 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
     unawaited(refresh());
   }
 
-  Future<void> refresh() =>
-      load(GitInspection(GitInspectionKind.worktrees, offset: offset));
+  @override
+  Future<void> refreshMetadata() => refresh();
+  Future<void> refresh() {
+    metadataRefreshStarted();
+    return load(GitInspection(GitInspectionKind.worktrees, offset: offset));
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
@@ -357,6 +436,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView> {
           children: [
             for (final entry in (data?['entries'] as List? ?? []).cast<Json>())
               ListTile(
+                key: ValueKey(entry['path']),
                 title: Text(entry['path'] as String),
                 subtitle: Text(
                   '${entry['branch'] ?? 'detached HEAD'}\n'
@@ -518,7 +598,8 @@ final class GitSubmodulesView extends StatefulWidget {
   State<GitSubmodulesView> createState() => _SubmodulesState();
 }
 
-final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
+final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
+    with _MetadataRefresh<GitSubmodulesView> {
   @override
   GitSession get session => widget.session;
   int offset = 0;
@@ -529,8 +610,13 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
     unawaited(refresh());
   }
 
-  Future<void> refresh() =>
-      load(GitInspection(GitInspectionKind.submodules, offset: offset));
+  @override
+  Future<void> refreshMetadata() => refresh();
+  Future<void> refresh() {
+    metadataRefreshStarted();
+    return load(GitInspection(GitInspectionKind.submodules, offset: offset));
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
@@ -553,6 +639,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
                 builder: (context) {
                   final path = RepoPath.fromJson(entry['path']);
                   return ListTile(
+                    key: ValueKey(path.key),
                     title: Text(path.display),
                     subtitle: GitSelectableText(
                       'Parent gitlink: ${entry['recorded']}\nChecked out: ${entry['checkedOut'] ?? 'not initialized'}\n'
@@ -699,20 +786,38 @@ final class GitRecoveryView extends StatefulWidget {
   State<GitRecoveryView> createState() => _RecoveryState();
 }
 
-final class _RecoveryState extends GitDialogState<GitRecoveryView> {
+final class _RecoveryState extends GitDialogState<GitRecoveryView>
+    with _MetadataRefresh<GitRecoveryView> {
   @override
   GitSession get session => widget.session;
   Json? selected;
   GitCommit? commit;
   int offset = 0;
+  Object _entryIdentity(Json entry) =>
+      (entry['revision'], entry['selector'], entry['action']);
   @override
   void initState() {
     super.initState();
     unawaited(refresh());
   }
 
-  Future<void> refresh() =>
-      load(GitInspection(GitInspectionKind.reflog, offset: offset));
+  @override
+  Future<void> refreshMetadata() => refresh();
+  Future<void> refresh() async {
+    metadataRefreshStarted();
+    await load(GitInspection(GitInspectionKind.reflog, offset: offset));
+    if (!mounted || error != null || selected == null) return;
+    final identity = _entryIdentity(selected!);
+    final current = (data?['entries'] as List? ?? [])
+        .cast<Json>()
+        .where((e) => _entryIdentity(e) == identity)
+        .firstOrNull;
+    setState(() {
+      selected = current;
+      if (current == null) commit = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
@@ -730,7 +835,10 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView> {
                   in (data?['entries'] as List? ?? []).cast<Json>())
                 ListTile(
                   dense: true,
-                  selected: selected == entry,
+                  key: ValueKey(_entryIdentity(entry)),
+                  selected:
+                      selected != null &&
+                      _entryIdentity(selected!) == _entryIdentity(entry),
                   title: Text(entry['action'] as String),
                   subtitle: Text('${entry['selector']}\n${entry['revision']}'),
                   onTap: () async {
@@ -747,7 +855,10 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView> {
                         limit: 1,
                       ),
                     );
-                    if (mounted && page != null && selected == entry)
+                    if (mounted &&
+                        page != null &&
+                        selected != null &&
+                        _entryIdentity(selected!) == _entryIdentity(entry))
                       setState(() => commit = page.commits.firstOrNull);
                   },
                 ),

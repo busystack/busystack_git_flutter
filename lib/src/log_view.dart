@@ -36,6 +36,7 @@ final class _GitLogViewState extends State<GitLogView> {
   GitCommit? _selected;
   final _selectedIds = <GitOid>{};
   final _tableScroll = ScrollController();
+  final _tableFocus = FocusNode(debugLabel: 'Git commits');
   int _selectionAnchor = 0;
   GitOid? _parent;
   String? _reference, _anchor;
@@ -111,6 +112,7 @@ final class _GitLogViewState extends State<GitLogView> {
     _referenceRefresh?.cancel();
     widget.session.removeListener(_repositoryChanged);
     _tableScroll.dispose();
+    _tableFocus.dispose();
     for (final c in [_message, _author, _path, _referenceSearch]) {
       c.dispose();
     }
@@ -464,6 +466,7 @@ final class _GitLogViewState extends State<GitLogView> {
             showDate = bounds.maxWidth >= 850;
         final showId = bounds.maxWidth >= 430;
         return Focus(
+          focusNode: _tableFocus,
           onKeyEvent: (_, event) {
             if (event is! KeyDownEvent || _commits.isEmpty)
               return KeyEventResult.ignored;
@@ -676,6 +679,7 @@ final class _GitLogViewState extends State<GitLogView> {
 
   void _choose(int index) {
     final commit = _commits[index];
+    _tableFocus.requestFocus();
     setState(() {
       if (HardwareKeyboard.instance.isShiftPressed) {
         _selectedIds.clear();

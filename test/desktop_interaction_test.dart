@@ -1,5 +1,6 @@
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -18,6 +19,80 @@ GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
 }
 
 void main() {
+  testWidgets('choosing a Log row owns arrow keys and the Git context menu', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = FixtureClient()
+      ..historyCommits = [
+        for (final id in ['a', 'b'])
+          GitCommit(
+            oid: GitOid(id * 40),
+            parents: const [],
+            subject: 'Commit $id',
+            author: 'Fixture',
+            email: 'fixture@example.invalid',
+            date: DateTime.utc(2026),
+            message: 'Message $id',
+          ),
+      ];
+    var gitMenus = 0, outsideMenus = 0;
+    final original = host();
+    final configured = GitHost(
+      present: original.present,
+      presentMenu: (_, entries, {position}) async {
+        gitMenus++;
+        expect(entries.map((e) => e.id), contains('Open snapshot'));
+        return null;
+      },
+      openDocument: original.openDocument,
+      chooseDirectory: original.chooseDirectory,
+      notify: original.notify,
+      drafts: original.drafts,
+      prepareMutation: original.prepareMutation,
+    );
+    final session = GitSession(
+      client: client,
+      repository: repo,
+      host: configured,
+    );
+    await session.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Focus(
+            onKeyEvent: (_, event) {
+              if (event is KeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.f10)
+                outsideMenus++;
+              return KeyEventResult.ignored;
+            },
+            child: GitLogView(session: session),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Commit a').first);
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(find.text('b' * 40), findsOneWidget);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.f10);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(gitMenus, 1);
+    expect(outsideMenus, 0);
+    expect(find.text('b' * 40), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
+
   testWidgets(
     'repository menu uses the invoking control as its native anchor',
     (tester) async {
