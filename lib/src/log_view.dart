@@ -42,6 +42,7 @@ final class _GitLogViewState extends State<GitLogView> {
   String? _reference, _anchor;
   DateTime? _since, _until;
   GitException? _failure;
+  bool _navigationOutsideFilters = false;
   bool _loading = true, _more = true, _branches = true, _details = true;
   int _generation = 0;
   int _selectionGeneration = 0;
@@ -128,11 +129,12 @@ final class _GitLogViewState extends State<GitLogView> {
     path: _path.text.isEmpty ? null : RepoPath.text(_path.text),
     follow: widget.path != null,
   );
-  Future<void> _load({bool append = false}) async {
+  Future<void> _load({bool append = false, GitOid? reveal}) async {
     final generation = ++_generation;
     setState(() {
       _loading = true;
       _failure = null;
+      _navigationOutsideFilters = false;
     });
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
@@ -154,12 +156,40 @@ final class _GitLogViewState extends State<GitLogView> {
         _more = page.hasMore;
         _anchor = page.anchor;
         _loading = false;
+        _selectedIds.retainAll(_commits.map((e) => e.oid));
+        _selectionAnchor = _selectionAnchor.clamp(
+          0,
+          _commits.isEmpty ? 0 : _commits.length - 1,
+        );
       });
       final retained = _commits
-          .where((e) => e.oid == _selected?.oid)
+          .where((e) => e.oid == (reveal ?? _selected?.oid))
           .firstOrNull;
-      if (retained != null || _commits.isNotEmpty)
+      if (reveal != null && retained == null) {
+        setState(() {
+          _selectionGeneration++;
+          _selected = null;
+          _selectedIds.clear();
+          _files = [];
+          _navigationOutsideFilters = true;
+          _failure = const GitException(
+            GitErrorCode.invalidRequest,
+            diagnostic:
+                'The requested revision is outside the current filters. Reset filters to reveal it.',
+          );
+        });
+      } else if (reveal != null) {
+        await _reveal(retained!);
+      } else if (retained != null || _commits.isNotEmpty) {
         await _select(retained ?? _commits.first);
+      } else {
+        setState(() {
+          _selectionGeneration++;
+          _selected = null;
+          _selectedIds.clear();
+          _files = [];
+        });
+      }
     } on Object catch (error) {
       if (mounted && generation == _generation)
         setState(() {
@@ -302,10 +332,8 @@ final class _GitLogViewState extends State<GitLogView> {
                       child: const GitLabel('Go to commit/reference…'),
                     ),
                     TextButton(
-                      onPressed: () {
-                        _reference = 'HEAD';
-                        unawaited(_load());
-                      },
+                      onPressed: () =>
+                          unawaited(_navigate('HEAD', reload: true)),
                       child: const GitLabel('Back to HEAD'),
                     ),
                     if (_selectedIds.length > 1)
@@ -380,6 +408,9 @@ final class _GitLogViewState extends State<GitLogView> {
           if (_failure != null)
             GitFailurePanel(
               error: _failure!,
+              message: _navigationOutsideFilters
+                  ? 'The requested revision is outside the current filters. Reset filters to reveal it.'
+                  : null,
               onRefresh: () => unawaited(_load()),
             ),
           Expanded(child: main),
@@ -891,30 +922,90 @@ final class _GitLogViewState extends State<GitLogView> {
       explanation: 'Enter a commit ID or reference to reveal in Log.',
     );
     if (value == null || value.isEmpty || !mounted) return;
-    final target = _commits
-        .where((e) => e.oid.value.startsWith(value))
-        .firstOrNull;
-    if (target != null) {
-      final index = _commits.indexOf(target);
+    await _navigate(value);
+  }
+
+  Future<void> _navigate(String value, {bool reload = false}) async {
+    final generation = ++_generation;
+    _readCancellation?.cancel();
+    final cancellation = _readCancellation = GitCancellation();
+    final loaded = _commits.where((e) => e.oid.value == value).firstOrNull;
+    if (!reload && loaded != null) {
+      setState(() {
+        _loading = false;
+        _failure = null;
+        _navigationOutsideFilters = false;
+      });
+      await _reveal(loaded);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _failure = null;
+      _navigationOutsideFilters = false;
+    });
+    try {
+      // Resolve names and abbreviated IDs through Git, independently of view
+      // filters. A filtered ancestor must never impersonate the requested tip.
+      final page = await widget.session.client.history(
+        widget.session.repository,
+        filter: HistoryFilter(reference: value),
+        limit: 1,
+        cancellation: cancellation,
+      );
+      if (!mounted || generation != _generation) return;
+      if (page.commits.isEmpty) {
+        throw const GitException(
+          GitErrorCode.unavailable,
+          diagnostic: 'The requested revision is unavailable.',
+        );
+      }
+      final target = page.commits.first;
+      final existing = _commits.where((e) => e.oid == target.oid).firstOrNull;
+      if (!reload && existing != null) {
+        setState(() => _loading = false);
+        await _reveal(existing);
+      } else {
+        _reference = value;
+        await _load(reveal: target.oid);
+      }
+    } on Object catch (error) {
+      if (mounted && generation == _generation) {
+        setState(() {
+          _loading = false;
+          _failure = error is GitException
+              ? error
+              : GitException(
+                  GitErrorCode.disconnected,
+                  diagnostic: sanitizeGitDiagnostic('$error'),
+                );
+        });
+      }
+    }
+  }
+
+  Future<void> _reveal(GitCommit target) async {
+    final index = _commits.indexWhere((e) => e.oid == target.oid);
+    if (index < 0) return;
+    setState(() {
       _selectedIds
         ..clear()
         ..add(target.oid);
       _selectionAnchor = index;
-      await _select(target);
-      if (!mounted) return;
-      _tableFocus.requestFocus();
-      if (_tableScroll.hasClients) {
-        _tableScroll.jumpTo(
-          (index * widget.session.host.rowHeight(context)).clamp(
-            0,
-            _tableScroll.position.maxScrollExtent,
-          ),
-        );
-      }
-      return;
+    });
+    final details = _select(target);
+    final selection = _selectionGeneration;
+    await details;
+    if (!mounted || selection != _selectionGeneration || !widget.active) return;
+    _tableFocus.requestFocus();
+    if (_tableScroll.hasClients) {
+      _tableScroll.jumpTo(
+        (index * widget.session.host.rowHeight(context)).clamp(
+          0,
+          _tableScroll.position.maxScrollExtent,
+        ),
+      );
     }
-    _reference = value;
-    await _load();
   }
 
   Future<void> _dates() async {

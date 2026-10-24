@@ -452,10 +452,12 @@ final class GitFailurePanel extends StatelessWidget {
   const GitFailurePanel({
     super.key,
     required this.error,
+    this.message,
     this.onRefresh,
     this.onAuthorize,
   });
   final GitException error;
+  final String? message;
   final VoidCallback? onRefresh;
   final VoidCallback? onAuthorize;
   @override
@@ -464,37 +466,40 @@ final class GitFailurePanel extends StatelessWidget {
     content: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GitLabel(switch (error.code) {
-          GitErrorCode.staleReview =>
-            'Repository changed. Refresh and review before trying again.',
-          GitErrorCode.locked =>
-            'Another operation holds the repository or index lock. Wait, then refresh.',
-          GitErrorCode.trustRequired =>
-            'Repository trust is required for this operation.',
-          GitErrorCode.disconnected =>
-            'The Git service disconnected. Reconnect and reconcile the repository.',
-          GitErrorCode.unavailable || GitErrorCode.unsupportedVersion =>
-            'The installed Git executable cannot support this operation. Review its runtime requirements below.',
-          GitErrorCode.readOnly =>
-            'This repository is read-only for the requested operation. Review and history remain available.',
-          GitErrorCode.uncertainOutcome =>
-            'The operation needs reconciliation. Review the resulting repository or remote state before repeating it.',
-          GitErrorCode.authentication =>
-            'Git authentication failed. Review the credential helper or unlock the configured keyring.',
-          GitErrorCode.unknownHost =>
-            'SSH host verification failed. Review the host identity through your configured SSH tools.',
-          GitErrorCode.signing =>
-            'Commit signing failed or was cancelled. Review the signing key, agent and configured signing tool.',
-          GitErrorCode.authorIdentity =>
-            'Set a repository author name and email, then return to the preserved message draft.',
-          GitErrorCode.rejected =>
-            'Git rejected the reviewed update. Refresh and review the actual destination before trying again.',
-          GitErrorCode.dirty =>
-            'Working or staged changes prevent this operation. Review, commit or explicitly stash them.',
-          GitErrorCode.missingContent =>
-            'A required Git object is unavailable. Review shallow or partial-repository boundaries and fetch explicitly if needed.',
-          _ => 'Git operation failed: ${error.code.name}',
-        }),
+        GitLabel(
+          message ??
+              switch (error.code) {
+                GitErrorCode.staleReview =>
+                  'Repository changed. Refresh and review before trying again.',
+                GitErrorCode.locked =>
+                  'Another operation holds the repository or index lock. Wait, then refresh.',
+                GitErrorCode.trustRequired =>
+                  'Repository trust is required for this operation.',
+                GitErrorCode.disconnected =>
+                  'The Git service disconnected. Reconnect and reconcile the repository.',
+                GitErrorCode.unavailable || GitErrorCode.unsupportedVersion =>
+                  'The installed Git executable cannot support this operation. Review its runtime requirements below.',
+                GitErrorCode.readOnly =>
+                  'This repository is read-only for the requested operation. Review and history remain available.',
+                GitErrorCode.uncertainOutcome =>
+                  'The operation needs reconciliation. Review the resulting repository or remote state before repeating it.',
+                GitErrorCode.authentication =>
+                  'Git authentication failed. Review the credential helper or unlock the configured keyring.',
+                GitErrorCode.unknownHost =>
+                  'SSH host verification failed. Review the host identity through your configured SSH tools.',
+                GitErrorCode.signing =>
+                  'Commit signing failed or was cancelled. Review the signing key, agent and configured signing tool.',
+                GitErrorCode.authorIdentity =>
+                  'Set a repository author name and email, then return to the preserved message draft.',
+                GitErrorCode.rejected =>
+                  'Git rejected the reviewed update. Refresh and review the actual destination before trying again.',
+                GitErrorCode.dirty =>
+                  'Working or staged changes prevent this operation. Review, commit or explicitly stash them.',
+                GitErrorCode.missingContent =>
+                  'A required Git object is unavailable. Review shallow or partial-repository boundaries and fetch explicitly if needed.',
+                _ => 'Git operation failed: ${error.code.name}',
+              },
+        ),
         if (error.diagnostic.isNotEmpty)
           ExpansionTile(
             title: const GitLabel('Diagnostics'),
