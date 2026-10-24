@@ -299,7 +299,7 @@ Future<bool> gitConfirm(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SelectableText(detail),
+            GitSelectableText(detail),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,

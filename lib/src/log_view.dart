@@ -766,7 +766,7 @@ final class _GitLogViewState extends State<GitLogView> {
               Text(
                 'Committer: ${commit.committer} <${commit.committerEmail}>\n${commit.committerDate?.toLocal()}',
               ),
-              SelectableText(commit.oid.value),
+              GitSelectableText(commit.oid.value),
               if (commit.boundary)
                 const GitLabel(
                   'Shallow/partial boundary: a parent object is unavailable.',

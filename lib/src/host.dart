@@ -215,6 +215,17 @@ String gitString(
   return translated;
 }
 
+/// Selectable Git details also need a label on Linux's native accessibility
+/// bridge. Keep data verbatim: paths, revisions and destinations are not keys.
+final class GitSelectableText extends StatelessWidget {
+  const GitSelectableText(this.data, {super.key, this.style});
+  final String data;
+  final TextStyle? style;
+  @override
+  Widget build(BuildContext context) =>
+      SelectableText(data, semanticsLabel: data, style: style);
+}
+
 final class GitLabel extends StatelessWidget {
   const GitLabel(
     this.message, {

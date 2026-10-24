@@ -55,7 +55,7 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
       ),
       for (final destination
           in (data?['destinations'] as List? ?? []).cast<Json>())
-        SelectableText(
+        GitSelectableText(
           '${destination['url']}\nExpected tip: ${destination['expectedTip'] ?? 'reference does not exist'}',
         ),
       if (completed) const GitLabel('Remote deletion completed.'),
@@ -252,7 +252,7 @@ final class _PushState extends GitDialogState<GitPushView> {
         if (data?['destinations'] is List)
           Padding(
             padding: EdgeInsets.all(session.host.spacing),
-            child: SelectableText(
+            child: GitSelectableText(
               [
                 for (final target
                     in (data!['destinations'] as List).cast<Json>())
@@ -380,7 +380,7 @@ final class _PushState extends GitDialogState<GitPushView> {
           ],
         ),
         if (selectedTags.isNotEmpty)
-          SelectableText('Publish exactly: ${selectedTags.join(', ')}'),
+          GitSelectableText('Publish exactly: ${selectedTags.join(', ')}'),
         if (completed)
           const GitLabel(
             'Push completed. The local commit remains available in Log.',
@@ -542,7 +542,7 @@ final class _CommitFilesState extends State<GitCommitFiles> {
     children: [
       Padding(
         padding: EdgeInsets.all(widget.session.host.spacing),
-        child: SelectableText(
+        child: GitSelectableText(
           '${widget.commit.message}\n${widget.commit.author} · ${widget.commit.date.toLocal()}',
         ),
       ),

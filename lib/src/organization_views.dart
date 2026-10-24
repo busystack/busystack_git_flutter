@@ -554,7 +554,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView> {
                   final path = RepoPath.fromJson(entry['path']);
                   return ListTile(
                     title: Text(path.display),
-                    subtitle: SelectableText(
+                    subtitle: GitSelectableText(
                       'Parent gitlink: ${entry['recorded']}\nChecked out: ${entry['checkedOut'] ?? 'not initialized'}\n'
                       '${entry['dirty'] == true
                           ? 'Dirty nested repository'
