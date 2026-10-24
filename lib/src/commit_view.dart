@@ -7,6 +7,7 @@ import 'host.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
 import 'history_actions.dart';
+import 'native_table.dart';
 
 final class GitCommitView extends StatefulWidget {
   const GitCommitView({
@@ -19,11 +20,18 @@ final class GitCommitView extends StatefulWidget {
     required this.onMore,
     this.selectedComparison,
     this.notice,
+    this.active = true,
+    this.reviewContext,
   });
   final GitSession session;
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
   final Widget? notice;
+  final bool active;
+
+  /// Current host document/review identity. This guards late presentation
+  /// updates; repository authorization remains the engine's responsibility.
+  final Object? Function()? reviewContext;
   final VoidCallback onLog, onBranches, onPush;
   final ValueChanged<BuildContext> onMore;
   @override
@@ -35,8 +43,14 @@ final class _GitCommitViewState extends State<GitCommitView> {
   bool _amend = false, _signOff = false;
   bool? _sign;
   bool _composing = false;
+  int _reviewGeneration = 0;
   GitSession get session => widget.session;
   GitHost get host => session.host;
+  void _leaveReview(VoidCallback action) {
+    _reviewGeneration++;
+    action();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -194,7 +208,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                   children: [
                     Expanded(
                       child: TextButton.icon(
-                        onPressed: widget.onBranches,
+                        onPressed: () => _leaveReview(widget.onBranches),
                         icon: GitIcon(GitGlyph.branch, size: 16),
                         label: Text(
                           snapshot?.branch ??
@@ -208,7 +222,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     ),
                     GitIconButton(
                       tooltip: 'Log',
-                      onPressed: widget.onLog,
+                      onPressed: () => _leaveReview(widget.onLog),
                       icon: GitIcon(GitGlyph.history, size: 18),
                     ),
                     GitIconButton(
@@ -223,7 +237,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     Builder(
                       builder: (anchor) => GitIconButton(
                         tooltip: 'Repository actions',
-                        onPressed: () => widget.onMore(anchor),
+                        onPressed: () =>
+                            _leaveReview(() => widget.onMore(anchor)),
                         icon: const GitIcon(GitGlyph.more, size: 18),
                       ),
                     ),
@@ -307,6 +322,12 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       child: GitLabel('Repository status unavailable'),
                     )
                   : GitChangeTree(
+                      active: widget.active,
+                      reviewContext: () => (
+                        _reviewGeneration,
+                        widget.reviewContext?.call(),
+                        widget.selectedComparison,
+                      ),
                       session: session,
                       onReview: widget.onReview,
                       selectedComparison: widget.selectedComparison,
@@ -725,10 +746,14 @@ final class GitChangeTree extends StatefulWidget {
     required this.session,
     required this.onReview,
     this.selectedComparison,
+    this.active = true,
+    this.reviewContext,
   });
   final GitSession session;
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
+  final bool active;
+  final Object? Function()? reviewContext;
   @override
   State<GitChangeTree> createState() => _GitChangeTreeState();
 }
@@ -737,15 +762,18 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
   bool _preparingStage = false;
   final _collapsed = <String>{}, _selected = <String>{};
   final _scroll = ScrollController();
+  final _focus = FocusNode(debugLabel: 'Git changes');
   List<_ChangeRow>? _cachedRows;
   Set<String> _rowKeys = {};
   String? _cachedKey;
   int _focused = 0, _anchor = 0;
+  int _selectionGeneration = 0;
   @override
   void didUpdateWidget(GitChangeTree oldWidget) {
     super.didUpdateWidget(oldWidget);
     final target = widget.selectedComparison;
     if (target == null || target == oldWidget.selectedComparison) return;
+    _selectionGeneration++;
     final group = target.right.kind == ContentKind.indexVersion
         ? 'Staged'
         : widget.session.snapshot?.changes.any(
@@ -770,6 +798,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
   @override
   void dispose() {
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -839,244 +868,420 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     _focused = _focused.clamp(0, rows.isEmpty ? 0 : rows.length - 1);
     if (rows.length == 1 && rows.first.change == null)
       return const Center(child: GitLabel('No changes'));
-    return Focus(
-      onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent || rows.isEmpty)
-          return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.contextMenu ||
-            event.logicalKey == LogicalKeyboardKey.f10 &&
-                HardwareKeyboard.instance.isShiftPressed) {
-          unawaited(_context(rows[_focused], rows));
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.keyA &&
-            HardwareKeyboard.instance.isControlPressed) {
-          setState(() {
-            _selected
-              ..clear()
-              ..addAll(rows.where((r) => r.change != null).map((r) => r.key));
-          });
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.home ||
-            event.logicalKey == LogicalKeyboardKey.end) {
-          _select(
-            rows,
-            event.logicalKey == LogicalKeyboardKey.home ? 0 : rows.length - 1,
-          );
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-            event.logicalKey == LogicalKeyboardKey.arrowRight) {
-          final row = rows[_focused],
-              expand = event.logicalKey == LogicalKeyboardKey.arrowRight;
-          if (row.change == null) {
-            setState(() {
-              if (expand) {
-                _collapsed.remove(row.key);
-              } else {
-                _collapsed.add(row.key);
-              }
-            });
-          } else if (!expand) {
-            final parent = rows.lastIndexWhere(
-              (r) =>
-                  r.change == null &&
-                  r.group == row.group &&
-                  r.depth < row.depth,
-              _focused,
-            );
-            if (parent >= 0) _select(rows, parent);
-          }
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
-            event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          _select(
-            rows,
-            (_focused +
-                    (event.logicalKey == LogicalKeyboardKey.arrowDown ? 1 : -1))
-                .clamp(0, rows.length - 1),
-          );
-          final offset = _focused * host.rowHeight(context);
-          if (_scroll.hasClients)
-            _scroll.animateTo(
-              offset.clamp(0, _scroll.position.maxScrollExtent),
-              duration: const Duration(milliseconds: 80),
-              curve: Curves.linear,
-            );
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.enter) {
-          _activate(rows[_focused]);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.space &&
-            rows[_focused].change != null) {
-          unawaited(_stage(rows[_focused].group == 'Staged', rows));
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: CustomScrollView(
-        controller: _scroll,
-        semanticChildCount: rows.length,
-        slivers: [
-          SliverSemantics(
-            role: SemanticsRole.list,
-            label: gitString(context, 'Repository change tree'),
-            container: true,
-            explicitChildNodes: true,
-            sliver: SliverFixedExtentList(
-              itemExtent: host.rowHeight(context),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final row = rows[index], change = row.change;
-                  return Semantics(
-                    role: SemanticsRole.listItem,
-                    container: true,
-                    expanded: change == null
-                        ? !_collapsed.contains(row.key)
-                        : null,
-                    selected: _selected.contains(row.key),
-                    label: change == null
-                        ? row.depth == 0
-                              ? gitString(
-                                  context,
-                                  '{group} ({count})',
-                                  values: {
-                                    'group': gitString(context, row.group),
-                                    'count': row.count,
-                                  },
-                                )
-                              : row.label
-                        : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
-                    child: InkWell(
-                      onTap: () {
-                        _select(rows, index);
-                        _activate(row);
+    final parents = <int>[];
+    final ancestors = <int>[];
+    for (var i = 0; i < rows.length; i++) {
+      while (ancestors.isNotEmpty &&
+          rows[ancestors.last].depth >= rows[i].depth) {
+        ancestors.removeLast();
+      }
+      parents.add(ancestors.lastOrNull ?? -1);
+      if (rows[i].change == null) ancestors.add(i);
+    }
+    return LayoutBuilder(
+      builder: (context, bounds) => GitNativeTable(
+        name: gitString(context, 'Repository change tree'),
+        description: widget.session.repository.root,
+        revision: (widget.session.repository.key, _cachedKey),
+        active: widget.active,
+        tree: true,
+        headers: false,
+        busy: widget.session.running,
+        rowCount: rows.length,
+        columns: [gitString(context, 'Changes')],
+        widths: [bounds.maxWidth],
+        rowHeight: host.rowHeight(context),
+        rowAt: (index) {
+          final row = rows[index], change = row.change;
+          final canStage =
+              change != null &&
+              !change.conflicted &&
+              !widget.session.running &&
+              !_preparingStage &&
+              widget.session.canWriteMetadata;
+          return GitNativeRow(
+            id: row.key,
+            textInsets: [
+              (Directionality.of(context) == TextDirection.rtl
+                      ? host.spacing
+                      : row.depth * host.spacing * 2) +
+                  (change == null ? 16 : 22),
+            ],
+            cells: [
+              change == null && row.depth == 0
+                  ? gitString(
+                      context,
+                      '{group} ({count})',
+                      values: {
+                        'group': gitString(context, row.group),
+                        'count': row.count,
                       },
-                      onDoubleTap: change == null
-                          ? null
-                          : () => unawaited(
-                              host.openDocument(
-                                widget.session.repository,
-                                change.path,
+                    )
+                  : row.label,
+            ],
+            description: change == null
+                ? ''
+                : '${change.path.display}, ${gitString(context, row.group)}, '
+                      '${change.index}${change.worktree}',
+            parent: parents[index],
+            depth: row.depth,
+            expanded: change == null
+                ? (_collapsed.contains(row.key) ? 0 : 1)
+                : -1,
+            actions: {
+              if (change == null)
+                'toggle': gitString(
+                  context,
+                  _collapsed.contains(row.key) ? 'Expand' : 'Collapse',
+                ),
+              if (canStage)
+                'stage': gitString(
+                  context,
+                  row.group == 'Staged' ? 'Unstage file' : 'Stage file',
+                ),
+            },
+          );
+        },
+        selected: [
+          for (var i = 0; i < rows.length; i++)
+            if (_selected.contains(rows[i].key)) i,
+        ],
+        focusedRow: rows.isEmpty ? -1 : _focused,
+        scroll: _scroll,
+        focus: _focus,
+        onRequest: (request) => _nativeRequest(request, rows),
+        builder: (nativeReady) => Focus(
+          focusNode: _focus,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent || rows.isEmpty)
+              return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.contextMenu ||
+                event.logicalKey == LogicalKeyboardKey.f10 &&
+                    HardwareKeyboard.instance.isShiftPressed) {
+              unawaited(_context(rows[_focused], rows));
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.keyA &&
+                HardwareKeyboard.instance.isControlPressed) {
+              setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(
+                    rows.where((r) => r.change != null).map((r) => r.key),
+                  );
+              });
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.home ||
+                event.logicalKey == LogicalKeyboardKey.end) {
+              _select(
+                rows,
+                event.logicalKey == LogicalKeyboardKey.home
+                    ? 0
+                    : rows.length - 1,
+              );
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                event.logicalKey == LogicalKeyboardKey.arrowRight) {
+              final row = rows[_focused],
+                  expand = event.logicalKey == LogicalKeyboardKey.arrowRight;
+              if (row.change == null) {
+                setState(() {
+                  if (expand) {
+                    _collapsed.remove(row.key);
+                  } else {
+                    _collapsed.add(row.key);
+                  }
+                });
+              } else if (!expand) {
+                final parent = rows.lastIndexWhere(
+                  (r) =>
+                      r.change == null &&
+                      r.group == row.group &&
+                      r.depth < row.depth,
+                  _focused,
+                );
+                if (parent >= 0) _select(rows, parent);
+              }
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              _select(
+                rows,
+                (_focused +
+                        (event.logicalKey == LogicalKeyboardKey.arrowDown
+                            ? 1
+                            : -1))
+                    .clamp(0, rows.length - 1),
+              );
+              final offset = _focused * host.rowHeight(context);
+              if (_scroll.hasClients)
+                _scroll.animateTo(
+                  offset.clamp(0, _scroll.position.maxScrollExtent),
+                  duration: const Duration(milliseconds: 80),
+                  curve: Curves.linear,
+                );
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.enter) {
+              _activate(rows[_focused]);
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.space &&
+                rows[_focused].change != null) {
+              unawaited(_stage(rows[_focused].group == 'Staged', rows));
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: ExcludeFocus(
+            // The native tree is one keyboard focus stop. Its existing row
+            // keys and native cell actions cover review, staging and menus.
+            excluding: nativeReady,
+            child: ExcludeSemantics(
+              excluding: nativeReady,
+              child: CustomScrollView(
+                controller: _scroll,
+                semanticChildCount: rows.length,
+                slivers: [
+                  SliverSemantics(
+                    role: SemanticsRole.list,
+                    label: gitString(context, 'Repository change tree'),
+                    container: true,
+                    explicitChildNodes: true,
+                    sliver: SliverFixedExtentList(
+                      itemExtent: host.rowHeight(context),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final row = rows[index], change = row.change;
+                          return Semantics(
+                            role: SemanticsRole.listItem,
+                            container: true,
+                            expanded: change == null
+                                ? !_collapsed.contains(row.key)
+                                : null,
+                            selected: _selected.contains(row.key),
+                            label: change == null
+                                ? row.depth == 0
+                                      ? gitString(
+                                          context,
+                                          '{group} ({count})',
+                                          values: {
+                                            'group': gitString(
+                                              context,
+                                              row.group,
+                                            ),
+                                            'count': row.count,
+                                          },
+                                        )
+                                      : row.label
+                                : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
+                            child: InkWell(
+                              onTap: () {
+                                _select(rows, index);
+                                _activate(row);
+                              },
+                              onDoubleTap: change == null
+                                  ? null
+                                  : () => unawaited(
+                                      host.openDocument(
+                                        widget.session.repository,
+                                        change.path,
+                                      ),
+                                    ),
+                              onSecondaryTapUp: (details) {
+                                if (!_selected.contains(row.key))
+                                  _select(rows, index);
+                                unawaited(
+                                  _context(
+                                    row,
+                                    rows,
+                                    position: details.globalPosition,
+                                  ),
+                                );
+                              },
+                              child: ColoredBox(
+                                color: _selected.contains(row.key)
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.secondaryContainer
+                                    : Colors.transparent,
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    left: row.depth * host.spacing * 2,
+                                    right: host.spacing,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      if (change == null)
+                                        GitIcon(
+                                          _collapsed.contains(row.key)
+                                              ? GitGlyph.next
+                                              : GitGlyph.expand,
+                                          size: 16,
+                                        )
+                                      else
+                                        SizedBox(
+                                          width: 22,
+                                          child: Text(
+                                            change.conflicted
+                                                ? '!'
+                                                : change.untracked
+                                                ? '?'
+                                                : row.group == 'Staged'
+                                                ? change.index
+                                                : change.worktree,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.labelSmall,
+                                          ),
+                                        ),
+                                      Expanded(
+                                        child: change == null && row.depth == 0
+                                            ? GitLabel(
+                                                '{group} ({count})',
+                                                values: {
+                                                  'group': gitString(
+                                                    context,
+                                                    row.group,
+                                                  ),
+                                                  'count': row.count,
+                                                },
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              )
+                                            : Text(
+                                                row.label,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: change == null
+                                                    ? const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      )
+                                                    : null,
+                                              ),
+                                      ),
+                                      if (change != null && !change.conflicted)
+                                        GitIconButton(
+                                          tooltip: row.group == 'Staged'
+                                              ? 'Unstage file'
+                                              : 'Stage file',
+                                          onPressed:
+                                              widget.session.running ||
+                                                  _preparingStage ||
+                                                  !widget
+                                                      .session
+                                                      .canWriteMetadata
+                                              ? null
+                                              : () {
+                                                  if (!_selected.contains(
+                                                    row.key,
+                                                  ))
+                                                    _select(rows, index);
+                                                  unawaited(
+                                                    _stage(
+                                                      row.group == 'Staged',
+                                                      rows,
+                                                    ),
+                                                  );
+                                                },
+                                          icon: GitIcon(
+                                            row.group == 'Staged'
+                                                ? GitGlyph.remove
+                                                : GitGlyph.add,
+                                            size: 16,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
                               ),
                             ),
-                      onSecondaryTapUp: (details) {
-                        if (!_selected.contains(row.key)) _select(rows, index);
-                        unawaited(
-                          _context(row, rows, position: details.globalPosition),
-                        );
-                      },
-                      child: ColoredBox(
-                        color: _selected.contains(row.key)
-                            ? Theme.of(context).colorScheme.secondaryContainer
-                            : Colors.transparent,
-                        child: Padding(
-                          padding: EdgeInsets.only(
-                            left: row.depth * host.spacing * 2,
-                            right: host.spacing,
-                          ),
-                          child: Row(
-                            children: [
-                              if (change == null)
-                                GitIcon(
-                                  _collapsed.contains(row.key)
-                                      ? GitGlyph.next
-                                      : GitGlyph.expand,
-                                  size: 16,
-                                )
-                              else
-                                SizedBox(
-                                  width: 22,
-                                  child: Text(
-                                    change.conflicted
-                                        ? '!'
-                                        : change.untracked
-                                        ? '?'
-                                        : row.group == 'Staged'
-                                        ? change.index
-                                        : change.worktree,
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.labelSmall,
-                                  ),
-                                ),
-                              Expanded(
-                                child: change == null && row.depth == 0
-                                    ? GitLabel(
-                                        '{group} ({count})',
-                                        values: {
-                                          'group': gitString(
-                                            context,
-                                            row.group,
-                                          ),
-                                          'count': row.count,
-                                        },
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      )
-                                    : Text(
-                                        row.label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: change == null
-                                            ? const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                              )
-                                            : null,
-                                      ),
-                              ),
-                              if (change != null && !change.conflicted)
-                                GitIconButton(
-                                  tooltip: row.group == 'Staged'
-                                      ? 'Unstage file'
-                                      : 'Stage file',
-                                  onPressed:
-                                      widget.session.running ||
-                                          _preparingStage ||
-                                          !widget.session.canWriteMetadata
-                                      ? null
-                                      : () {
-                                          if (!_selected.contains(row.key))
-                                            _select(rows, index);
-                                          unawaited(
-                                            _stage(row.group == 'Staged', rows),
-                                          );
-                                        },
-                                  icon: GitIcon(
-                                    row.group == 'Staged'
-                                        ? GitGlyph.remove
-                                        : GitGlyph.add,
-                                    size: 16,
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
+                          );
+                        },
+                        childCount: rows.length,
+                        addSemanticIndexes: false,
                       ),
                     ),
-                  );
-                },
-                childCount: rows.length,
-                addSemanticIndexes: false,
+                  ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  void _select(List<_ChangeRow> rows, int index) {
+  void _nativeRequest(GitNativeTableRequest request, List<_ChangeRow> rows) {
+    final index = request.row;
+    switch (request.action) {
+      case 'clearSelection':
+        setState(_selected.clear);
+      case 'selectAll':
+        setState(
+          () => _selected.addAll(
+            rows.where((r) => r.change != null).map((r) => r.key),
+          ),
+        );
+      case 'select' || 'focus':
+        _focus.requestFocus();
+        _select(rows, index, keyboardModifiers: false);
+        _scrollToNativeRow(index);
+        if (rows[index].change != null) _activate(rows[index]);
+      case 'scroll':
+        _scrollToNativeRow(index);
+      case 'context':
+        if (!_selected.contains(rows[index].key)) {
+          _select(rows, index, keyboardModifiers: false);
+        }
+        unawaited(_context(rows[index], rows));
+      case 'addSelection':
+        setState(() => _selected.add(rows[index].key));
+      case 'removeSelection':
+        setState(() => _selected.remove(rows[index].key));
+      case 'toggle':
+        _activate(rows[index]);
+      case 'stage':
+        // The named row action applies to exactly this file. Multi-selection
+        // staging remains available in the existing contextual selection menu.
+        unawaited(
+          _stage(
+            rows[index].group == 'Staged',
+            rows,
+            selection: {rows[index].key},
+          ),
+        );
+    }
+  }
+
+  void _scrollToNativeRow(int index) {
+    if (!_scroll.hasClients) return;
+    final height = widget.session.host.rowHeight(context);
+    final start = index * height, end = start + height;
+    final position = _scroll.position;
+    if (start < position.pixels ||
+        end > position.pixels + position.viewportDimension) {
+      _scroll.jumpTo(start.clamp(0, position.maxScrollExtent));
+    }
+  }
+
+  void _select(
+    List<_ChangeRow> rows,
+    int index, {
+    bool keyboardModifiers = true,
+  }) {
+    _focus.requestFocus();
+    _selectionGeneration++;
     setState(() {
       _focused = index;
-      if (HardwareKeyboard.instance.isShiftPressed) {
+      if (keyboardModifiers && HardwareKeyboard.instance.isShiftPressed) {
         _selected.clear();
         for (
           var i = _anchor < index ? _anchor : index;
@@ -1085,7 +1290,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         ) {
           if (rows[i].change != null) _selected.add(rows[i].key);
         }
-      } else if (HardwareKeyboard.instance.isControlPressed) {
+      } else if (keyboardModifiers &&
+          HardwareKeyboard.instance.isControlPressed) {
         if (!_selected.add(rows[index].key)) _selected.remove(rows[index].key);
       } else {
         _selected
@@ -1146,6 +1352,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       ],
     }.toList();
     if (paths.isEmpty) return;
+    final selectionGeneration = _selectionGeneration;
+    final reviewContext = widget.reviewContext?.call();
     setState(() => _preparingStage = true);
     try {
       final tokens = <String, String>{};
@@ -1169,7 +1377,11 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           expectedSnapshot: snapshot.token,
         ),
       );
-      if (mounted && result?.completed == true) {
+      if (mounted &&
+          result?.completed == true &&
+          widget.active &&
+          selectionGeneration == _selectionGeneration &&
+          reviewContext == widget.reviewContext?.call()) {
         final refreshed = _rows(),
             chosenKeys = chosen.map((r) => r.key).toSet();
         final retained = chosenKeys.intersection(_rowKeys);

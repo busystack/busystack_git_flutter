@@ -38,6 +38,9 @@ explicit host preflight for authorized status; revoking trust restores restricte
 inspection. Open mutable diffs retain their reviewed versions and disable
 staging when a refreshed snapshot changes. Display preferences never renew a
 content precondition or push lease.
+Hosts can provide `GitCommitView.reviewContext` to identify their current
+document/review even before a rebuild. A completed staging operation preserves
+later navigation and selection rather than reopening its earlier review.
 
 Commit selection is the real Git index. Clicking a file reviews it; explicit
 file/hunk/line actions stage it. Index editing labels the editable index result;
@@ -60,10 +63,26 @@ Consume this package as a sibling path dependency (`../busystack_git_flutter`
 from BusyMark, `../../../busystack_git_flutter` from either BusyFiles app).
 Materialize the core sibling too, rather than resolving a second hosted copy.
 
+On Linux the package includes a GTK accessibility plugin for Commit's change
+tree and Log's virtualized table. It exposes native ATK table/cell, selection,
+text and action interfaces, with bounded metadata pages and generation-bound
+callbacks. The native code never executes Git or opens repository files.
+Flutter retains visual rendering, keyboard operations and action preconditions.
+Each application supplies its existing content `GtkOverlay` using
+`busystack_git_flutter_plugin_set_accessibility_host` before plugin registration;
+the plugin keeps weak references and never owns or reparents a window. BusyFiles
+registers it through its content-only registrar. Other platforms keep Flutter
+semantics. A failed native handoff preserves those semantics and offers retry.
+Native builds require CMake 3.24, GTK 3.24 and ATK 2.30 or newer, already within
+the consuming Linux distributions' approved toolchains.
+
 ```sh
 flutter pub get --enforce-lockfile
 flutter analyze
 flutter test
+cmake -S linux/native -B build/native -G Ninja
+cmake --build build/native
+xvfb-run -a ctest --test-dir build/native --output-on-failure
 ```
 
 Widget tests verify presentation interactions. Native accessibility, input,

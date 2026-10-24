@@ -94,6 +94,8 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                     onChanged: (v) =>
                         widget.session.setViewState('workspaceSplit', v),
                     first: GitCommitView(
+                      active: !_log,
+                      reviewContext: () => (_log, _comparison),
                       session: widget.session,
                       selectedComparison: _comparison,
                       onReview: (comparison) =>

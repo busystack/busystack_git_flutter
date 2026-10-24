@@ -8,6 +8,7 @@ import 'host.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
 import 'history_actions.dart';
+import 'native_table.dart';
 
 final class GitLogView extends StatefulWidget {
   const GitLogView({
@@ -519,223 +520,343 @@ final class _GitLogViewState extends State<GitLogView> {
         final showAuthor = bounds.maxWidth >= 650,
             showDate = bounds.maxWidth >= 850;
         final showId = bounds.maxWidth >= 430;
-        return Focus(
-          focusNode: _tableFocus,
-          onKeyEvent: (_, event) {
-            if (event is! KeyDownEvent || _commits.isEmpty)
-              return KeyEventResult.ignored;
-            final index = _commits.indexWhere((e) => e.oid == _selected?.oid);
-            if ({
-              LogicalKeyboardKey.arrowUp,
-              LogicalKeyboardKey.arrowDown,
-            }.contains(event.logicalKey)) {
-              final next =
-                  (index +
-                          (event.logicalKey == LogicalKeyboardKey.arrowDown
-                              ? 1
-                              : -1))
-                      .clamp(0, _commits.length - 1);
-              _choose(next);
-              if (_tableScroll.hasClients)
-                _tableScroll.jumpTo(
-                  (next * rowHeight).clamp(
-                    0,
-                    _tableScroll.position.maxScrollExtent,
-                  ),
-                );
-              return KeyEventResult.handled;
-            }
-            if ((event.logicalKey == LogicalKeyboardKey.contextMenu ||
-                    event.logicalKey == LogicalKeyboardKey.f10 &&
-                        HardwareKeyboard.instance.isShiftPressed) &&
-                _selected != null) {
-              unawaited(_menu(_selected!));
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
+        final columns = [
+          gitString(context, 'Subject / references'),
+          if (showAuthor) gitString(context, 'Author'),
+          if (showDate) gitString(context, 'Date'),
+          if (showId) gitString(context, 'Object ID'),
+        ];
+        return GitNativeTable(
+          name: gitString(context, 'Git commits'),
+          description: widget.session.repository.root,
+          revision: (widget.session.repository.key, _generation),
+          active: widget.active,
+          busy: _loading,
+          rowCount: _commits.length,
+          rowHeight: rowHeight,
+          columns: columns,
+          headerInsets: [40, for (var i = 1; i < columns.length; i++) 0],
+          widths: [
+            bounds.maxWidth -
+                (showAuthor ? 120 : 0) -
+                (showDate ? 92 : 0) -
+                (showId ? 96 : 0),
+            if (showAuthor) 120,
+            if (showDate) 92,
+            if (showId) 96,
+          ],
+          rowAt: (index) {
+            final commit = _commits[index];
+            final refs = _references
+                .where((r) => r.oid == commit.oid)
+                .map((r) => r.shortName)
+                .join(', ');
+            return GitNativeRow(
+              id: commit.oid.value,
+              textInsets: [
+                (graph[index].width * 14.0 + 14).clamp(40, 120),
+                for (var i = 1; i < columns.length; i++) 0,
+              ],
+              cells: [
+                '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
+                if (showAuthor) commit.author,
+                if (showDate) commit.date.toLocal().toString().substring(0, 10),
+                if (showId) commit.oid.abbreviated,
+              ],
+              description:
+                  '${commit.oid.value}; '
+                  '${gitString(context, 'Parents')}: '
+                  '${commit.parents.map((p) => p.value).join(', ')}',
+            );
           },
-          child: CustomScrollView(
-            controller: _tableScroll,
-            semanticChildCount: _commits.length,
-            slivers: [
-              SliverSemantics(
-                role: SemanticsRole.table,
-                container: true,
-                explicitChildNodes: true,
-                label: gitString(context, 'Git commits'),
-                sliver: SliverFixedExtentList(
-                  itemExtent: rowHeight,
-                  delegate: SliverChildBuilderDelegate(
-                    (context, rowIndex) {
-                      if (rowIndex == 0)
-                        return Semantics(
-                          role: SemanticsRole.row,
-                          container: true,
-                          explicitChildNodes: true,
-                          child: Row(
-                            children: [
-                              const SizedBox(width: 40),
-                              Expanded(
-                                child: Semantics(
-                                  role: SemanticsRole.columnHeader,
-                                  child: const GitLabel('Subject / references'),
+          selected: [
+            for (var i = 0; i < _commits.length; i++)
+              if (_selectedIds.contains(_commits[i].oid) ||
+                  _selectedIds.isEmpty && _selected?.oid == _commits[i].oid)
+                i,
+          ],
+          focusedRow: _commits.indexWhere((c) => c.oid == _selected?.oid),
+          scroll: _tableScroll,
+          focus: _tableFocus,
+          onRequest: _nativeRequest,
+          builder: (nativeReady) => Focus(
+            focusNode: _tableFocus,
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent || _commits.isEmpty)
+                return KeyEventResult.ignored;
+              final index = _commits.indexWhere((e) => e.oid == _selected?.oid);
+              if ({
+                LogicalKeyboardKey.arrowUp,
+                LogicalKeyboardKey.arrowDown,
+              }.contains(event.logicalKey)) {
+                final next =
+                    (index +
+                            (event.logicalKey == LogicalKeyboardKey.arrowDown
+                                ? 1
+                                : -1))
+                        .clamp(0, _commits.length - 1);
+                _choose(next);
+                if (_tableScroll.hasClients)
+                  _tableScroll.jumpTo(
+                    (next * rowHeight).clamp(
+                      0,
+                      _tableScroll.position.maxScrollExtent,
+                    ),
+                  );
+                return KeyEventResult.handled;
+              }
+              if ((event.logicalKey == LogicalKeyboardKey.contextMenu ||
+                      event.logicalKey == LogicalKeyboardKey.f10 &&
+                          HardwareKeyboard.instance.isShiftPressed) &&
+                  _selected != null) {
+                unawaited(_menu(_selected!));
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: CustomScrollView(
+              controller: _tableScroll,
+              semanticChildCount: _commits.length,
+              slivers: [
+                SliverSemantics(
+                  excludeSemantics: nativeReady,
+                  sliver: SliverSemantics(
+                    role: SemanticsRole.table,
+                    container: true,
+                    explicitChildNodes: true,
+                    label: gitString(context, 'Git commits'),
+                    sliver: SliverFixedExtentList(
+                      itemExtent: rowHeight,
+                      delegate: SliverChildBuilderDelegate(
+                        (context, rowIndex) {
+                          if (rowIndex == 0)
+                            return Semantics(
+                              role: SemanticsRole.row,
+                              container: true,
+                              explicitChildNodes: true,
+                              child: Row(
+                                children: [
+                                  const SizedBox(width: 40),
+                                  Expanded(
+                                    child: Semantics(
+                                      role: SemanticsRole.columnHeader,
+                                      child: const GitLabel(
+                                        'Subject / references',
+                                      ),
+                                    ),
+                                  ),
+                                  if (showAuthor)
+                                    SizedBox(
+                                      width: 120,
+                                      child: Semantics(
+                                        role: SemanticsRole.columnHeader,
+                                        child: const GitLabel('Author'),
+                                      ),
+                                    ),
+                                  if (showDate)
+                                    SizedBox(
+                                      width: 92,
+                                      child: Semantics(
+                                        role: SemanticsRole.columnHeader,
+                                        child: const GitLabel('Date'),
+                                      ),
+                                    ),
+                                  if (showId)
+                                    SizedBox(
+                                      width: 96,
+                                      child: Semantics(
+                                        role: SemanticsRole.columnHeader,
+                                        child: const GitLabel('Object ID'),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            );
+                          final index = rowIndex - 1,
+                              commit = _commits[rowIndex - 1];
+                          final refs = _references
+                              .where((e) => e.oid == commit.oid)
+                              .map((e) => e.shortName)
+                              .join(', ');
+                          final selected =
+                              _selectedIds.contains(commit.oid) ||
+                              _selectedIds.isEmpty &&
+                                  _selected?.oid == commit.oid;
+                          return Semantics(
+                            role: SemanticsRole.row,
+                            container: true,
+                            explicitChildNodes: true,
+                            selected: selected,
+                            onTap: () => _choose(index),
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              excludeFromSemantics: true,
+                              onTap: () => _choose(index),
+                              onSecondaryTapUp: (details) => unawaited(
+                                _menu(commit, position: details.globalPosition),
+                              ),
+                              child: ColoredBox(
+                                color: selected
+                                    ? Theme.of(
+                                        context,
+                                      ).colorScheme.secondaryContainer
+                                    : Colors.transparent,
+                                child: Row(
+                                  children: [
+                                    ExcludeSemantics(
+                                      child: SizedBox(
+                                        width: (graph[index].width * 14.0 + 14)
+                                            .clamp(40, 120),
+                                        height: rowHeight,
+                                        child: CustomPaint(
+                                          painter: _GraphPainter(
+                                            graph[index],
+                                            Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Semantics(
+                                        role: SemanticsRole.cell,
+                                        container: true,
+                                        label:
+                                            '${commit.parents.length} parents',
+                                        child: Text(
+                                          '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                                    if (showAuthor)
+                                      SizedBox(
+                                        width: 120,
+                                        child: Semantics(
+                                          role: SemanticsRole.cell,
+                                          child: Text(
+                                            commit.author,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                    if (showDate)
+                                      SizedBox(
+                                        width: 92,
+                                        child: Semantics(
+                                          role: SemanticsRole.cell,
+                                          child: Text(
+                                            commit.date
+                                                .toLocal()
+                                                .toString()
+                                                .substring(0, 10),
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall,
+                                          ),
+                                        ),
+                                      ),
+                                    if (showId)
+                                      SizedBox(
+                                        width: 96,
+                                        child: Semantics(
+                                          role: SemanticsRole.cell,
+                                          child: Text(
+                                            commit.oid.abbreviated,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
                                 ),
                               ),
-                              if (showAuthor)
-                                SizedBox(
-                                  width: 120,
-                                  child: Semantics(
-                                    role: SemanticsRole.columnHeader,
-                                    child: const GitLabel('Author'),
-                                  ),
-                                ),
-                              if (showDate)
-                                SizedBox(
-                                  width: 92,
-                                  child: Semantics(
-                                    role: SemanticsRole.columnHeader,
-                                    child: const GitLabel('Date'),
-                                  ),
-                                ),
-                              if (showId)
-                                SizedBox(
-                                  width: 96,
-                                  child: Semantics(
-                                    role: SemanticsRole.columnHeader,
-                                    child: const GitLabel('Object ID'),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        );
-                      final index = rowIndex - 1,
-                          commit = _commits[rowIndex - 1];
-                      final refs = _references
-                          .where((e) => e.oid == commit.oid)
-                          .map((e) => e.shortName)
-                          .join(', ');
-                      final selected =
-                          _selectedIds.contains(commit.oid) ||
-                          _selectedIds.isEmpty && _selected?.oid == commit.oid;
-                      return Semantics(
-                        role: SemanticsRole.row,
-                        container: true,
-                        explicitChildNodes: true,
-                        selected: selected,
-                        onTap: () => _choose(index),
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          excludeFromSemantics: true,
-                          onTap: () => _choose(index),
-                          onSecondaryTapUp: (details) => unawaited(
-                            _menu(commit, position: details.globalPosition),
-                          ),
-                          child: ColoredBox(
-                            color: selected
-                                ? Theme.of(
-                                    context,
-                                  ).colorScheme.secondaryContainer
-                                : Colors.transparent,
-                            child: Row(
-                              children: [
-                                ExcludeSemantics(
-                                  child: SizedBox(
-                                    width: (graph[index].width * 14.0 + 14)
-                                        .clamp(40, 120),
-                                    height: rowHeight,
-                                    child: CustomPaint(
-                                      painter: _GraphPainter(
-                                        graph[index],
-                                        Theme.of(context).colorScheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: Semantics(
-                                    role: SemanticsRole.cell,
-                                    container: true,
-                                    label: '${commit.parents.length} parents',
-                                    child: Text(
-                                      '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ),
-                                if (showAuthor)
-                                  SizedBox(
-                                    width: 120,
-                                    child: Semantics(
-                                      role: SemanticsRole.cell,
-                                      child: Text(
-                                        commit.author,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ),
-                                if (showDate)
-                                  SizedBox(
-                                    width: 92,
-                                    child: Semantics(
-                                      role: SemanticsRole.cell,
-                                      child: Text(
-                                        commit.date
-                                            .toLocal()
-                                            .toString()
-                                            .substring(0, 10),
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    ),
-                                  ),
-                                if (showId)
-                                  SizedBox(
-                                    width: 96,
-                                    child: Semantics(
-                                      role: SemanticsRole.cell,
-                                      child: Text(
-                                        commit.oid.abbreviated,
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    ),
-                                  ),
-                              ],
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                    childCount: _commits.length + 1,
-                    addSemanticIndexes: false,
+                          );
+                        },
+                        childCount: _commits.length + 1,
+                        addSemanticIndexes: false,
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              if (_more)
-                SliverToBoxAdapter(
-                  child: TextButton(
-                    onPressed: _loading
-                        ? null
-                        : () => unawaited(_load(append: true)),
-                    child: const GitLabel('Load more commits'),
+                if (_more)
+                  SliverToBoxAdapter(
+                    child: TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () => unawaited(_load(append: true)),
+                      child: const GitLabel('Load more commits'),
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
         );
       },
     );
   }
 
-  void _choose(int index) {
+  void _nativeRequest(GitNativeTableRequest request) {
+    final index = request.row;
+    switch (request.action) {
+      case 'clearSelection':
+        setState(() {
+          _selectedIds.clear();
+          _selected = null;
+          _files = [];
+          _selectionGeneration++;
+        });
+      case 'selectAll':
+        setState(() => _selectedIds.addAll(_commits.map((c) => c.oid)));
+      case 'select' || 'focus':
+        _choose(index, keyboardModifiers: false);
+        _scrollToNativeRow(index);
+      case 'scroll':
+        _scrollToNativeRow(index);
+      case 'context':
+        _choose(index, keyboardModifiers: false);
+        unawaited(_menu(_commits[index]));
+      case 'addSelection':
+        setState(() {
+          if (_selectedIds.isEmpty && _selected != null) {
+            _selectedIds.add(_selected!.oid);
+          }
+          _selectedIds.add(_commits[index].oid);
+        });
+      case 'removeSelection':
+        setState(() {
+          _selectedIds.remove(_commits[index].oid);
+          if (_selected?.oid == _commits[index].oid) {
+            _selected = null;
+            _files = [];
+            _selectionGeneration++;
+          }
+        });
+    }
+  }
+
+  void _scrollToNativeRow(int index) {
+    if (_tableScroll.hasClients) {
+      final row = widget.session.host.rowHeight(context);
+      final start = (index + 1) * row, end = start + row;
+      final position = _tableScroll.position;
+      if (start < position.pixels ||
+          end > position.pixels + position.viewportDimension) {
+        _tableScroll.jumpTo(start.clamp(0, position.maxScrollExtent));
+      }
+    }
+  }
+
+  void _choose(int index, {bool keyboardModifiers = true}) {
     final commit = _commits[index];
     _tableFocus.requestFocus();
     setState(() {
-      if (HardwareKeyboard.instance.isShiftPressed) {
+      if (keyboardModifiers && HardwareKeyboard.instance.isShiftPressed) {
         _selectedIds.clear();
         for (
           var i = _selectionAnchor < index ? _selectionAnchor : index;
@@ -744,7 +865,8 @@ final class _GitLogViewState extends State<GitLogView> {
         ) {
           _selectedIds.add(_commits[i].oid);
         }
-      } else if (HardwareKeyboard.instance.isControlPressed) {
+      } else if (keyboardModifiers &&
+          HardwareKeyboard.instance.isControlPressed) {
         if (!_selectedIds.add(commit.oid)) _selectedIds.remove(commit.oid);
       } else {
         _selectedIds
