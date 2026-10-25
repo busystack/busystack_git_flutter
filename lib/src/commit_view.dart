@@ -3,6 +3,7 @@ import 'dart:ui' show SemanticsRole;
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'context_menu_keys.dart';
 import 'host.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
@@ -753,6 +754,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
   final _collapsed = <String>{}, _selected = <String>{};
   final _scroll = ScrollController();
   final _focus = FocusNode(debugLabel: 'Git changes');
+  final _contextMenuKeys = GitContextMenuKeys();
   List<_ChangeRow>? _cachedRows;
   Set<String> _rowKeys = {};
   String? _cachedKey;
@@ -788,6 +790,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
   @override
   void dispose() {
     _scroll.dispose();
+    _contextMenuKeys.clear();
     _focus.dispose();
     super.dispose();
   }
@@ -942,15 +945,33 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         onRequest: (request) => _nativeRequest(request, rows),
         builder: (nativeReady) => Focus(
           focusNode: _focus,
+          onFocusChange: (focused) {
+            if (!focused) _contextMenuKeys.clear();
+          },
           onKeyEvent: (_, event) {
-            if (event is! KeyDownEvent || rows.isEmpty)
-              return KeyEventResult.ignored;
-            if (event.logicalKey == LogicalKeyboardKey.contextMenu ||
-                event.logicalKey == LogicalKeyboardKey.f10 &&
-                    HardwareKeyboard.instance.isShiftPressed) {
-              unawaited(_context(rows[_focused], rows));
+            final target = rows.isEmpty ? null : rows[_focused];
+            final revision = _cachedKey, selection = _selectionGeneration;
+            if (_contextMenuKeys.handle(
+              event,
+              target == null
+                  ? null
+                  : () {
+                      if (!mounted) return;
+                      final current = _rows();
+                      if (widget.active &&
+                          _focus.hasFocus &&
+                          _cachedKey == revision &&
+                          _selectionGeneration == selection &&
+                          _focused < current.length &&
+                          current[_focused].key == target.key) {
+                        unawaited(_context(target, current));
+                      }
+                    },
+            )) {
               return KeyEventResult.handled;
             }
+            if (event is! KeyDownEvent || rows.isEmpty)
+              return KeyEventResult.ignored;
             if (event.logicalKey == LogicalKeyboardKey.keyA &&
                 HardwareKeyboard.instance.isControlPressed) {
               setState(() {

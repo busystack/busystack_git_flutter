@@ -9,6 +9,7 @@ import 'session.dart';
 import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'native_table.dart';
+import 'context_menu_keys.dart';
 
 final class GitLogView extends StatefulWidget {
   const GitLogView({
@@ -38,6 +39,7 @@ final class _GitLogViewState extends State<GitLogView> {
   final _selectedIds = <GitOid>{};
   final _tableScroll = ScrollController();
   final _tableFocus = FocusNode(debugLabel: 'Git commits');
+  final _contextMenuKeys = GitContextMenuKeys();
   int _selectionAnchor = 0;
   GitOid? _parent;
   String? _reference, _anchor;
@@ -115,6 +117,7 @@ final class _GitLogViewState extends State<GitLogView> {
     _referenceRefresh?.cancel();
     widget.session.removeListener(_repositoryChanged);
     _tableScroll.dispose();
+    _contextMenuKeys.clear();
     _tableFocus.dispose();
     for (final c in [_message, _author, _path, _referenceSearch]) {
       c.dispose();
@@ -585,7 +588,29 @@ final class _GitLogViewState extends State<GitLogView> {
           onRequest: _nativeRequest,
           builder: (nativeReady) => Focus(
             focusNode: _tableFocus,
+            onFocusChange: (focused) {
+              if (!focused) _contextMenuKeys.clear();
+            },
             onKeyEvent: (_, event) {
+              final target = _selected, generation = _selectionGeneration;
+              final revision = _historyRevision;
+              if (_contextMenuKeys.handle(
+                event,
+                target == null
+                    ? null
+                    : () {
+                        if (mounted &&
+                            widget.active &&
+                            _tableFocus.hasFocus &&
+                            _historyRevision == revision &&
+                            _selectionGeneration == generation &&
+                            _selected?.oid == target.oid) {
+                          unawaited(_menu(target));
+                        }
+                      },
+              )) {
+                return KeyEventResult.handled;
+              }
               if (event is! KeyDownEvent || _commits.isEmpty)
                 return KeyEventResult.ignored;
               final index = _commits.indexWhere((e) => e.oid == _selected?.oid);
@@ -607,13 +632,6 @@ final class _GitLogViewState extends State<GitLogView> {
                       _tableScroll.position.maxScrollExtent,
                     ),
                   );
-                return KeyEventResult.handled;
-              }
-              if ((event.logicalKey == LogicalKeyboardKey.contextMenu ||
-                      event.logicalKey == LogicalKeyboardKey.f10 &&
-                          HardwareKeyboard.instance.isShiftPressed) &&
-                  _selected != null) {
-                unawaited(_menu(_selected!));
                 return KeyEventResult.handled;
               }
               return KeyEventResult.ignored;

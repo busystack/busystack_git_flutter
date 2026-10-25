@@ -250,6 +250,16 @@ void main() {
     final configured = GitHost(
       present: original.present,
       presentMenu: (_, entries, {position}) async {
+        expect(
+          HardwareKeyboard.instance.logicalKeysPressed.intersection({
+            LogicalKeyboardKey.f10,
+            LogicalKeyboardKey.contextMenu,
+            LogicalKeyboardKey.shiftLeft,
+            LogicalKeyboardKey.shiftRight,
+          }),
+          isEmpty,
+          reason: 'A native menu must not grab any trigger key-up events.',
+        );
         gitMenus++;
         expect(entries.map((e) => e.id), contains('Open snapshot'));
         return null;
@@ -292,6 +302,17 @@ void main() {
     await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
     await tester.pumpAndSettle();
     expect(gitMenus, 1);
+    await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+    await tester.pumpAndSettle();
+    expect(gitMenus, 2);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftRight);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.f10);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftRight);
+    await tester.pump();
+    expect(gitMenus, 2);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.f10);
+    await tester.pumpAndSettle();
+    expect(gitMenus, 3);
     expect(outsideMenus, 0);
     expect(find.text('b' * 40), findsOneWidget);
     expect(tester.takeException(), isNull);
