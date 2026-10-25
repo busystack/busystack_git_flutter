@@ -53,6 +53,10 @@ conflict editing labels the editable working result. Failed operations preserve
 user input, and closing a resolution view does not abort Git's operation.
 Revision panes use real IME-aware text fields, logical line-number gutters based
 on actual wrapped text geometry, undo and explicit read-only/editable roles.
+Git drafts use bounded application-owned undo through Flutter's public text
+actions. An immediate undo retains its redo, committed IME text is one edit,
+and cancelling preedit preserves the prior redo. No Flutter implementation or
+runtime is patched. Index undo never changes working files before explicit apply.
 Index and conflict editors disclose UTF-8 BOM state, line-ending format and a
 missing final LF. They review a BOM or newline-format change before applying it,
 including changes introduced by native clipboard text conversion. The reviewed

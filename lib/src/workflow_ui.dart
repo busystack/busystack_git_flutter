@@ -10,6 +10,7 @@ import 'conflict_view.dart';
 import 'rebase_view.dart';
 import 'host.dart';
 import 'session.dart';
+import 'text_undo.dart';
 
 /// Contextual entry points shared by the compact Commit area and full workspace.
 final class GitWorkflowUi {
@@ -260,17 +261,20 @@ final class _GitTextInputState extends State<_GitTextInput> {
           padding: EdgeInsets.only(bottom: widget.spacing),
           child: Text(widget.explanation!),
         ),
-      TextField(
+      GitTextUndo(
         controller: controller,
-        autofocus: true,
-        maxLines: widget.multiline ? 8 : 1,
-        decoration: InputDecoration(
-          labelText: widget.title,
-          border: const OutlineInputBorder(),
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: widget.multiline ? 8 : 1,
+          decoration: InputDecoration(
+            labelText: widget.title,
+            border: const OutlineInputBorder(),
+          ),
+          onSubmitted: widget.multiline
+              ? null
+              : (value) => Navigator.of(context).pop(value),
         ),
-        onSubmitted: widget.multiline
-            ? null
-            : (value) => Navigator.of(context).pop(value),
       ),
       const SizedBox(height: 12),
       Row(

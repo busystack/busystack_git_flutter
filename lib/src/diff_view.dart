@@ -1008,13 +1008,25 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
           child: Wrap(
             spacing: widget.session.host.spacing,
             children: [
-              TextButton(
-                onPressed: _saving ? null : _undo.undo,
-                child: const GitLabel('Undo'),
-              ),
-              TextButton(
-                onPressed: _saving ? null : _undo.redo,
-                child: const GitLabel('Redo'),
+              ListenableBuilder(
+                listenable: _undo,
+                builder: (context, _) => Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextButton(
+                      onPressed: _saving || !_undo.value.canUndo
+                          ? null
+                          : _undo.undo,
+                      child: const GitLabel('Undo'),
+                    ),
+                    TextButton(
+                      onPressed: _saving || !_undo.value.canRedo
+                          ? null
+                          : _undo.redo,
+                      child: const GitLabel('Redo'),
+                    ),
+                  ],
+                ),
               ),
               TextButton(
                 onPressed: _saving

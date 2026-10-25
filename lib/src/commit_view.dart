@@ -10,6 +10,7 @@ import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'native_table.dart';
 import 'operation_banner.dart';
+import 'text_undo.dart';
 
 final class GitCommitView extends StatefulWidget {
   const GitCommitView({
@@ -441,21 +442,24 @@ final class _GitCommitViewState extends State<GitCommitView> {
                         ),
                       ),
                     Expanded(
-                      child: TextField(
+                      child: GitTextUndo(
                         controller: _message,
-                        expands: true,
-                        maxLines: null,
-                        minLines: null,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: InputDecoration(
-                          labelText: gitString(context, 'Commit message'),
-                          alignLabelWithHint: true,
-                          border: OutlineInputBorder(),
+                        child: TextField(
+                          controller: _message,
+                          expands: true,
+                          maxLines: null,
+                          minLines: null,
+                          textAlignVertical: TextAlignVertical.top,
+                          decoration: InputDecoration(
+                            labelText: gitString(context, 'Commit message'),
+                            alignLabelWithHint: true,
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            session.setDraft(value);
+                            setState(() {});
+                          },
                         ),
-                        onChanged: (value) {
-                          session.setDraft(value);
-                          setState(() {});
-                        },
                       ),
                     ),
                     GitLabel(

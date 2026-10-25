@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'host.dart';
+import 'text_undo.dart';
 
 /// A revision pane with a real native text field and logical line numbers.
 /// The gutter measures the editable's actual caret geometry, including wrapping
@@ -182,28 +183,32 @@ final class _TextPaneState extends State<GitTextPane> {
                   ),
                   const VerticalDivider(width: 1),
                   Expanded(
-                    child: TextField(
-                      key: _fieldKey,
+                    child: GitTextUndo(
                       controller: _text,
-                      readOnly: widget.controller == null || widget.readOnly,
-                      undoController: widget.undoController,
-                      scrollController: _scroll,
-                      focusNode: widget.focusNode,
-                      expands: true,
-                      maxLines: null,
-                      onChanged: widget.onChanged,
-                      textAlignVertical: TextAlignVertical.top,
-                      style: style,
-                      decoration: InputDecoration(
-                        labelText: gitString(
-                          context,
-                          widget.semanticLabel ??
-                              (widget.controller == null
-                                  ? 'Read-only revision content'
-                                  : 'Editable index content'),
+                      history: widget.undoController,
+                      enabled: widget.controller != null && !widget.readOnly,
+                      child: TextField(
+                        key: _fieldKey,
+                        controller: _text,
+                        readOnly: widget.controller == null || widget.readOnly,
+                        scrollController: _scroll,
+                        focusNode: widget.focusNode,
+                        expands: true,
+                        maxLines: null,
+                        onChanged: widget.onChanged,
+                        textAlignVertical: TextAlignVertical.top,
+                        style: style,
+                        decoration: InputDecoration(
+                          labelText: gitString(
+                            context,
+                            widget.semanticLabel ??
+                                (widget.controller == null
+                                    ? 'Read-only revision content'
+                                    : 'Editable index content'),
+                          ),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.all(8),
                         ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.all(8),
                       ),
                     ),
                   ),
