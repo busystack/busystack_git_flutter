@@ -1,5 +1,8 @@
 # busystack_git_flutter
 
+The shared core requires Linux 5.3 or newer with process pidfds. Both applications
+ship its native supervisor and Git runtime; installed helpers use no SDK.
+
 Shared specialized desktop Git views for BusyMark and BusyFiles. Depends only
 on Flutter and the sibling `busystack_git` engine. Requires Flutter 3.47.5 or
 newer and Dart `>=3.12.1 <4.0.0` within the consuming application's approved
