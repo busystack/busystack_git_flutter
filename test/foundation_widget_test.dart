@@ -6,6 +6,36 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
 void main() {
+  testWidgets('failed processes expose exit status even without stderr', (
+    tester,
+  ) async {
+    for (final diagnostic in ['', 'Rebasing (1/6)']) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitFailurePanel(
+              key: ValueKey(diagnostic),
+              error: GitException(
+                GitErrorCode.commandFailed,
+                exitCode: 137,
+                diagnostic: diagnostic,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Diagnostics'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          diagnostic.isEmpty
+              ? 'Exit status: 137'
+              : 'Exit status: 137\nRebasing (1/6)',
+        ),
+        findsOneWidget,
+      );
+    }
+  });
   testWidgets(
     'file selection reviews without staging; explicit file action mutates the index',
     (tester) async {

@@ -460,6 +460,15 @@ final class GitFailurePanel extends StatelessWidget {
   final String? message;
   final VoidCallback? onRefresh;
   final VoidCallback? onAuthorize;
+  String _diagnostics(BuildContext context) => [
+    if (error.exitCode case final status?)
+      gitString(
+        context,
+        'Exit status: {status}',
+        values: {'status': '$status'},
+      ),
+    if (error.diagnostic.isNotEmpty) error.diagnostic,
+  ].join('\n');
   @override
   Widget build(BuildContext context) => MaterialBanner(
     leading: const GitIcon(GitGlyph.error),
@@ -500,10 +509,10 @@ final class GitFailurePanel extends StatelessWidget {
                 _ => 'Git operation failed: ${error.code.name}',
               },
         ),
-        if (error.diagnostic.isNotEmpty)
+        if (_diagnostics(context).isNotEmpty)
           ExpansionTile(
             title: const GitLabel('Diagnostics'),
-            children: [SelectableText(error.diagnostic)],
+            children: [SelectableText(_diagnostics(context))],
           ),
       ],
     ),
@@ -518,7 +527,7 @@ final class GitFailurePanel extends StatelessWidget {
       else
         TextButton(
           onPressed: () => Clipboard.setData(
-            ClipboardData(text: '${error.code.name}\n${error.diagnostic}'),
+            ClipboardData(text: '${error.code.name}\n${_diagnostics(context)}'),
           ),
           child: const GitLabel('Copy diagnostics'),
         ),
