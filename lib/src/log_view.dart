@@ -245,17 +245,83 @@ final class _GitLogViewState extends State<GitLogView> {
     host: widget.session.host,
     child: Builder(builder: _build),
   );
+  double _textWidth(String text, [TextStyle? style]) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: style ?? Theme.of(context).textTheme.bodyMedium,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width;
+  }
+
+  void _resetFilters() {
+    _message.clear();
+    _author.clear();
+    _path.clear();
+    _reference = null;
+    _since = _until = null;
+    unawaited(_load());
+  }
+
+  Future<void> _textFilter(
+    TextEditingController controller,
+    String title,
+  ) async {
+    final value = await gitTextInput(
+      context,
+      widget.session,
+      title,
+      initial: controller.text,
+    );
+    if (!mounted || value == null) return;
+    controller.text = value;
+    await _load();
+  }
+
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
-      final showBranches = _branches && bounds.maxWidth >= 1150;
-      final showDetails = _details && bounds.maxWidth >= 720;
+      final host = widget.session.host;
+      final tableMinimum = _textWidth('MMMMMMMMMMMMMMMMMMMMMMMM') + 40;
+      final detailMinimum =
+          _textWidth('MMMMMMMMMMMMMMMMMMMMMM') + host.spacing * 2;
+      final branchMinimum = _textWidth('MMMMMMMMMMMMMMMM');
+      final showDetails =
+          _details &&
+          bounds.maxWidth >=
+              (tableMinimum + detailMinimum + 6).clamp(720.0, double.infinity);
+      final canShowBranches =
+          bounds.maxWidth >=
+          (branchMinimum +
+                  tableMinimum +
+                  (showDetails ? detailMinimum : 0) +
+                  12)
+              .clamp(1150.0, double.infinity);
+      final showBranches = _branches && canShowBranches;
+      final compact =
+          bounds.maxWidth <
+              _textWidth(
+                'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
+              ) &&
+          bounds.maxHeight < host.rowHeight(context) * 16;
+      final activeFilters = [
+        _message.text,
+        _author.text,
+        _path.text,
+        if (_since != null || _until != null) 'date',
+      ].where((value) => value.isNotEmpty).length;
       Widget main = _commitTable();
       if (showDetails)
         main = GitSplitter(
           first: main,
           second: _detailPane(),
           initial: .64,
-          minimum: 220,
+          minimum: tableMinimum,
+          minimumSecond: detailMinimum,
           value: widget.session.split('logDetailsSplit', .64),
           onChanged: (v) => widget.session.setViewState('logDetailsSplit', v),
         );
@@ -264,7 +330,8 @@ final class _GitLogViewState extends State<GitLogView> {
           first: _branchPane(),
           second: main,
           initial: .20,
-          minimum: 160,
+          minimum: branchMinimum,
+          minimumSecond: tableMinimum + (showDetails ? detailMinimum : 0),
           value: widget.session.split('logBranchesSplit', .20),
           onChanged: (v) => widget.session.setViewState('logBranchesSplit', v),
         );
@@ -278,56 +345,82 @@ final class _GitLogViewState extends State<GitLogView> {
                   spacing: widget.session.host.spacing,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    SizedBox(
-                      width: 200,
-                      child: TextField(
-                        controller: _message,
-                        decoration: InputDecoration(
-                          labelText: gitString(context, 'Message'),
-                          isDense: true,
+                    if (compact)
+                      GitMenuButton(
+                        host: host,
+                        tooltip: 'Filter Log',
+                        child: GitLabel(
+                          activeFilters == 0
+                              ? 'Filters…'
+                              : 'Filters ({count})…',
+                          values: {'count': activeFilters},
                         ),
-                        onSubmitted: (_) => unawaited(_load()),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 160,
-                      child: TextField(
-                        controller: _author,
-                        decoration: InputDecoration(
-                          labelText: gitString(context, 'Author'),
-                          isDense: true,
+                        entries: const [
+                          GitMenuEntry('message', 'Message…'),
+                          GitMenuEntry('author', 'Author…'),
+                          GitMenuEntry('path', 'Path…'),
+                          GitMenuEntry('date', 'Date…'),
+                        ],
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'message':
+                              unawaited(
+                                _textFilter(_message, 'Message filter'),
+                              );
+                            case 'author':
+                              unawaited(_textFilter(_author, 'Author filter'));
+                            case 'path':
+                              unawaited(_textFilter(_path, 'Path filter'));
+                            case 'date':
+                              unawaited(_dates());
+                          }
+                        },
+                      )
+                    else ...[
+                      SizedBox(
+                        width: 200,
+                        child: TextField(
+                          controller: _message,
+                          decoration: InputDecoration(
+                            labelText: gitString(context, 'Message'),
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => unawaited(_load()),
                         ),
-                        onSubmitted: (_) => unawaited(_load()),
                       ),
-                    ),
-                    SizedBox(
-                      width: 180,
-                      child: TextField(
-                        controller: _path,
-                        decoration: InputDecoration(
-                          labelText: gitString(context, 'Path'),
-                          isDense: true,
+                      SizedBox(
+                        width: 160,
+                        child: TextField(
+                          controller: _author,
+                          decoration: InputDecoration(
+                            labelText: gitString(context, 'Author'),
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => unawaited(_load()),
                         ),
-                        onSubmitted: (_) => unawaited(_load()),
                       ),
-                    ),
+                      SizedBox(
+                        width: 180,
+                        child: TextField(
+                          controller: _path,
+                          decoration: InputDecoration(
+                            labelText: gitString(context, 'Path'),
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => unawaited(_load()),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => unawaited(_dates()),
+                        child: Text(
+                          _since == null && _until == null
+                              ? 'Date…'
+                              : 'Date filter…',
+                        ),
+                      ),
+                    ],
                     TextButton(
-                      onPressed: () => unawaited(_dates()),
-                      child: Text(
-                        _since == null && _until == null
-                            ? 'Date…'
-                            : 'Date filter…',
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        _message.clear();
-                        _author.clear();
-                        _path.clear();
-                        _reference = null;
-                        _since = _until = null;
-                        unawaited(_load());
-                      },
+                      onPressed: _resetFilters,
                       child: const GitLabel('Reset filters'),
                     ),
                     GitIconButton(
@@ -335,10 +428,17 @@ final class _GitLogViewState extends State<GitLogView> {
                       onPressed: _loading ? null : () => unawaited(_load()),
                       icon: const GitIcon(GitGlyph.refresh),
                     ),
-                    TextButton(
-                      onPressed: () => unawaited(_goto()),
-                      child: const GitLabel('Go to commit/reference…'),
-                    ),
+                    if (compact)
+                      GitIconButton(
+                        tooltip: 'Go to commit/reference…',
+                        onPressed: () => unawaited(_goto()),
+                        icon: const GitIcon(GitGlyph.search),
+                      )
+                    else
+                      TextButton(
+                        onPressed: () => unawaited(_goto()),
+                        child: const GitLabel('Go to commit/reference…'),
+                      ),
                     TextButton(
                       onPressed: () =>
                           unawaited(_navigate('HEAD', reload: true)),
@@ -378,10 +478,10 @@ final class _GitLogViewState extends State<GitLogView> {
                         ),
                       ),
                     GitIconButton(
-                      tooltip: bounds.maxWidth >= 1150
+                      tooltip: canShowBranches
                           ? 'Toggle branches pane'
                           : 'Filter branches and tags',
-                      onPressed: bounds.maxWidth >= 1150
+                      onPressed: canShowBranches
                           ? () => setState(() => _branches = !_branches)
                           : () => unawaited(_showBranchFilter()),
                       icon: const GitIcon(GitGlyph.branch),
@@ -398,6 +498,24 @@ final class _GitLogViewState extends State<GitLogView> {
                       ),
                   ],
                 ),
+                if (compact && activeFilters > 0)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      [
+                        if (_message.text.isNotEmpty)
+                          '${gitString(context, 'Message')}: ${_message.text}',
+                        if (_author.text.isNotEmpty)
+                          '${gitString(context, 'Author')}: ${_author.text}',
+                        if (_path.text.isNotEmpty)
+                          '${gitString(context, 'Path')}: ${_path.text}',
+                        if (_since != null || _until != null)
+                          gitString(context, 'Date filter…'),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                 if (_reference != null)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -524,9 +642,26 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     return LayoutBuilder(
       builder: (context, bounds) {
-        final showAuthor = bounds.maxWidth >= 650,
-            showDate = bounds.maxWidth >= 850;
-        final showId = bounds.maxWidth >= 430;
+        final spacing = widget.session.host.spacing;
+        final subjectMinimum = _textWidth('MMMMMMMMMMMMMMMM') + 40;
+        final authorWidth = _textWidth('MMMMMMMMMMMM') + spacing * 2;
+        final dateWidth =
+            _textWidth('2000-12-31', Theme.of(context).textTheme.bodySmall) +
+            spacing * 2;
+        final idTextWidth = _textWidth(
+          'ffffffffffff',
+          Theme.of(context).textTheme.bodySmall,
+        );
+        final idTitleWidth = _textWidth(gitString(context, 'Object ID'));
+        final idWidth =
+            (idTextWidth > idTitleWidth ? idTextWidth : idTitleWidth) +
+            spacing * 2;
+        final showId = bounds.maxWidth >= subjectMinimum + idWidth;
+        final showAuthor =
+            bounds.maxWidth >= subjectMinimum + idWidth + authorWidth;
+        final showDate =
+            bounds.maxWidth >=
+            subjectMinimum + idWidth + authorWidth + dateWidth;
         final columns = [
           gitString(context, 'Subject / references'),
           if (showAuthor) gitString(context, 'Author'),
@@ -545,12 +680,12 @@ final class _GitLogViewState extends State<GitLogView> {
           headerInsets: [40, for (var i = 1; i < columns.length; i++) 0],
           widths: [
             bounds.maxWidth -
-                (showAuthor ? 120 : 0) -
-                (showDate ? 92 : 0) -
-                (showId ? 96 : 0),
-            if (showAuthor) 120,
-            if (showDate) 92,
-            if (showId) 96,
+                (showAuthor ? authorWidth : 0) -
+                (showDate ? dateWidth : 0) -
+                (showId ? idWidth : 0),
+            if (showAuthor) authorWidth,
+            if (showDate) dateWidth,
+            if (showId) idWidth,
           ],
           rowAt: (index) {
             final commit = _commits[index];
@@ -664,31 +799,45 @@ final class _GitLogViewState extends State<GitLogView> {
                                       role: SemanticsRole.columnHeader,
                                       child: const GitLabel(
                                         'Subject / references',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ),
                                   if (showAuthor)
                                     SizedBox(
-                                      width: 120,
+                                      width: authorWidth,
                                       child: Semantics(
                                         role: SemanticsRole.columnHeader,
-                                        child: const GitLabel('Author'),
+                                        child: const GitLabel(
+                                          'Author',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ),
                                   if (showDate)
                                     SizedBox(
-                                      width: 92,
+                                      width: dateWidth,
                                       child: Semantics(
                                         role: SemanticsRole.columnHeader,
-                                        child: const GitLabel('Date'),
+                                        child: const GitLabel(
+                                          'Date',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ),
                                   if (showId)
                                     SizedBox(
-                                      width: 96,
+                                      width: idWidth,
                                       child: Semantics(
                                         role: SemanticsRole.columnHeader,
-                                        child: const GitLabel('Object ID'),
+                                        child: const GitLabel(
+                                          'Object ID',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     ),
                                 ],
@@ -755,7 +904,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                     ),
                                     if (showAuthor)
                                       SizedBox(
-                                        width: 120,
+                                        width: authorWidth,
                                         child: Semantics(
                                           role: SemanticsRole.cell,
                                           child: Text(
@@ -767,7 +916,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                       ),
                                     if (showDate)
                                       SizedBox(
-                                        width: 92,
+                                        width: dateWidth,
                                         child: Semantics(
                                           role: SemanticsRole.cell,
                                           child: Text(
@@ -775,6 +924,8 @@ final class _GitLogViewState extends State<GitLogView> {
                                                 .toLocal()
                                                 .toString()
                                                 .substring(0, 10),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: Theme.of(
                                               context,
                                             ).textTheme.bodySmall,
@@ -783,11 +934,13 @@ final class _GitLogViewState extends State<GitLogView> {
                                       ),
                                     if (showId)
                                       SizedBox(
-                                        width: 96,
+                                        width: idWidth,
                                         child: Semantics(
                                           role: SemanticsRole.cell,
                                           child: Text(
                                             commit.oid.abbreviated,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: Theme.of(
                                               context,
                                             ).textTheme.bodySmall,

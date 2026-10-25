@@ -1,5 +1,6 @@
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:busystack_git_flutter/src/native_table.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -211,4 +212,61 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+  testWidgets('enlarged Log keeps readable columns and focused filters', (
+    tester,
+  ) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final client = FixtureClient()
+      ..historyCommits = [
+        GitCommit(
+          oid: GitOid('a' * 40),
+          parents: const [],
+          subject: 'Reviewed writing',
+          author: 'Fixture author',
+          email: 'fixture@example.invalid',
+          date: DateTime.utc(2026),
+        ),
+      ];
+    final session = GitSession(client: client, repository: repo, host: host());
+    addTearDown(session.dispose);
+    await session.start();
+    await scaled(tester, GitLogView(session: session), const Size(900, 500));
+    final table = tester.widget<GitNativeTable>(find.byType(GitNativeTable));
+    final objectColumn = table.columns.indexOf('Object ID');
+    expect(objectColumn, greaterThanOrEqualTo(0));
+    final measure = TextPainter(
+      text: TextSpan(
+        text: 'ffffffffffff',
+        style: Theme.of(
+          tester.element(find.byType(GitLogView)),
+        ).textTheme.bodySmall,
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: TextScaler.linear(2),
+    )..layout();
+    expect(table.widths[objectColumn], greaterThanOrEqualTo(measure.width));
+    measure.dispose();
+    expect(
+      tester.getSize(find.byType(GitNativeTable)).height,
+      greaterThan(200),
+    );
+    expect(find.byType(TextField).hitTestable(), findsNothing);
+    await tester.tap(find.byTooltip('Filter Log'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Message…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'reviewed subject');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(client.historyFilters.last.message, 'reviewed subject');
+    expect(find.text('Filters (1)…'), findsOneWidget);
+    expect(client.mutations, isEmpty);
+    await tester.tap(find.text('Reset filters'));
+    await tester.pumpAndSettle();
+    expect(client.historyFilters.last.message, isEmpty);
+    expect(find.text('Filters…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
 }
