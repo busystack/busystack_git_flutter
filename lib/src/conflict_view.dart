@@ -187,7 +187,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   final reviewedRegions = <int>{};
   List<_MergeRegion> regions = [];
   int activeRegion = 0;
-  bool saved = false, _draftDirty = false;
+  bool saved = false, _draftDirty = false, _readingVersions = false;
+  int _versionGeneration = 0;
+  bool get _busy => loading || _readingVersions || session.running;
   int _anchorRevision = 0;
   int? _resultAnchor;
   @override
@@ -198,6 +200,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
 
   @override
   void dispose() {
+    _versionGeneration++;
     result.dispose();
     undo.dispose();
     resultFocus.dispose();
@@ -216,34 +219,50 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         ))
       return;
     if (!mounted) return;
-    await load(GitInspection(GitInspectionKind.conflict, path: widget.path));
-    if (!mounted || data == null || error != null) return;
+    final current = ++_versionGeneration;
+    final previousData = data;
+    setState(() => _readingVersions = true);
     try {
-      final state = await session.readStatus();
+      await load(GitInspection(GitInspectionKind.conflict, path: widget.path));
+      if (!mounted ||
+          current != _versionGeneration ||
+          data == null ||
+          error != null)
+        return;
+      final inspected = data!, token = cancellation;
+      // Metadata and source panes become visible together, after all content
+      // identities have been reconciled. Keep the previous review intact while
+      // the next one is loading.
+      setState(() => data = previousData);
+      final state = await session.readStatus(cancellation: token);
       final versions = await Future.wait([
         for (final stage in [2, 1, 3])
           session.client.content(
             session.repository,
             widget.path,
             ContentVersion(ContentKind.conflictStage, stage: stage),
+            cancellation: token,
           ),
         session.client.content(
           session.repository,
           widget.path,
           const ContentVersion.working(),
+          cancellation: token,
         ),
         session.client.content(
           session.repository,
           widget.path,
           const ContentVersion(ContentKind.mergePreview),
+          cancellation: token,
         ),
       ]);
-      final after = await session.readStatus();
-      final stages = data!['stages'] as Json;
+      final after = await session.readStatus(cancellation: token);
+      if (!mounted || current != _versionGeneration) return;
+      final stages = inspected['stages'] as Json;
       if (state.token != after.token ||
-          (data!['working'] as Json)['token'] != versions[3].token ||
-          data!['leftRevision'] != state.operation.head?.value ||
-          data!['rightRevision'] != state.operation.other?.value) {
+          (inspected['working'] as Json)['token'] != versions[3].token ||
+          inspected['leftRevision'] != state.operation.head?.value ||
+          inspected['rightRevision'] != state.operation.other?.value) {
         throw const GitException(GitErrorCode.staleReview);
       }
       for (var i = 0; i < 3; i++) {
@@ -258,15 +277,16 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       final leftText = versions[0].text ?? '',
           rightText = versions[2].text ?? '',
           previewText = versions[4].text ?? '',
-          marker = data!['marker'] as String;
+          marker = inspected['marker'] as String;
       final alignedRegions = await _backgroundRegions(
         leftText,
         rightText,
         previewText,
         marker,
       );
-      if (!mounted) return;
+      if (!mounted || current != _versionGeneration) return;
       setState(() {
+        data = inspected;
         left = versions[0];
         base = versions[1];
         right = versions[2];
@@ -277,13 +297,26 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         activeRegion = 0;
         result.regions = regions;
         result.activeRegion = 0;
-        result.text = working!.text ?? '';
+        final savedText = working!.text ?? '';
+        if (result.text != savedText) result.text = savedText;
         reviewedRegions.clear();
         saved = false;
         _draftDirty = false;
       });
-    } on GitException catch (failure) {
-      if (mounted) setState(() => error = failure);
+    } on Object catch (failure) {
+      if (mounted && current == _versionGeneration) {
+        setState(
+          () => error = failure is GitException
+              ? failure
+              : GitException(
+                  GitErrorCode.disconnected,
+                  diagnostic: sanitizeGitDiagnostic('$failure'),
+                ),
+        );
+      }
+    } finally {
+      if (mounted && current == _versionGeneration)
+        setState(() => _readingVersions = false);
     }
   }
 
@@ -302,6 +335,10 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         states(refresh: () => unawaited(refresh())),
+        if (_readingVersions && !loading)
+          LinearProgressIndicator(
+            semanticsLabel: gitString(context, 'Loading conflict versions…'),
+          ),
         Text('${widget.path.display} · ${data?['kind'] ?? 'Loading conflict'}'),
         if (data != null)
           Wrap(
@@ -321,14 +358,14 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 const GitLabel('No base entry for this conflict'),
               if (text)
                 TextButton(
-                  onPressed: loading
+                  onPressed: _busy
                       ? null
                       : () => unawaited(acceptWhole(ConflictChoice.left)),
                   child: const GitLabel('Accept entire left file…'),
                 ),
               if (text)
                 TextButton(
-                  onPressed: loading
+                  onPressed: _busy
                       ? null
                       : () => unawaited(acceptWhole(ConflictChoice.right)),
                   child: const GitLabel('Accept entire right file…'),
@@ -342,12 +379,12 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             children: [
               GitIconButton(
                 tooltip: 'Previous conflict region',
-                onPressed: regions.isEmpty ? null : () => navigate(-1),
+                onPressed: _busy || regions.isEmpty ? null : () => navigate(-1),
                 icon: const GitIcon(GitGlyph.up),
               ),
               GitIconButton(
                 tooltip: 'Next conflict region',
-                onPressed: regions.isEmpty ? null : () => navigate(1),
+                onPressed: _busy || regions.isEmpty ? null : () => navigate(1),
                 icon: const GitIcon(GitGlyph.down),
               ),
               Text(
@@ -362,21 +399,25 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                   'Source alignment exceeded the text comparison limit; source panes remain available for manual review.',
                 ),
               TextButton(
-                onPressed: regions.isEmpty ? null : () => acceptRegion(true),
+                onPressed: _busy || regions.isEmpty
+                    ? null
+                    : () => acceptRegion(true),
                 child: const GitLabel('Accept left region'),
               ),
               TextButton(
-                onPressed: regions.isEmpty ? null : () => acceptRegion(false),
+                onPressed: _busy || regions.isEmpty
+                    ? null
+                    : () => acceptRegion(false),
                 child: const GitLabel('Accept right region'),
               ),
               TextButton(
-                onPressed: regions.isEmpty
+                onPressed: _busy || regions.isEmpty
                     ? null
                     : () => setState(() => reviewedRegions.add(activeRegion)),
                 child: const GitLabel('Keep manual result for region'),
               ),
               TextButton(
-                onPressed: preview?.text == null
+                onPressed: _busy || preview?.text == null
                     ? null
                     : () async {
                         if (!await gitConfirm(
@@ -447,13 +488,13 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             spacing: session.host.spacing,
             children: [
               OutlinedButton(
-                onPressed: loading || error != null || reviewed == null
+                onPressed: _busy || error != null || reviewed == null
                     ? null
                     : () => unawaited(save(false)),
                 child: const GitLabel('Save result draft'),
               ),
               FilledButton(
-                onPressed: loading || error != null || reviewed == null
+                onPressed: _busy || error != null || reviewed == null
                     ? null
                     : () => unawaited(save(true)),
                 child: const GitLabel('Apply result and stage resolution'),
@@ -468,7 +509,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     label: gitString(context, 'Result · editable UTF-8 working content'),
     semanticLabel: 'Editable conflict result',
     controller: result,
-    readOnly: loading || session.running,
+    readOnly: _busy,
     undoController: undo,
     focusNode: resultFocus,
     scrollController: scroll,
@@ -495,7 +536,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           ConflictChoice.delete,
         ])
           TextButton(
-            onPressed: loading ? null : () => unawaited(acceptWhole(choice)),
+            onPressed: _busy ? null : () => unawaited(acceptWhole(choice)),
             child: Text(switch (choice) {
               ConflictChoice.left => 'Use entire left content…',
               ConflictChoice.right => 'Use entire right content…',
@@ -504,7 +545,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           ),
         if (data?['kind'] == 'submodule')
           TextButton(
-            onPressed: loading
+            onPressed: _busy
                 ? null
                 : () async {
                     final value = await gitTextInput(

@@ -126,6 +126,11 @@ void main() {
       const pasted = 'Manual prose\n';
       await tester.enterText(field, pasted);
       await tester.tap(find.text('Save result draft'));
+      // The refreshed merge regions run in a real isolate. Keep the real
+      // event loop moving before settling the now-visible loading state.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
       await tester.pumpAndSettle();
       expect(client.mutations, isEmpty);
       expect(
@@ -137,8 +142,18 @@ void main() {
       expect(tester.widget<TextField>(field).controller!.text, pasted);
       expect(client.mutations, isEmpty);
       await tester.tap(find.text('Save result draft'));
+      // The refreshed merge regions run in a real isolate. Keep the real
+      // event loop moving before settling the now-visible loading state.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save reviewed result'));
+      // The refreshed merge regions run in a real isolate. Keep the real
+      // event loop moving before settling the now-visible loading state.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 200)),
+      );
       await tester.pumpAndSettle();
       expect(
         (client.mutations.single as ResolveConflict).bytes,
@@ -194,6 +209,11 @@ void main() {
         final edited = '${removeBom ? '' : '\uFEFF'}Manual prose\r\n';
         await tester.enterText(editable, edited);
         await tester.tap(find.text('Save result draft'));
+        // The refreshed merge regions run in a real isolate. Keep the real
+        // event loop moving before settling the now-visible loading state.
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
         await tester.pumpAndSettle();
         if (removeBom) {
           expect(client.mutations, isEmpty);
@@ -206,8 +226,18 @@ void main() {
           expect(tester.widget<TextField>(editable).controller!.text, edited);
           expect(client.mutations, isEmpty);
           await tester.tap(find.text('Save result draft'));
+          // The refreshed merge regions run in a real isolate. Keep the real
+          // event loop moving before settling the now-visible loading state.
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 200)),
+          );
           await tester.pumpAndSettle();
           await tester.tap(find.text('Save reviewed result'));
+          // The refreshed merge regions run in a real isolate. Keep the real
+          // event loop moving before settling the now-visible loading state.
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 200)),
+          );
           await tester.pumpAndSettle();
         }
         final request = client.mutations.single as ResolveConflict;

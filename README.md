@@ -58,6 +58,8 @@ conflict editing labels the editable working result. Failed operations preserve
 user input, and closing a resolution view does not abort Git's operation.
 Asynchronous completion dismisses only its owning surface; closing an editor
 while Git finishes cannot close its parent review or a newer dialog.
+Conflict metadata, contents and staging preconditions refresh as one review;
+editing stays unavailable during that read, and saving retains the caret.
 Revision panes use real IME-aware text fields, logical line-number gutters based
 on actual wrapped text geometry, undo and explicit read-only/editable roles.
 Git drafts use bounded application-owned undo through Flutter's public text
