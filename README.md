@@ -56,6 +56,8 @@ Commit selection is the real Git index. Clicking a file reviews it; explicit
 file/hunk/line actions stage it. Index editing labels the editable index result;
 conflict editing labels the editable working result. Failed operations preserve
 user input, and closing a resolution view does not abort Git's operation.
+Asynchronous completion dismisses only its owning surface; closing an editor
+while Git finishes cannot close its parent review or a newer dialog.
 Revision panes use real IME-aware text fields, logical line-number gutters based
 on actual wrapped text geometry, undo and explicit read-only/editable roles.
 Git drafts use bounded application-owned undo through Flutter's public text

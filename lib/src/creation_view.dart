@@ -184,7 +184,7 @@ final class _CreationState extends State<GitCreationView> {
           result.repository != null) {
         // Close this repository-bound surface before a host changes folders.
         // Its caller opens the result after the presentation future completes.
-        Navigator.of(context).pop(result.repository!);
+        gitCompleteSurface(context, result.repository!);
       }
     } on Object catch (failure) {
       if (mounted)

@@ -673,7 +673,7 @@ final class _FetchState extends GitDialogState<GitFetchView> {
                   ),
                 );
                 if (mounted && result?.completed == true)
-                  Navigator.of(context).pop();
+                  gitCompleteSurface(context);
               },
         child: const GitLabel('Fetch'),
       ),
@@ -933,7 +933,7 @@ final class _PullState extends GitDialogState<GitPullView> {
                     result != null &&
                     (result.completed ||
                         result.phase == GitOperationPhase.stopped))
-                  Navigator.of(context).pop();
+                  gitCompleteSurface(context);
               },
         child: const GitLabel('Pull with selected strategy'),
       ),

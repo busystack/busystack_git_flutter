@@ -675,7 +675,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     );
     if (!mounted || outcome == null || outcome.error != null) return;
     if (stage) {
-      Navigator.of(context).pop();
+      gitCompleteSurface(context);
     } else {
       await refresh(replaceSavedDraft: true);
       if (mounted) setState(() => saved = true);

@@ -10,6 +10,23 @@ typedef GitPresentSurface =
       bool expanded,
     });
 
+/// Complete the surface that owns this view, including while another modal is
+/// above it. A dismissed route can remain mounted during its closing animation;
+/// completing its operation must never pop the newly current parent route.
+/// Views embedded in the application's first route stay open.
+void gitCompleteSurface<T>(BuildContext context, [T? result]) {
+  if (!context.mounted) return;
+  final route = ModalRoute.of(context);
+  if (route == null || !route.isActive || route.isFirst) return;
+  final navigator = route.navigator;
+  if (navigator == null) return;
+  if (route.isCurrent) {
+    navigator.pop<T>(result);
+  } else {
+    navigator.removeRoute(route, result);
+  }
+}
+
 final class GitMenuEntry {
   const GitMenuEntry(
     this.id,

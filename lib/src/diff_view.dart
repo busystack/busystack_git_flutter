@@ -1256,7 +1256,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     );
     if (!mounted) return;
     if (result?.completed == true)
-      Navigator.of(context).pop();
+      gitCompleteSurface(context);
     else
       setState(() {
         _failure = result?.error;
