@@ -110,7 +110,6 @@ final class _GitCommitViewState extends State<GitCommitView> {
       if (bounds.maxWidth < 1 || bounds.maxHeight < 1) return const SizedBox();
       final width = bounds.maxWidth.clamp(220.0, double.infinity);
       final minimumHeight = _minimumHeight(context, width);
-      final panel = _panel(context);
       return ClipRect(
         child: OverflowBox(
           alignment: Alignment.topLeft,
@@ -119,10 +118,26 @@ final class _GitCommitViewState extends State<GitCommitView> {
           minHeight: bounds.maxHeight,
           maxHeight: bounds.maxHeight,
           child: bounds.maxHeight < minimumHeight
-              ? SingleChildScrollView(
-                  child: SizedBox(height: minimumHeight, child: panel),
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: SizedBox(
+                          height: minimumHeight,
+                          child: _panel(context, includeActions: false),
+                        ),
+                      ),
+                    ),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxHeight: bounds.maxHeight),
+                      child: SingleChildScrollView(
+                        child: _actions(stagedCount),
+                      ),
+                    ),
+                  ],
                 )
-              : panel,
+              : _panel(context),
         ),
       );
     },
@@ -130,11 +145,17 @@ final class _GitCommitViewState extends State<GitCommitView> {
   double _minimumHeight(BuildContext context, double width) {
     final row = host.rowHeight(context), spacing = host.spacing;
     final theme = Theme.of(context).textTheme;
-    double height(String text, TextStyle? style, double available) {
+    double height(
+      String text,
+      TextStyle? style,
+      double available, {
+      int? maxLines,
+    }) {
       final painter = TextPainter(
         text: TextSpan(text: gitString(context, text), style: style),
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
+        maxLines: maxLines,
       )..layout(maxWidth: available.clamp(24.0, double.infinity));
       final result = painter.height;
       painter.dispose();
@@ -168,7 +189,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
         row +
         spacing * 2 +
         height('Commit scope: entire repository', theme.bodySmall, inner) +
-        height(session.repository.root, theme.bodySmall, inner) +
+        height(session.repository.root, theme.bodySmall, inner, maxLines: 1) +
         (session.snapshot?.upstream == null ? 0 : row * 2) +
         (widget.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
@@ -194,9 +215,11 @@ final class _GitCommitViewState extends State<GitCommitView> {
         (session.failure == null ? 0 : row * 4);
   }
 
-  Widget _panel(BuildContext context) {
+  int get stagedCount =>
+      session.snapshot?.changes.where((e) => e.staged).length ?? 0;
+
+  Widget _panel(BuildContext context, {bool includeActions = true}) {
     final snapshot = session.snapshot;
-    final staged = snapshot?.changes.where((e) => e.staged).length ?? 0;
     return FocusTraversalGroup(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -469,34 +492,32 @@ final class _GitCommitViewState extends State<GitCommitView> {
                 ],
               ),
             ),
-          Padding(
-            padding: EdgeInsets.all(host.spacing),
-            child: Wrap(
-              spacing: host.spacing,
-              runSpacing: host.spacing,
-              children: [
-                FilledButton(
-                  onPressed: _canCommit()
-                      ? () => unawaited(_commit(false))
-                      : null,
-                  child: GitLabel(
-                    _amend ? 'Amend staged' : 'Commit staged ({count})',
-                    values: {'count': staged},
-                  ),
-                ),
-                OutlinedButton(
-                  onPressed: _canCommit()
-                      ? () => unawaited(_commit(true))
-                      : null,
-                  child: const GitLabel('Commit and Push…'),
-                ),
-              ],
-            ),
-          ),
+          if (includeActions) _actions(stagedCount),
         ],
       ),
     );
   }
+
+  Widget _actions(int staged) => Padding(
+    padding: EdgeInsets.all(host.spacing),
+    child: Wrap(
+      spacing: host.spacing,
+      runSpacing: host.spacing,
+      children: [
+        FilledButton(
+          onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
+          child: GitLabel(
+            _amend ? 'Amend staged' : 'Commit staged ({count})',
+            values: {'count': staged},
+          ),
+        ),
+        OutlinedButton(
+          onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
+          child: const GitLabel('Commit and Push…'),
+        ),
+      ],
+    ),
+  );
 
   void _options(String option) {
     switch (option) {

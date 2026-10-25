@@ -566,6 +566,65 @@ void main() {
   );
 
   testWidgets(
+    'long repository identities cannot scroll enlarged commit actions out of view',
+    (tester) async {
+      final repository = RepositoryId(
+        root:
+            '/fixture/${List.filled(12, 'Long Unicode repository 日本語').join('/')}',
+        gitDir: '/fixture/.git',
+        commonDir: '/fixture/.git',
+        objectFormat: 'sha1',
+      );
+      final session = GitSession(
+        client: FixtureClient(),
+        repository: repository,
+        host: host(),
+      );
+      await session.start();
+      session.setDraft('Review selected prose');
+      for (final scale in [1.0, 1.5, 2.0]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: MediaQuery(
+                data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 400,
+                    height: 600,
+                    child: GitCommitView(
+                      session: session,
+                      onReview: (_) {},
+                      onLog: () {},
+                      onBranches: () {},
+                      onPush: () {},
+                      onMore: (_) {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final surface = tester.getRect(find.byType(GitCommitView));
+        final primary = tester.getRect(find.byType(FilledButton));
+        expect(
+          primary.bottom,
+          lessThanOrEqualTo(surface.bottom),
+          reason: 'text scale $scale',
+        );
+        expect(find.byType(FilledButton).hitTestable(), findsOneWidget);
+        expect(session.draft, 'Review selected prose');
+        expect(tester.takeException(), isNull);
+      }
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'collapsed and enlarged Commit layouts retain the draft without overflow',
     (tester) async {
       final session = GitSession(
@@ -607,6 +666,25 @@ void main() {
         await tester.pumpAndSettle();
         expect(session.draft, 'retained message');
         expect(tester.takeException(), isNull, reason: '$size');
+        if (size != Size.zero) {
+          final surface = tester.getRect(find.byType(GitCommitView));
+          final primary = tester.getRect(find.byType(FilledButton));
+          expect(
+            primary.top,
+            greaterThanOrEqualTo(surface.top),
+            reason: '$size',
+          );
+          expect(
+            primary.bottom,
+            lessThanOrEqualTo(surface.bottom),
+            reason: '$size',
+          );
+          expect(
+            find.byType(FilledButton).hitTestable(),
+            findsOneWidget,
+            reason: '$size',
+          );
+        }
       }
       await tester.pumpWidget(const SizedBox());
       session.dispose();
