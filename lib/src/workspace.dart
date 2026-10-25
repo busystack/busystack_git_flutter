@@ -29,6 +29,8 @@ final class GitWorkspace extends StatefulWidget {
 final class _GitWorkspaceState extends State<GitWorkspace> {
   bool _log = false;
   bool _logVisited = false;
+  bool _compactReview = false;
+  final _commitKey = GlobalKey(), _diffKey = GlobalKey();
   GitComparison? _comparison;
   VoidCallback? _navigate(int direction) {
     final targets = gitStatusComparisons(widget.session.snapshot);
@@ -44,7 +46,38 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
     host: widget.session.host,
     child: Builder(builder: _build),
   );
-  Widget _build(BuildContext context) => Column(
+  Widget _build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) {
+      final host = widget.session.host;
+      final row = host.rowHeight(context);
+      final measure = TextPainter(
+        text: TextSpan(
+          text: '000000000000000000000000000000000000',
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final minimumCommit = row * 9;
+      final minimumReview = measure.width * 2 + host.spacing * 4;
+      measure.dispose();
+      return _workspace(
+        context,
+        bounds.maxWidth < minimumCommit + minimumReview + host.spacing,
+        minimumCommit,
+        minimumReview,
+      );
+    },
+  );
+
+  Widget _workspace(
+    BuildContext context,
+    bool compact,
+    double minimumCommit,
+    double minimumReview,
+  ) => Column(
     children: [
       ListenableBuilder(
         listenable: widget.session,
@@ -61,7 +94,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                 Expanded(
                   child: Tooltip(
                     message: widget.session.repository.root,
-                    child: _log
+                    child: _log || compact && _compactReview
                         ? Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -101,11 +134,13 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                   onSelectionChanged: (s) => setState(() {
                     _log = s.single;
                     _logVisited |= _log;
+                    _compactReview = false;
                   }),
                 ),
               ],
             ),
-            if (_log) GitOperationBanner(session: widget.session),
+            if (_log || compact && _compactReview)
+              GitOperationBanner(session: widget.session),
           ],
         ),
       ),
@@ -120,51 +155,61 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                 excluding: _log,
                 child: ExcludeSemantics(
                   excluding: _log,
-                  child: GitSplitter(
-                    initial: .28,
-                    minimum: 220,
-                    value: widget.session.split('workspaceSplit', .28),
-                    onChanged: (v) =>
-                        widget.session.setViewState('workspaceSplit', v),
-                    first: GitCommitView(
-                      active: !_log,
-                      reviewContext: () => (_log, _comparison),
-                      session: widget.session,
-                      selectedComparison: _comparison,
-                      onReview: (comparison) =>
-                          setState(() => _comparison = comparison),
-                      onLog: () => setState(() {
-                        _log = true;
-                        _logVisited = true;
-                      }),
-                      onBranches:
-                          widget.onBranches ??
-                          () =>
-                              GitWorkflowUi(context, widget.session).branches(),
-                      onPush:
-                          widget.onPush ??
-                          () => GitWorkflowUi(context, widget.session).push(),
-                      onMore: (anchor) {
-                        if (widget.onMore != null) {
-                          widget.onMore!();
-                        } else {
-                          unawaited(
-                            GitWorkflowUi(anchor, widget.session).more(),
-                          );
-                        }
-                      },
-                    ),
-                    second: _comparison == null
-                        ? const Center(
-                            child: GitLabel('Select a change to review'),
-                          )
-                        : GitDiffView(
-                            session: widget.session,
-                            comparison: _comparison!,
-                            onPreviousFile: _navigate(-1),
-                            onNextFile: _navigate(1),
-                          ),
-                  ),
+                  child: compact
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            Offstage(
+                              offstage: _compactReview,
+                              child: ExcludeFocus(
+                                excluding: _compactReview,
+                                child: ExcludeSemantics(
+                                  excluding: _compactReview,
+                                  child: _commitView(!_compactReview),
+                                ),
+                              ),
+                            ),
+                            if (_comparison != null)
+                              Offstage(
+                                offstage: !_compactReview,
+                                child: ExcludeFocus(
+                                  excluding: !_compactReview,
+                                  child: ExcludeSemantics(
+                                    excluding: !_compactReview,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Align(
+                                          alignment: Alignment.centerLeft,
+                                          child: TextButton.icon(
+                                            onPressed: () => setState(
+                                              () => _compactReview = false,
+                                            ),
+                                            icon: const GitIcon(GitGlyph.back),
+                                            label: const GitLabel(
+                                              'Back to Commit',
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(child: _reviewView()),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        )
+                      : GitSplitter(
+                          initial: .28,
+                          minimum: minimumCommit,
+                          minimumSecond: minimumReview,
+                          value: widget.session.split('workspaceSplit', .28),
+                          onChanged: (v) =>
+                              widget.session.setViewState('workspaceSplit', v),
+                          first: _commitView(true),
+                          second: _reviewView(),
+                        ),
                 ),
               ),
             ),
@@ -188,6 +233,45 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
       ),
     ],
   );
+
+  Widget _commitView(bool active) => GitCommitView(
+    key: _commitKey,
+    active: !_log && active,
+    reviewContext: () => (_log, _compactReview, _comparison),
+    session: widget.session,
+    selectedComparison: _comparison,
+    onReview: (comparison) => setState(() {
+      _comparison = comparison;
+      _compactReview = true;
+    }),
+    onLog: () => setState(() {
+      _log = true;
+      _logVisited = true;
+      _compactReview = false;
+    }),
+    onBranches:
+        widget.onBranches ??
+        () => GitWorkflowUi(context, widget.session).branches(),
+    onPush:
+        widget.onPush ?? () => GitWorkflowUi(context, widget.session).push(),
+    onMore: (anchor) {
+      if (widget.onMore != null) {
+        widget.onMore!();
+      } else {
+        unawaited(GitWorkflowUi(anchor, widget.session).more());
+      }
+    },
+  );
+
+  Widget _reviewView() => _comparison == null
+      ? const Center(child: GitLabel('Select a change to review'))
+      : GitDiffView(
+          key: _diffKey,
+          session: widget.session,
+          comparison: _comparison!,
+          onPreviousFile: _navigate(-1),
+          onNextFile: _navigate(1),
+        );
 
   String _branchLabel(BuildContext context) {
     final session = widget.session, snapshot = session.snapshot;

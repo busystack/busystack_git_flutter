@@ -111,6 +111,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       if (bounds.maxWidth < 1 || bounds.maxHeight < 1) return const SizedBox();
       final width = bounds.maxWidth.clamp(220.0, double.infinity);
       final minimumHeight = _minimumHeight(context, width);
+      final messageMinimum = _messageMinimum(context, width);
       return ClipRect(
         child: OverflowBox(
           alignment: Alignment.topLeft,
@@ -126,7 +127,11 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       child: SingleChildScrollView(
                         child: SizedBox(
                           height: minimumHeight,
-                          child: _panel(context, includeActions: false),
+                          child: _panel(
+                            context,
+                            includeActions: false,
+                            messageMinimum: messageMinimum,
+                          ),
                         ),
                       ),
                     ),
@@ -138,7 +143,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     ),
                   ],
                 )
-              : _panel(context),
+              : _panel(context, messageMinimum: messageMinimum),
         ),
       );
     },
@@ -164,62 +169,90 @@ final class _GitCommitViewState extends State<GitCommitView> {
     }
 
     final inner = width - spacing * 2;
-    final amend = height(
-      _amend ? 'Amend selected commit' : 'Amend last commit',
-      theme.bodyMedium,
-      inner - 96,
-    ).clamp(48.0, double.infinity);
-    final hint = height(
-      'Configured hooks and signing are respected.',
-      theme.bodySmall,
-      inner,
-    );
-    final messageMinimum =
-        amend +
-        hint +
-        row * 4 +
-        (_amend
-            ? height(
-                'Rewrites the selected HEAD commit. Remote tracking cannot prove it is unpublished.',
-                theme.bodyMedium,
-                inner,
-              )
-            : 0) +
-        (session.draftFailure == null ? 0 : row * 3);
+    final messageMinimum = _messageMinimum(context, width);
     final header =
         row +
         spacing * 2 +
-        height('Commit scope: entire repository', theme.bodySmall, inner) +
+        height(
+          'Commit scope: entire repository',
+          theme.bodySmall,
+          inner,
+          maxLines: 1,
+        ) +
         height(session.repository.root, theme.bodySmall, inner, maxLines: 1) +
-        (session.snapshot?.upstream == null ? 0 : row * 2) +
+        (session.snapshot?.upstream == null
+            ? 0
+            : height('Cached tracking', theme.bodySmall, inner, maxLines: 1)) +
         (widget.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
         (session.snapshot?.capabilities.writeMetadata == false ? row * 3 : 0);
-    final actions = ['Commit staged (999)', 'Commit and Push…'].fold<double>(
-      0,
-      (sum, text) =>
-          sum +
-          (height(text, theme.labelLarge, inner - 48) + 24).clamp(
-            48.0,
-            double.infinity,
-          ),
-    );
     return header +
         messageMinimum +
         row * 2 +
-        actions +
-        spacing * 5 +
-        (session.snapshot?.operation.kind != GitOperationKind.none
+        spacing * 2 +
+        (session.snapshot != null &&
+                session.snapshot!.operation.kind != GitOperationKind.none
             ? row * 3
             : 0) +
         (session.running ? row * 3 : 0) +
         (session.failure == null ? 0 : row * 4);
   }
 
+  double _messageMinimum(BuildContext context, double width) {
+    final row = host.rowHeight(context);
+    final theme = Theme.of(context).textTheme;
+    double textHeight(
+      String text,
+      TextStyle? style, {
+      int? maxLines,
+      double inset = 0,
+    }) {
+      final measure =
+          TextPainter(
+            text: TextSpan(text: gitString(context, text), style: style),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            maxLines: maxLines,
+          )..layout(
+            maxWidth: (width - host.spacing * 2 - inset).clamp(
+              24.0,
+              double.infinity,
+            ),
+          );
+      final height = measure.height;
+      measure.dispose();
+      return height;
+    }
+
+    return row * 2 +
+        textHeight(
+          'Amend last commit',
+          theme.bodyMedium,
+          inset: 96,
+          maxLines: 1,
+        ).clamp(48.0, double.infinity) +
+        textHeight(
+          'Configured hooks and signing are respected.',
+          theme.bodySmall,
+          maxLines: 1,
+        ) +
+        (_amend
+            ? textHeight(
+                'Rewrites the selected HEAD commit. Remote tracking cannot prove it is unpublished.',
+                theme.bodyMedium,
+              )
+            : 0) +
+        (session.draftFailure == null ? 0 : row * 3);
+  }
+
   int get stagedCount =>
       session.snapshot?.changes.where((e) => e.staged).length ?? 0;
 
-  Widget _panel(BuildContext context, {bool includeActions = true}) {
+  Widget _panel(
+    BuildContext context, {
+    bool includeActions = true,
+    required double messageMinimum,
+  }) {
     final snapshot = session.snapshot;
     return FocusTraversalGroup(
       child: Column(
@@ -279,19 +312,40 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
-                GitLabel(
-                  'Commit scope: entire repository',
-                  style: Theme.of(context).textTheme.bodySmall,
+                Tooltip(
+                  message: gitString(
+                    context,
+                    'Commit scope: entire repository',
+                  ),
+                  child: GitLabel(
+                    'Commit scope: entire repository',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 if (snapshot?.upstream != null)
-                  GitLabel(
-                    'Cached tracking · {upstream} · {ahead} ahead · {behind} behind',
-                    values: {
-                      'upstream': snapshot!.upstream!,
-                      'ahead': snapshot.ahead,
-                      'behind': snapshot.behind,
-                    },
-                    style: Theme.of(context).textTheme.bodySmall,
+                  Tooltip(
+                    message: gitString(
+                      context,
+                      'Cached tracking · {upstream} · {ahead} ahead · {behind} behind',
+                      values: {
+                        'upstream': snapshot!.upstream!,
+                        'ahead': snapshot.ahead,
+                        'behind': snapshot.behind,
+                      },
+                    ),
+                    child: GitLabel(
+                      'Cached tracking · {upstream} · {ahead} ahead · {behind} behind',
+                      values: {
+                        'upstream': snapshot.upstream!,
+                        'ahead': snapshot.ahead,
+                        'behind': snapshot.behind,
+                      },
+                      style: Theme.of(context).textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 if (session.repository.bare)
                   const GitLabel(
@@ -327,7 +381,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
               axis: Axis.vertical,
               initial: .62,
               minimum: host.rowHeight(context) * 2,
-              minimumSecond: host.rowHeight(context) * 8 + host.spacing * 2,
+              minimumSecond: messageMinimum,
               value: session.split('commitMessageSplit', .62),
               onChanged: (v) => session.setViewState('commitMessageSplit', v),
               first: session.loading && snapshot == null
@@ -380,6 +434,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
                           child: ExcludeSemantics(
                             child: GitLabel(
                               _amend ? 'Amend {revision}' : 'Amend last commit',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               values: {
                                 'revision': snapshot?.head?.abbreviated ?? '',
                               },
@@ -465,6 +521,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     GitLabel(
                       'Configured hooks and signing are respected.',
                       style: Theme.of(context).textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

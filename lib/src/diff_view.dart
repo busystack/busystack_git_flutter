@@ -9,6 +9,7 @@ import 'host.dart';
 import 'session.dart';
 import 'text_pane.dart';
 import 'text_encoding.dart';
+import 'text_undo.dart';
 import 'workflow_ui.dart' show gitConfirm;
 export 'text_pane.dart';
 
@@ -49,6 +50,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
   List<(int?, int?)>? _rowCache;
   final _selected = <int>{};
   final _scroll = ScrollController(), _search = TextEditingController();
+  final _searchFocus = FocusNode();
+  bool _searchVisible = false;
   var _generation = 0, _difference = 0;
   @override
   void initState() {
@@ -88,6 +91,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
 
   @override
   void dispose() {
+    _searchFocus.dispose();
     _generation++;
     _readCancellation?.cancel();
     widget.session.removeListener(_repositoryChanged);
@@ -195,12 +199,23 @@ final class _GitDiffViewState extends State<GitDiffView> {
     widget.session.setViewState(key, value);
   }
 
+  void _openSearch() {
+    setState(() => _searchVisible = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _searchVisible) _searchFocus.requestFocus();
+    });
+  }
+
   @override
   Widget build(BuildContext context) => GitHostScope(
     host: widget.session.host,
     child: Builder(builder: _build),
   );
-  Widget _build(BuildContext context) {
+  Widget _build(BuildContext context) => LayoutBuilder(
+    builder: (context, bounds) => _buildReview(context, bounds),
+  );
+
+  Widget _buildReview(BuildContext context, BoxConstraints bounds) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null)
       return GitFailurePanel(
@@ -208,169 +223,286 @@ final class _GitDiffViewState extends State<GitDiffView> {
         onRefresh: () => unawaited(_load()),
       );
     final comparison = widget.comparison, host = widget.session.host;
-    return Column(
-      children: [
-        if (_stale)
-          MaterialBanner(
-            content: const GitLabel(
-              'The reviewed index or working content changed. Refresh this comparison before staging.',
+    final label = TextPainter(
+      text: TextSpan(
+        text: gitString(context, 'Edit HEAD | Index | Working Tree…'),
+        style: Theme.of(context).textTheme.labelLarge,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final compact =
+        bounds.maxWidth < label.width * 2 + host.spacing * 8 &&
+        bounds.maxHeight < host.rowHeight(context) * 16;
+    label.dispose();
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            _openSearch,
+      },
+      child: Column(
+        children: [
+          if (_stale)
+            MaterialBanner(
+              content: const GitLabel(
+                'The reviewed index or working content changed. Refresh this comparison before staging.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => unawaited(_load()),
+                  child: const GitLabel('Refresh comparison'),
+                ),
+              ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => unawaited(_load()),
-                child: const GitLabel('Refresh comparison'),
-              ),
-            ],
-          ),
-        Padding(
-          padding: EdgeInsets.all(host.spacing),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(child: SelectableText(comparison.path.display)),
-                  GitIconButton(
-                    tooltip: 'Refresh comparison',
-                    onPressed: () => unawaited(_load()),
-                    icon: const GitIcon(GitGlyph.refresh),
-                  ),
-                ],
-              ),
-              Wrap(
-                spacing: host.spacing,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (widget.onPreviousFile != null ||
-                      widget.onNextFile != null) ...[
+          Padding(
+            padding: EdgeInsets.all(host.spacing),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: SelectableText(comparison.path.display)),
                     GitIconButton(
-                      tooltip: 'Previous changed file',
-                      onPressed: widget.onPreviousFile,
-                      icon: const GitIcon(GitGlyph.previous),
-                    ),
-                    GitIconButton(
-                      tooltip: 'Next changed file',
-                      onPressed: widget.onNextFile,
-                      icon: const GitIcon(GitGlyph.next),
+                      tooltip: 'Refresh comparison',
+                      onPressed: () => unawaited(_load()),
+                      icon: const GitIcon(GitGlyph.refresh),
                     ),
                   ],
-                  GitIconButton(
-                    tooltip: 'Previous difference',
-                    onPressed: () => _jump(-1),
-                    icon: const GitIcon(GitGlyph.up, size: 18),
-                  ),
-                  GitIconButton(
-                    tooltip: 'Next difference',
-                    onPressed: () => _jump(1),
-                    icon: const GitIcon(GitGlyph.down, size: 18),
-                  ),
-                  SegmentedButton<bool>(
-                    segments: const [
-                      ButtonSegment(
-                        value: false,
-                        label: GitLabel('Side by side'),
+                ),
+                Wrap(
+                  spacing: host.spacing,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    if (widget.onPreviousFile != null ||
+                        widget.onNextFile != null) ...[
+                      GitIconButton(
+                        tooltip: 'Previous changed file',
+                        onPressed: widget.onPreviousFile,
+                        icon: const GitIcon(GitGlyph.previous),
                       ),
-                      ButtonSegment(value: true, label: GitLabel('Unified')),
+                      GitIconButton(
+                        tooltip: 'Next changed file',
+                        onPressed: widget.onNextFile,
+                        icon: const GitIcon(GitGlyph.next),
+                      ),
                     ],
-                    selected: {_unified},
-                    onSelectionChanged: (s) => _display(
-                      'diffUnified',
-                      s.single,
-                      () => _unified = s.single,
+                    GitIconButton(
+                      tooltip: 'Previous difference',
+                      onPressed: () => _jump(-1),
+                      icon: const GitIcon(GitGlyph.up, size: 18),
                     ),
-                  ),
-                  FilterChip(
-                    label: const GitLabel('Wrap'),
-                    selected: _wrap,
-                    onSelected: (v) => _display('diffWrap', v, () => _wrap = v),
-                  ),
-                  FilterChip(
-                    label: const GitLabel('Words'),
-                    selected: _words,
-                    onSelected: (v) =>
-                        _display('diffWords', v, () => _words = v),
-                  ),
-                  FilterChip(
-                    label: const GitLabel('Collapse context'),
-                    selected: _collapse,
-                    onSelected: (v) =>
-                        _display('diffCollapse', v, () => _collapse = v),
-                  ),
-                  FilterChip(
-                    label: const GitLabel('Ignore whitespace'),
-                    selected: _ignoreWhitespace,
-                    onSelected: (v) => _display(
-                      'diffIgnoreWhitespace',
-                      v,
-                      () => _ignoreWhitespace = v,
+                    GitIconButton(
+                      tooltip: 'Next difference',
+                      onPressed: () => _jump(1),
+                      icon: const GitIcon(GitGlyph.down, size: 18),
                     ),
-                  ),
-                  SizedBox(
-                    width: 160,
+                    if (compact)
+                      GitMenuButton(
+                        host: host,
+                        tooltip: 'Comparison mode',
+                        entries: [
+                          GitMenuEntry(
+                            'side',
+                            'Side by side',
+                            checked: !_unified,
+                            radio: true,
+                          ),
+                          GitMenuEntry(
+                            'unified',
+                            'Unified',
+                            checked: _unified,
+                            radio: true,
+                          ),
+                        ],
+                        onSelected: (value) => _display(
+                          'diffUnified',
+                          value == 'unified',
+                          () => _unified = value == 'unified',
+                        ),
+                        child: GitLabel(_unified ? 'Unified' : 'Side by side'),
+                      )
+                    else
+                      SegmentedButton<bool>(
+                        segments: const [
+                          ButtonSegment(
+                            value: false,
+                            label: GitLabel('Side by side'),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: GitLabel('Unified'),
+                          ),
+                        ],
+                        selected: {_unified},
+                        onSelectionChanged: (s) => _display(
+                          'diffUnified',
+                          s.single,
+                          () => _unified = s.single,
+                        ),
+                      ),
+                    GitMenuButton(
+                      host: host,
+                      tooltip: gitString(context, 'Diff display options'),
+                      entries: [
+                        GitMenuEntry('wrap', 'Wrap', checked: _wrap),
+                        GitMenuEntry('words', 'Words', checked: _words),
+                        GitMenuEntry(
+                          'collapse',
+                          'Collapse context',
+                          checked: _collapse,
+                        ),
+                        GitMenuEntry(
+                          'whitespace',
+                          'Ignore whitespace',
+                          checked: _ignoreWhitespace,
+                        ),
+                      ],
+                      onSelected: (option) {
+                        switch (option) {
+                          case 'wrap':
+                            _display('diffWrap', !_wrap, () => _wrap = !_wrap);
+                          case 'words':
+                            _display(
+                              'diffWords',
+                              !_words,
+                              () => _words = !_words,
+                            );
+                          case 'collapse':
+                            _display(
+                              'diffCollapse',
+                              !_collapse,
+                              () => _collapse = !_collapse,
+                            );
+                          case 'whitespace':
+                            _display(
+                              'diffIgnoreWhitespace',
+                              !_ignoreWhitespace,
+                              () => _ignoreWhitespace = !_ignoreWhitespace,
+                            );
+                        }
+                      },
+                    ),
+                    GitIconButton(
+                      tooltip: 'Search comparison',
+                      onPressed: _openSearch,
+                      icon: const GitIcon(GitGlyph.search),
+                    ),
+                  ],
+                ),
+                if (_searchVisible)
+                  GitTextUndo(
+                    controller: _search,
                     child: TextField(
                       controller: _search,
+                      focusNode: _searchFocus,
                       decoration: InputDecoration(
                         labelText: gitString(context, 'Search'),
                         isDense: true,
+                        suffixIcon: GitIconButton(
+                          tooltip: 'Close search',
+                          onPressed: () => setState(() {
+                            _search.clear();
+                            _searchVisible = false;
+                          }),
+                          icon: const GitIcon(GitGlyph.close),
+                        ),
                       ),
                       onChanged: (_) => setState(() {}),
                     ),
                   ),
-                ],
-              ),
-              if (_canStage)
-                Wrap(
-                  spacing: host.spacing,
-                  children: [
-                    FilledButton(
-                      onPressed: _selected.isEmpty
-                          ? null
-                          : () => unawaited(_applySelection()),
-                      child: Text(
-                        _unstage
-                            ? 'Unstage selected changed lines'
-                            : 'Stage selected changed lines',
-                      ),
+                if (_canStage && compact)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: GitMenuButton(
+                      host: host,
+                      tooltip: 'Staging actions',
+                      child: const GitLabel('Staging actions…'),
+                      entries: [
+                        GitMenuEntry(
+                          'lines',
+                          _unstage
+                              ? 'Unstage selected changed lines'
+                              : 'Stage selected changed lines',
+                          enabled: _selected.isNotEmpty,
+                        ),
+                        const GitMenuEntry(
+                          'index',
+                          'Edit HEAD | Index | Working Tree…',
+                        ),
+                        GitMenuEntry(
+                          'file',
+                          _unstage ? 'Unstage whole file' : 'Stage whole file',
+                        ),
+                      ],
+                      onSelected: (value) {
+                        switch (value) {
+                          case 'lines':
+                            unawaited(_applySelection());
+                          case 'index':
+                            unawaited(_indexEditor());
+                          case 'file':
+                            unawaited(_wholeFile());
+                        }
+                      },
                     ),
-                    OutlinedButton(
-                      onPressed: () => unawaited(_indexEditor()),
-                      child: const GitLabel(
-                        'Edit HEAD | Index | Working Tree…',
+                  )
+                else if (_canStage)
+                  Wrap(
+                    spacing: host.spacing,
+                    children: [
+                      FilledButton(
+                        onPressed: _selected.isEmpty
+                            ? null
+                            : () => unawaited(_applySelection()),
+                        child: Text(
+                          _unstage
+                              ? 'Unstage selected changed lines'
+                              : 'Stage selected changed lines',
+                        ),
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () => unawaited(_wholeFile()),
-                      child: Text(
-                        _unstage ? 'Unstage whole file' : 'Stage whole file',
+                      OutlinedButton(
+                        onPressed: () => unawaited(_indexEditor()),
+                        child: const GitLabel(
+                          'Edit HEAD | Index | Working Tree…',
+                        ),
                       ),
-                    ),
-                  ],
-                ),
+                      TextButton(
+                        onPressed: () => unawaited(_wholeFile()),
+                        child: Text(
+                          _unstage ? 'Unstage whole file' : 'Stage whole file',
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(child: _label(_left!)),
+              Expanded(child: _label(_right!)),
             ],
           ),
-        ),
-        Row(
-          children: [
-            Expanded(child: _label(_left!)),
-            Expanded(child: _label(_right!)),
-          ],
-        ),
-        if (_ignoreWhitespace && _ignoredWhitespace().isNotEmpty)
-          TextButton(
-            onPressed: () => setState(() => _ignoreWhitespace = false),
-            child: Text(
-              '${_ignoredWhitespace().length} whitespace-only changed lines hidden · Show exact changes',
+          if (_ignoreWhitespace && _ignoredWhitespace().isNotEmpty)
+            TextButton(
+              onPressed: () => setState(() => _ignoreWhitespace = false),
+              child: Text(
+                '${_ignoredWhitespace().length} whitespace-only changed lines hidden · Show exact changes',
+              ),
             ),
-          ),
-        const Divider(height: 1),
-        Expanded(child: _diff == null ? _nonText() : _reviewRows(context)),
-        if (_diff != null)
-          Padding(
-            padding: EdgeInsets.all(host.spacing),
-            child: Text(
-              '${_selected.length} changed lines selected · Display settings never alter the staged bytes.',
+          const Divider(height: 1),
+          Expanded(child: _diff == null ? _nonText() : _reviewRows(context)),
+          if (_diff != null)
+            Padding(
+              padding: EdgeInsets.all(host.spacing),
+              child: Text(
+                '${_selected.length} changed lines selected · Display settings never alter the staged bytes.',
+                style: Theme.of(context).textTheme.bodySmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 

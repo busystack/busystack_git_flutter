@@ -17,6 +17,11 @@ context actions to those views. `GitSession` owns one immutable worktree identit
 presentation lifecycle, drafts and refresh/cancellation state.
 The full Git workspace keeps its worktree root, current branch or detached HEAD,
 and recovered operation visible in Log. Returning to Commit retains its draft.
+When the active font and available width cannot support both Commit and a
+readable comparison, selecting a file opens a full-width review with Back to
+Commit. Resizing preserves the draft, selection and review. Compact diff controls
+keep display settings and explicit staging actions in focused menus; search is
+opened on demand with Ctrl+F inside the review.
 
 `GitHost` supplies native application dialogs, document/folder opening, directory
 selection, native contextual menus, mutation/inspection preflight, draft persistence
