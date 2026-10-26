@@ -107,6 +107,34 @@ void main() {
         'id': initial['id'] as String,
         'generation': initial['generation'] as int,
       };
+      // Assistive technology can ask to reveal a row before its optional
+      // metadata page arrives. Only scrolling may use its generation/index.
+      expect(
+        await request(tester, {
+          ...identity,
+          'action': 'scroll',
+          'row': 99000,
+          'column': 0,
+          'rowId': '',
+        }),
+        true,
+      );
+      expect(received.single.action, 'scroll');
+      expect(received.single.row, 99000);
+      for (final action in ['select', 'focus', 'context']) {
+        expect(
+          await request(tester, {
+            ...identity,
+            'action': action,
+            'row': 99000,
+            'column': 0,
+            'rowId': '',
+          }),
+          false,
+        );
+      }
+      expect(received, hasLength(1));
+      received.clear();
       expect(
         await request(tester, {
           ...identity,
@@ -146,6 +174,16 @@ void main() {
       );
       await tester.pumpWidget(view('repository B'));
       await tester.pumpAndSettle();
+      expect(
+        await request(tester, {
+          ...identity,
+          'action': 'scroll',
+          'row': 99000,
+          'column': 0,
+          'rowId': '',
+        }),
+        false,
+      );
       expect(
         await request(tester, {
           ...identity,

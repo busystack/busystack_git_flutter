@@ -226,7 +226,12 @@ final class _GitNativeTableState extends State<GitNativeTable>
         column < -1 ||
         column >= widget.columns.length)
       return false;
-    if (row >= 0 && widget.rowAt(row).id != args['rowId']) return false;
+    // An unloaded native row can be revealed by generation/index. Selection,
+    // focus and context actions retain the full row-identity requirement.
+    if (row >= 0 &&
+        widget.rowAt(row).id != args['rowId'] &&
+        !(action == 'scroll' && args['rowId'] == ''))
+      return false;
     if (row < 0 && !const {'clearSelection', 'selectAll'}.contains(action)) {
       return false;
     }

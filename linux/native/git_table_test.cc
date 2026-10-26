@@ -226,6 +226,27 @@ void geometry_and_teardown() {
   g_assert_null(atk_table_cell_get_table(ATK_TABLE_CELL(cell)));
 }
 
+void pending_rows_can_scroll_without_authorizing_actions() {
+  Fixture f;
+  f.frame.row_count = 100000;
+  g_assert_true(UpdateGitTable(f.table, f.frame, f.rows));
+  g_autoptr(AtkObject) far =
+      atk_table_ref_at(ATK_TABLE(f.accessible), 90000, 0);
+  g_assert_cmpstr(atk_object_get_name(far), ==, "Loading row");
+  g_assert_true(atk_component_scroll_to(ATK_COMPONENT(far), ATK_SCROLL_ANYWHERE));
+  g_assert_cmpuint(f.requests.size(), ==, 1);
+  g_assert_cmpstr(f.requests.back().action.c_str(), ==, "scroll");
+  g_assert_cmpint(f.requests.back().generation, ==, 1);
+  g_assert_cmpint(f.requests.back().row, ==, 90000);
+  g_assert_true(f.requests.back().row_id.empty());
+  g_assert_false(atk_action_do_action(ATK_ACTION(far), 0));
+  g_assert_false(atk_component_grab_focus(ATK_COMPONENT(far)));
+  f.frame.generation = 2;
+  g_assert_true(UpdateGitTable(f.table, f.frame, f.rows));
+  g_assert_false(atk_component_scroll_to(ATK_COMPONENT(far), ATK_SCROLL_ANYWHERE));
+  g_assert_cmpuint(f.requests.size(), ==, 1);
+}
+
 void invalid_packets_preserve_the_table() {
   Fixture f;
   TableFrame invalid = f.frame;
@@ -447,6 +468,8 @@ int main(int argc, char** argv) {
                   tree_relations_and_scoped_actions);
   g_test_add_func("/git/table/bounded-virtual-rows",
                   virtual_rows_are_bounded_and_honestly_pending);
+  g_test_add_func("/git/table/pending-row-scroll",
+                  pending_rows_can_scroll_without_authorizing_actions);
   g_test_add_func("/git/table/geometry-and-teardown", geometry_and_teardown);
   g_test_add_func("/git/table/invalid-packets",
                   invalid_packets_preserve_the_table);

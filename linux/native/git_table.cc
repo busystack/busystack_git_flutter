@@ -147,7 +147,13 @@ static bool request_row(BsgGitTable* widget, const char* action, int row,
                         int column = -1, const std::string& id = "") {
   TableData* data = widget->data;
   if (!data->alive || !data->callback) return false;
-  if (row >= 0 && (id.empty() || row >= data->frame.row_count)) return false;
+  // Scrolling reveals an index in this immutable frame; it does not select a
+  // commit or authorize an action. AT can request it before lazy row metadata
+  // arrives. Every other row action still requires its opaque identity.
+  if (row >= 0 &&
+      (row >= data->frame.row_count ||
+       (id.empty() && g_strcmp0(action, "scroll") != 0)))
+    return false;
   const auto callback = data->callback;
   callback({data->frame.generation, action, id, row, column, 0});
   return true;
