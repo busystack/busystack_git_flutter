@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -103,6 +105,69 @@ Future<void> _show(WidgetTester tester, Widget child) async {
 }
 
 void main() {
+  testWidgets(
+    'uncertain push retains a reconciliation warning until destinations are reviewed',
+    (tester) async {
+      final client = _PolicyClient('true')..pending = Completer<GitOutcome>();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: GitPushView(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Push'));
+      await tester.pump();
+      expect(client.mutations.single, isA<PushReviewed>());
+      client.pending!.complete(
+        GitOutcome(
+          phase: GitOperationPhase.uncertain,
+          snapshot: await client.status(repo),
+          error: const GitException(GitErrorCode.cancelled),
+        ),
+      );
+      await tester.pumpAndSettle();
+      const warning =
+          'The operation needs reconciliation. Review the resulting repository or remote state before repeating it.';
+      expect(find.text(warning), findsOneWidget);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Push'))
+            .onPressed,
+        isNull,
+      );
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.text(warning), findsOneWidget);
+      expect(client.mutations, hasLength(1));
+      await tester.tap(find.text('Review destinations'));
+      await tester.pumpAndSettle();
+      expect(
+        client.inspections.where((e) => e.kind == GitInspectionKind.pushReview),
+        hasLength(2),
+      );
+      expect(find.text(warning), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(find.widgetWithText(FilledButton, 'Push'))
+            .onPressed,
+        isNotNull,
+      );
+      expect(client.mutations, hasLength(1));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
   for (final preserving in [false, true]) {
     testWidgets(
       'pull reviews complete upstream and configured policy ($preserving)',

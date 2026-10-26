@@ -488,6 +488,15 @@ final class _PushState extends GitDialogState<GitPushView> {
     setState(() {
       data = null;
       completed = result?.completed == true;
+      if (result?.phase == GitOperationPhase.uncertain) {
+        final cause = result?.error;
+        error = GitException(
+          GitErrorCode.uncertainOutcome,
+          command: cause?.command ?? '',
+          diagnostic: cause?.diagnostic ?? '',
+          exitCode: cause?.exitCode,
+        );
+      }
     });
     if (result?.phase == GitOperationPhase.uncertain)
       session.host.notify(
