@@ -304,6 +304,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
           labelText: gitString(context, 'Stash name/message'),
         ),
       ),
+      SizedBox(height: session.host.spacing),
       DropdownButtonFormField<int>(
         initialValue: mode,
         decoration: InputDecoration(

@@ -464,6 +464,7 @@ final class _MergeState extends GitDialogState<GitMergeView> {
                 () => source = refs.firstWhere((e) => e.name == name),
               ),
       ),
+      SizedBox(height: session.host.spacing),
       DropdownButtonFormField<MergePolicy>(
         initialValue: policy,
         isExpanded: true,

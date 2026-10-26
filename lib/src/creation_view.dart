@@ -62,6 +62,8 @@ final class _CreationState extends State<GitCreationView> {
               hintText: gitString(context, 'HTTPS, SSH, or local path'),
             ),
           ),
+        if (!widget.initialize)
+          SizedBox(height: GitHostScope.of(context)?.spacing ?? 8),
         Row(
           children: [
             Expanded(
