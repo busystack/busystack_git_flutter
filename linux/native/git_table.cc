@@ -46,6 +46,7 @@ struct TableData {
   TableCallback callback;
   TableFrame frame;
   bool alive = true;
+  bool retired = false;
   bool overlay_attached = false;
   std::map<int, TableRow> rows;
   std::map<std::pair<int, int>, AtkObject*> cells;
@@ -440,14 +441,9 @@ static void table_dispose(GObject* object) {
   }
 }
 
-static void table_destroy(GtkWidget* widget) {
+static void deactivate_table(GtkWidget* widget) {
   auto* data = reinterpret_cast<BsgGitTable*>(widget)->data;
-  // GtkWidget disposal can invoke destroy again after an explicit destroy.
-  // Repeating DEFUNCT deregisters the same object twice in atk-bridge.
-  if (!data->alive) {
-    GTK_WIDGET_CLASS(bsg_git_table_parent_class)->destroy(widget);
-    return;
-  }
+  if (!data->alive) return;
   data->alive = false;
   data->callback = {};
   if (data->pending_source) {
@@ -459,7 +455,31 @@ static void table_destroy(GtkWidget* widget) {
     atk_object_set_parent(entry.second, nullptr);
     atk_object_notify_state_change(entry.second, ATK_STATE_DEFUNCT, TRUE);
   }
+}
+
+static void table_destroy(GtkWidget* widget) {
+  // GtkWidget disposal can invoke destroy again after an explicit destroy.
+  // Repeating DEFUNCT deregisters the same object twice in atk-bridge.
+  deactivate_table(widget);
   GTK_WIDGET_CLASS(bsg_git_table_parent_class)->destroy(widget);
+}
+
+struct RetiredTable {
+  GtkWidget* widget;
+  gulong handler = 0;
+};
+
+static void release_retired_table(gpointer pointer, GClosure*) {
+  auto* retired = static_cast<RetiredTable*>(pointer);
+  gtk_widget_destroy(retired->widget);
+  g_object_unref(retired->widget);
+  delete retired;
+}
+
+static void retire_after_paint(GdkFrameClock* clock, gpointer pointer) {
+  const auto handler = static_cast<RetiredTable*>(pointer)->handler;
+  // Disconnecting releases the closure, which destroys the retained widget.
+  g_signal_handler_disconnect(clock, handler);
 }
 
 static void table_finalize(GObject* object) {
@@ -1108,6 +1128,28 @@ void AttachGitTable(GtkOverlay* host, GtkWidget* table) {
   AtkObject* child = gtk_widget_get_accessible(table);
   g_signal_emit_by_name(parent, "children-changed::add",
                         atk_object_get_index_in_parent(child), child);
+}
+
+void RetireGitTable(GtkWidget* table) {
+  g_return_if_fail(G_TYPE_CHECK_INSTANCE_TYPE(table, bsg_git_table_get_type()));
+  auto* data = reinterpret_cast<BsgGitTable*>(table)->data;
+  if (data->retired) return;
+  data->retired = true;
+  GdkFrameClock* clock = gtk_widget_get_frame_clock(table);
+  deactivate_table(table);
+  gtk_widget_hide(table);
+  if (!clock) {
+    gtk_widget_destroy(table);
+    return;
+  }
+  // Flutter can dispatch platform messages while GTK is drawing its parent.
+  // GtkOverlay's draw traversal still contains this child at that point.
+  // Retain it until after-paint, even when its Dart view has already gone away.
+  auto* retired = new RetiredTable{GTK_WIDGET(g_object_ref(table))};
+  retired->handler = g_signal_connect_data(
+      clock, "after-paint", G_CALLBACK(retire_after_paint), retired,
+      release_retired_table, G_CONNECT_DEFAULT);
+  gdk_frame_clock_request_phase(clock, GDK_FRAME_CLOCK_PHASE_AFTER_PAINT);
 }
 
 bool UpdateGitTableRows(GtkWidget* value, int64_t generation,

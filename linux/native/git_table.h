@@ -71,6 +71,9 @@ GtkWidget* CreateGitTable(TableCallback callback);
 // GtkOverlay's add_overlay does not emit GtkContainer::add. Explicitly notify
 // accessibility clients after parenting so their cached hierarchy stays valid.
 void AttachGitTable(GtkOverlay* host, GtkWidget* table);
+// Retire a presentation without invalidating a child during its parent's draw.
+// The caller retains responsibility for releasing its own reference.
+void RetireGitTable(GtkWidget* table);
 // The initial visible rows travel with their frame, so the accessible tree
 // never briefly claims an empty table while real rows are being prepared.
 bool UpdateGitTable(GtkWidget* widget, const TableFrame& frame,

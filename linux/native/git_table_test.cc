@@ -369,6 +369,70 @@ void host_overlay_has_consistent_accessible_children() {
   g_assert_cmpint(atk_object_get_n_accessible_children(parent), ==, 1);
   gtk_widget_destroy(window);
 }
+
+void retire_during_parent_draw() {
+  struct DrawFixture { GtkWidget* table; bool retired = false; };
+  GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  GtkWidget* overlay = gtk_overlay_new();
+  GtkWidget* content = gtk_drawing_area_new();
+  gtk_container_add(GTK_CONTAINER(overlay), content);
+  gtk_container_add(GTK_CONTAINER(window), overlay);
+  gtk_window_set_default_size(GTK_WINDOW(window), 640, 480);
+  DrawFixture fixture{CreateGitTable({})};
+  g_object_ref_sink(fixture.table);
+  GWeakRef weak;
+  g_weak_ref_init(&weak, fixture.table);
+  AttachGitTable(GTK_OVERLAY(overlay), fixture.table);
+  g_signal_connect(content, "draw", G_CALLBACK(+[](GtkWidget*, cairo_t*, gpointer p) {
+    auto* state = static_cast<DrawFixture*>(p);
+    if (!state->retired) {
+      state->retired = true;
+      RetireGitTable(state->table);
+      RetireGitTable(state->table);
+      g_object_unref(state->table);
+      state->table = nullptr;
+    }
+    return FALSE;
+  }), &fixture);
+  gtk_widget_show_all(window);
+  const auto deadline = g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
+  bool released = false;
+  while (g_get_monotonic_time() < deadline) {
+    while (g_main_context_pending(nullptr))
+      g_main_context_iteration(nullptr, FALSE);
+    GObject* remaining = G_OBJECT(g_weak_ref_get(&weak));
+    released = remaining == nullptr;
+    if (remaining) g_object_unref(remaining);
+    if (fixture.retired && released) break;
+    g_usleep(1000);
+  }
+  g_assert_true(fixture.retired);
+  g_assert_true(released);
+  g_weak_ref_clear(&weak);
+  gtk_widget_destroy(window);
+}
+
+void retirement_survives_host_close_before_paint() {
+  GtkWidget* window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+  GtkWidget* overlay = gtk_overlay_new();
+  gtk_container_add(GTK_CONTAINER(overlay), gtk_label_new("Host"));
+  gtk_container_add(GTK_CONTAINER(window), overlay);
+  GtkWidget* table = CreateGitTable({});
+  g_object_ref_sink(table);
+  GWeakRef weak;
+  g_weak_ref_init(&weak, table);
+  AttachGitTable(GTK_OVERLAY(overlay), table);
+  gtk_widget_show_all(window);
+  g_assert_nonnull(gtk_widget_get_frame_clock(table));
+  RetireGitTable(table);
+  g_object_unref(table);
+  gtk_widget_destroy(window);
+  while (g_main_context_pending(nullptr))
+    g_main_context_iteration(nullptr, FALSE);
+  GObject* remaining = G_OBJECT(g_weak_ref_get(&weak));
+  g_assert_null(remaining);
+  g_weak_ref_clear(&weak);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -394,5 +458,8 @@ int main(int argc, char** argv) {
                   disposal_notifies_defunct_once);
   g_test_add_func("/git/table/host-overlay-hierarchy",
                   host_overlay_has_consistent_accessible_children);
+  g_test_add_func("/git/table/retire-during-parent-draw", retire_during_parent_draw);
+  g_test_add_func("/git/table/retire-before-host-close",
+                  retirement_survives_host_close_before_paint);
   return g_test_run();
 }

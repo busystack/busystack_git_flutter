@@ -23,7 +23,8 @@ struct TableEntry {
   GtkAllocation bounds = {0, 0, 1, 1};
   ~TableEntry() {
     if (widget) {
-      gtk_widget_destroy(widget);
+      g_object_set_data(G_OBJECT(widget), "busystack-git-table-entry", nullptr);
+      busystack_git_ui::RetireGitTable(widget);
       g_object_unref(widget);
     }
   }
