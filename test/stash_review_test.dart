@@ -133,6 +133,58 @@ void main() {
       expect(request.stagedOnly, isTrue);
       expect(request.includeUntracked, isFalse);
       expect(request.expectedIndex, 'reviewed-index');
+      expect(request.expectedWorkingToken, 'stash-review');
+      client.pending!.complete(
+        const GitOutcome(phase: GitOperationPhase.failed, snapshot: null),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'refreshing a stale stash review retains its name and eligible selection',
+    (tester) async {
+      final client = FixtureClient()..pending = Completer<GitOutcome>();
+      await showCreation(tester, client, snapshot().changes);
+      await tester.enterText(find.byType(TextField), 'Preserved stash name');
+      await tester.tap(find.text('All eligible paths in this repository'));
+      await tester.pump();
+      await tester.tap(find.text('chapter/notes.md'));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Create stash'));
+      await tester.pump();
+      expect(client.mutations, hasLength(1));
+      client.pending!.complete(
+        const GitOutcome(
+          phase: GitOperationPhase.failed,
+          snapshot: null,
+          error: GitException(GitErrorCode.staleReview),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Refresh'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        'Preserved stash name',
+      );
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.widgetWithText(CheckboxListTile, 'chapter/notes.md'),
+            )
+            .value,
+        isTrue,
+      );
+      client.pending = Completer<GitOutcome>();
+      await tester.tap(find.widgetWithText(FilledButton, 'Create stash'));
+      await tester.pump();
+      final request = client.mutations.last as StashMutation;
+      expect(request.expectedWorkingToken, snapshot().token);
+      expect(request.expectedIndex, snapshot().indexToken);
+      expect(request.message, 'Preserved stash name');
+      expect(request.paths, [RepoPath.text('chapter/notes.md')]);
       client.pending!.complete(
         const GitOutcome(phase: GitOperationPhase.failed, snapshot: null),
       );
@@ -198,6 +250,7 @@ void main() {
       expect(request.action, StashAction.apply);
       expect(request.identity, client.identity);
       expect(request.restoreIndex, isTrue);
+      expect(request.expectedWorkingToken, snapshot().token);
 
       // Another client may insert a newer stash without removing this object.
       client.selector = 'stash@{1}';

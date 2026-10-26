@@ -17,6 +17,8 @@ context actions to those views. `GitSession` owns one immutable worktree identit
 presentation lifecycle, drafts and refresh/cancellation state.
 Stash creation virtualizes its eligible path list, explains empty selections,
 and excludes hidden paths when the reviewed content options change.
+Stash requests bind the reviewed working snapshot. An explicit refresh after a
+stale review preserves the name, options and still-eligible path selections.
 The full Git workspace keeps its worktree root, current branch or detached HEAD,
 and recovered operation visible in Log. Returning to Commit retains its draft.
 When the active font and available width cannot support both Commit and a

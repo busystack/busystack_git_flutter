@@ -253,6 +253,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
         branchName: branch,
         expectedHead: state.head,
         expectedIndex: state.indexToken,
+        expectedWorkingToken: state.token,
       ),
     );
     if (!mounted || result == null) return;
@@ -278,7 +279,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
   @override
   GitSession get session => widget.session;
   final message = TextEditingController();
-  late final GitSnapshot reviewed;
+  late GitSnapshot reviewed;
   final selected = <RepoPath>{};
   int mode = 0;
   bool untracked = false, all = true;
@@ -292,6 +293,23 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
   void dispose() {
     message.dispose();
     super.dispose();
+  }
+
+  Future<void> _refreshReview() async {
+    if (loading || session.running) return;
+    setState(() => loading = true);
+    await session.refresh(clearOperationFailure: true);
+    if (!mounted) return;
+    setState(() {
+      loading = false;
+      error = session.failure;
+      final current = session.snapshot;
+      if (error == null && current != null) {
+        reviewed = current;
+        final paths = current.changes.map((change) => change.path).toSet();
+        selected.retainWhere(paths.contains);
+      }
+    });
   }
 
   @override
@@ -313,7 +331,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
         : eligible.where((change) => selected.contains(change.path)).toList();
     return Column(
       children: [
-        states(),
+        states(refresh: () => unawaited(_refreshReview())),
         TextField(
           controller: message,
           decoration: InputDecoration(
@@ -426,6 +444,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                       includeUntracked: untracked,
                       expectedHead: reviewed.head,
                       expectedIndex: reviewed.indexToken,
+                      expectedWorkingToken: reviewed.token,
                     ),
                   );
                   if (mounted && result?.completed == true)
