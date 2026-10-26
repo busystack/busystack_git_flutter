@@ -668,6 +668,10 @@ final class _GitLogViewState extends State<GitLogView> {
           if (showDate) gitString(context, 'Date'),
           if (showId) gitString(context, 'Object ID'),
         ];
+        Widget columnCell(Widget child) => Padding(
+          padding: EdgeInsetsDirectional.only(start: spacing),
+          child: child,
+        );
         return GitNativeTable(
           name: gitString(context, 'Git commits'),
           description: widget.session.repository.root,
@@ -677,7 +681,7 @@ final class _GitLogViewState extends State<GitLogView> {
           rowCount: _commits.length,
           rowHeight: rowHeight,
           columns: columns,
-          headerInsets: [40, for (var i = 1; i < columns.length; i++) 0],
+          headerInsets: [40, for (var i = 1; i < columns.length; i++) spacing],
           widths: [
             bounds.maxWidth -
                 (showAuthor ? authorWidth : 0) -
@@ -697,7 +701,7 @@ final class _GitLogViewState extends State<GitLogView> {
               id: commit.oid.value,
               textInsets: [
                 (graph[index].width * 14.0 + 14).clamp(40, 120),
-                for (var i = 1; i < columns.length; i++) 0,
+                for (var i = 1; i < columns.length; i++) spacing,
               ],
               cells: [
                 '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
@@ -807,36 +811,42 @@ final class _GitLogViewState extends State<GitLogView> {
                                   if (showAuthor)
                                     SizedBox(
                                       width: authorWidth,
-                                      child: Semantics(
-                                        role: SemanticsRole.columnHeader,
-                                        child: const GitLabel(
-                                          'Author',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                      child: columnCell(
+                                        Semantics(
+                                          role: SemanticsRole.columnHeader,
+                                          child: const GitLabel(
+                                            'Author',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   if (showDate)
                                     SizedBox(
                                       width: dateWidth,
-                                      child: Semantics(
-                                        role: SemanticsRole.columnHeader,
-                                        child: const GitLabel(
-                                          'Date',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                      child: columnCell(
+                                        Semantics(
+                                          role: SemanticsRole.columnHeader,
+                                          child: const GitLabel(
+                                            'Date',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       ),
                                     ),
                                   if (showId)
                                     SizedBox(
                                       width: idWidth,
-                                      child: Semantics(
-                                        role: SemanticsRole.columnHeader,
-                                        child: const GitLabel(
-                                          'Object ID',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
+                                      child: columnCell(
+                                        Semantics(
+                                          role: SemanticsRole.columnHeader,
+                                          child: const GitLabel(
+                                            'Object ID',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -905,45 +915,51 @@ final class _GitLogViewState extends State<GitLogView> {
                                     if (showAuthor)
                                       SizedBox(
                                         width: authorWidth,
-                                        child: Semantics(
-                                          role: SemanticsRole.cell,
-                                          child: Text(
-                                            commit.author,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                        child: columnCell(
+                                          Semantics(
+                                            role: SemanticsRole.cell,
+                                            child: Text(
+                                              commit.author,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     if (showDate)
                                       SizedBox(
                                         width: dateWidth,
-                                        child: Semantics(
-                                          role: SemanticsRole.cell,
-                                          child: Text(
-                                            commit.date
-                                                .toLocal()
-                                                .toString()
-                                                .substring(0, 10),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
+                                        child: columnCell(
+                                          Semantics(
+                                            role: SemanticsRole.cell,
+                                            child: Text(
+                                              commit.date
+                                                  .toLocal()
+                                                  .toString()
+                                                  .substring(0, 10),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall,
+                                            ),
                                           ),
                                         ),
                                       ),
                                     if (showId)
                                       SizedBox(
                                         width: idWidth,
-                                        child: Semantics(
-                                          role: SemanticsRole.cell,
-                                          child: Text(
-                                            commit.oid.abbreviated,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.bodySmall,
+                                        child: columnCell(
+                                          Semantics(
+                                            role: SemanticsRole.cell,
+                                            child: Text(
+                                              commit.oid.abbreviated,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: Theme.of(
+                                                context,
+                                              ).textTheme.bodySmall,
+                                            ),
                                           ),
                                         ),
                                       ),
