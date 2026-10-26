@@ -15,6 +15,8 @@ fetch/pull/push review, history/snapshots/blame, conflict results, Git rebase pl
 stashes, worktrees, submodules and reflog recovery. `GitWorkflowUi` connects
 context actions to those views. `GitSession` owns one immutable worktree identity,
 presentation lifecycle, drafts and refresh/cancellation state.
+Stash creation virtualizes its eligible path list, explains empty selections,
+and excludes hidden paths when the reviewed content options change.
 The full Git workspace keeps its worktree root, current branch or detached HEAD,
 and recovered operation visible in Log. Returning to Commit retains its draft.
 When the active font and available width cannot support both Commit and a

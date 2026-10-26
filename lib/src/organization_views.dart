@@ -295,100 +295,147 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      states(),
-      TextField(
-        controller: message,
-        decoration: InputDecoration(
-          labelText: gitString(context, 'Stash name/message'),
-        ),
-      ),
-      SizedBox(height: session.host.spacing),
-      DropdownButtonFormField<int>(
-        initialValue: mode,
-        decoration: InputDecoration(
-          labelText: gitString(context, 'Stash content and resulting index'),
-        ),
-        items: const [
-          DropdownMenuItem(
-            value: 0,
-            child: GitLabel('Stash tracked working and staged changes'),
+  Widget build(BuildContext context) {
+    final eligible = reviewed.changes
+        .where(
+          (change) =>
+              !change.conflicted &&
+              !change.ignored &&
+              (mode == 2
+                  ? change.staged
+                  : change.staged ||
+                        change.unstaged ||
+                        untracked && change.untracked),
+        )
+        .toList();
+    final chosen = all
+        ? eligible
+        : eligible.where((change) => selected.contains(change.path)).toList();
+    return Column(
+      children: [
+        states(),
+        TextField(
+          controller: message,
+          decoration: InputDecoration(
+            labelText: gitString(context, 'Stash name/message'),
           ),
-          DropdownMenuItem(
-            value: 1,
-            child: GitLabel(
-              'Stash changes, leave staged changes in place (--keep-index)',
+        ),
+        SizedBox(height: session.host.spacing),
+        DropdownButtonFormField<int>(
+          initialValue: mode,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: gitString(context, 'Stash content and resulting index'),
+          ),
+          items: const [
+            DropdownMenuItem(
+              value: 0,
+              child: GitLabel('Stash tracked working and staged changes'),
             ),
-          ),
-          DropdownMenuItem(
-            value: 2,
-            child: GitLabel('Stash only staged changes (--staged)'),
-          ),
-        ],
-        onChanged: (v) => setState(() {
-          mode = v!;
-          if (mode == 2) untracked = false;
-        }),
-      ),
-      CheckboxListTile(
-        dense: true,
-        value: untracked,
-        onChanged: mode == 2 ? null : (v) => setState(() => untracked = v!),
-        title: const GitLabel('Include untracked files'),
-      ),
-      CheckboxListTile(
-        dense: true,
-        value: all,
-        onChanged: (v) => setState(() => all = v!),
-        title: const GitLabel('All eligible paths in this repository'),
-      ),
-      Expanded(
-        child: ListView(
-          children: [
-            for (final change in reviewed.changes.where(
-              (e) => !e.conflicted && (!e.untracked || untracked),
-            ))
-              CheckboxListTile(
-                dense: true,
-                value: all || selected.contains(change.path),
-                onChanged: all
-                    ? null
-                    : (v) => setState(() {
-                        if (v == true)
-                          selected.add(change.path);
-                        else
-                          selected.remove(change.path);
-                      }),
-                title: Text(change.path.display),
-                subtitle: Text('${change.index}${change.worktree}'),
+            DropdownMenuItem(
+              value: 1,
+              child: GitLabel(
+                'Stash changes, leave staged changes in place (--keep-index)',
               ),
+            ),
+            DropdownMenuItem(
+              value: 2,
+              child: GitLabel('Stash only staged changes (--staged)'),
+            ),
           ],
+          onChanged: (v) => setState(() {
+            mode = v!;
+            if (mode == 2) untracked = false;
+          }),
         ),
-      ),
-      FilledButton(
-        onPressed: loading || !all && selected.isEmpty
-            ? null
-            : () async {
-                final result = await apply(
-                  StashMutation(
-                    StashAction.create,
-                    message: message.text,
-                    paths: all ? const [] : selected.toList(),
-                    keepIndex: mode == 1,
-                    stagedOnly: mode == 2,
-                    includeUntracked: untracked,
-                    expectedHead: reviewed.head,
-                    expectedIndex: reviewed.indexToken,
+        CheckboxListTile(
+          dense: true,
+          value: untracked,
+          onChanged: mode == 2 ? null : (v) => setState(() => untracked = v!),
+          title: const GitLabel('Include untracked files'),
+        ),
+        CheckboxListTile(
+          dense: true,
+          value: all,
+          onChanged: (v) => setState(() => all = v!),
+          title: const GitLabel('All eligible paths in this repository'),
+        ),
+        Expanded(
+          child: eligible.isEmpty
+              ? const Center(
+                  child: GitLabel(
+                    'No eligible changes for these stash options.',
                   ),
-                );
-                if (mounted && result?.completed == true)
-                  Navigator.of(context).pop();
-              },
-        child: const GitLabel('Create stash'),
-      ),
-    ],
-  );
+                )
+              : ListView.builder(
+                  itemCount: eligible.length,
+                  // Measure the shared row using the active host typography.
+                  // A known extent also makes scrollbar/keyboard jumps bounded
+                  // instead of laying out every preceding path to seek a row.
+                  prototypeItem: const ExcludeSemantics(
+                    child: CheckboxListTile(
+                      dense: true,
+                      value: true,
+                      onChanged: null,
+                      title: Text('M\nM', maxLines: 2),
+                      subtitle: Text('MM'),
+                    ),
+                  ),
+                  itemBuilder: (context, index) {
+                    final change = eligible[index];
+                    return Tooltip(
+                      key: ValueKey(change.path.key),
+                      message: change.path.display,
+                      child: CheckboxListTile(
+                        dense: true,
+                        value: all || selected.contains(change.path),
+                        onChanged: all
+                            ? null
+                            : (v) => setState(() {
+                                if (v == true)
+                                  selected.add(change.path);
+                                else
+                                  selected.remove(change.path);
+                              }),
+                        title: Text(
+                          change.path.display,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text('${change.index}${change.worktree}'),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        if (eligible.isNotEmpty && chosen.isEmpty)
+          const GitLabel('Select at least one eligible path.'),
+        FilledButton(
+          onPressed: loading || chosen.isEmpty
+              ? null
+              : () async {
+                  final result = await apply(
+                    StashMutation(
+                      StashAction.create,
+                      message: message.text,
+                      paths: all
+                          ? const []
+                          : chosen.map((change) => change.path).toList(),
+                      keepIndex: mode == 1,
+                      stagedOnly: mode == 2,
+                      includeUntracked: untracked,
+                      expectedHead: reviewed.head,
+                      expectedIndex: reviewed.indexToken,
+                    ),
+                  );
+                  if (mounted && result?.completed == true)
+                    Navigator.of(context).pop();
+                },
+          child: const GitLabel('Create stash'),
+        ),
+      ],
+    );
+  }
 }
 
 final class GitWorktreesView extends StatefulWidget {
