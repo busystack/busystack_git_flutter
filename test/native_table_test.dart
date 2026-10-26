@@ -107,6 +107,15 @@ void main() {
         'id': initial['id'] as String,
         'generation': initial['generation'] as int,
       };
+      final updates = calls.where((call) => call.method == 'update').length;
+      // Unrelated host rebuilds, including commit-message edits, must not
+      // resend an unchanged native table and repaint its GTK overlay.
+      await tester.pumpWidget(view('repository A'));
+      await tester.pumpAndSettle();
+      expect(
+        calls.where((call) => call.method == 'update'),
+        hasLength(updates),
+      );
       // Assistive technology can ask to reveal a row before its optional
       // metadata page arrives. Only scrolling may use its generation/index.
       expect(

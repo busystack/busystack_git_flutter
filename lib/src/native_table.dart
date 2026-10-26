@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -114,6 +115,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
   bool _sending = false;
   bool _changedDuringSend = false;
   String? _failure;
+  String? _lastPacket;
 
   bool get _linux => !kIsWeb && defaultTargetPlatform == TargetPlatform.linux;
   bool get _visible => widget.active && _routeVisible && _applicationVisible;
@@ -263,6 +265,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
   }
 
   Future<void> _remove() async {
+    _lastPacket = null;
     if (!_registered) return;
     _registered = false;
     try {
@@ -330,6 +333,16 @@ final class _GitNativeTableState extends State<GitNativeTable>
       'loadingLabel': gitString(context, 'Loading row'),
       'rows': _rows(first, count),
     };
+    // A host rebuild can change the draft/editor without changing any table
+    // data. Avoid another platform message, ATK update and GTK repaint then.
+    // Compare the complete bounded packet so capability, focus, row identity,
+    // viewport, theme and localization changes are still delivered.
+    final packet = jsonEncode(args);
+    if (_registered && packet == _lastPacket) {
+      _submitted = serial;
+      _lastRect = rect;
+      return;
+    }
     _sending = true;
     try {
       _registered = true;
@@ -344,6 +357,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
       }
       _submitted = serial;
       _lastRect = rect;
+      _lastPacket = packet;
       if (!_ready && generation == _generation && _visible) {
         setState(() => _ready = true);
       }

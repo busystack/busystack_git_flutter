@@ -100,7 +100,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool refreshStatus = false}) async {
     final generation = ++_generation;
     setState(() {
       _loading = true;
@@ -112,7 +112,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final cancellation = _readCancellation = GitCancellation();
     try {
       final session = widget.session, comparison = widget.comparison;
-      final before = await session.readStatus(cancellation: cancellation);
+      if (refreshStatus) {
+        await session.refresh(clearOperationFailure: true);
+        if (session.failure case final failure?) throw failure;
+      }
+      // A file review uses exact content handles and the observed HEAD/index
+      // preconditions. Its mutations revalidate those identities in the engine;
+      // opening each file must not rescan every untracked repository path.
+      final before =
+          session.snapshot ??
+          await session.readStatus(cancellation: cancellation);
       final values = await Future.wait([
         session.client.content(
           session.repository,
@@ -130,9 +139,6 @@ final class _GitDiffViewState extends State<GitDiffView> {
           cancellation: cancellation,
         ),
       ]);
-      final after = await session.readStatus(cancellation: cancellation);
-      if (before.token != after.token)
-        throw const GitException(GitErrorCode.staleReview);
       final left = values[0], right = values[1];
       final a = left.availability == ContentAvailability.absent
           ? ''
@@ -158,7 +164,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
         _displayLimit = displayLimit;
         _review = before;
         _loading = false;
-        _stale = false;
+        _stale =
+            session.snapshot != null && session.snapshot!.token != before.token;
       });
     } on GitException catch (error) {
       if (mounted && generation == _generation)
@@ -220,7 +227,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     if (_error != null)
       return GitFailurePanel(
         error: _error!,
-        onRefresh: () => unawaited(_load()),
+        onRefresh: () => unawaited(_load(refreshStatus: true)),
       );
     final comparison = widget.comparison, host = widget.session.host;
     final label = TextPainter(
@@ -249,7 +256,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => unawaited(_load()),
+                  onPressed: () => unawaited(_load(refreshStatus: true)),
                   child: const GitLabel('Refresh comparison'),
                 ),
               ],
@@ -263,7 +270,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     Expanded(child: SelectableText(comparison.path.display)),
                     GitIconButton(
                       tooltip: 'Refresh comparison',
-                      onPressed: () => unawaited(_load()),
+                      onPressed: () => unawaited(_load(refreshStatus: true)),
                       icon: const GitIcon(GitGlyph.refresh),
                     ),
                   ],

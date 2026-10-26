@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
 class ControlledClient extends FixtureClient {
+  int statusReads = 0;
   Completer<GitSnapshot>? read;
   GitCancellation? cancelledRead;
   GitException? readFailure;
@@ -16,6 +17,7 @@ class ControlledClient extends FixtureClient {
     GitCancellation? cancellation,
     GitReadPolicy policy = GitReadPolicy.restricted,
   }) {
+    statusReads++;
     cancelledRead = cancellation;
     if (readFailure != null) return Future.error(readFailure!);
     return read?.future ?? Future.value(state ?? snapshot());
@@ -34,7 +36,119 @@ class ControlledClient extends FixtureClient {
   }
 }
 
+class PausedContentClient extends ControlledClient {
+  final contentGate = Completer<void>();
+  @override
+  Future<GitContent> content(
+    RepositoryId repository,
+    RepoPath path,
+    ContentVersion version, {
+    GitCancellation? cancellation,
+  }) async {
+    await contentGate.future;
+    return super.content(repository, path, version, cancellation: cancellation);
+  }
+}
+
 void main() {
+  testWidgets(
+    'a repository refresh during content loading keeps staging stale',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = PausedContentClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitDiffView(
+              session: session,
+              comparison: GitComparison(
+                RepoPath.text('chapter/notes.md'),
+                const ContentVersion.index(),
+                const ContentVersion.working(),
+              ),
+            ),
+          ),
+        ),
+      );
+      client.state = GitSnapshot(
+        repository: repo,
+        token: 'external',
+        indexToken: 'external-index',
+        changes: snapshot().changes,
+        operation: const RepositoryOperation(GitOperationKind.none),
+        observedAt: DateTime.utc(2026),
+      );
+      await session.refresh();
+      client.contentGate.complete();
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('The reviewed index or working content changed.'),
+        findsOneWidget,
+      );
+      expect(find.text('Stage selected changed lines'), findsNothing);
+      expect(client.mutations, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
+    'opening a file diff reuses the observed repository snapshot and explicit refresh scans once',
+    (tester) async {
+      final client = ControlledClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      expect(client.statusReads, 1);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitDiffView(
+              session: session,
+              comparison: GitComparison(
+                RepoPath.text('chapter/notes.md'),
+                const ContentVersion.index(),
+                const ContentVersion.working(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(client.statusReads, 1);
+      expect(find.text('Stage selected changed lines'), findsOneWidget);
+      await tester.tap(find.byTooltip('Refresh comparison'));
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(client.statusReads, 2);
+      expect(client.mutations, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
   testWidgets(
     'host translations apply to UI labels without translating repository filenames',
     (tester) async {
