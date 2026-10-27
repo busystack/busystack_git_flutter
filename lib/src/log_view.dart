@@ -44,7 +44,8 @@ final class _GitLogViewState extends State<GitLogView> {
   GitOid? _parent;
   String? _reference, _anchor;
   DateTime? _since, _until;
-  GitException? _failure;
+  GitException? _failure, _fileFailure;
+  bool _filesLoading = false;
   bool _navigationOutsideFilters = false;
   bool _loading = true, _more = true, _branches = true, _details = true;
   int _generation = 0;
@@ -218,6 +219,8 @@ final class _GitLogViewState extends State<GitLogView> {
       _selected = commit;
       _parent = parent ?? commit.parents.firstOrNull;
       _files = [];
+      _fileFailure = null;
+      _filesLoading = true;
     });
     try {
       final files = await widget.session.client.changedFiles(
@@ -226,17 +229,21 @@ final class _GitLogViewState extends State<GitLogView> {
         parent: _parent,
       );
       if (mounted && generation == _selectionGeneration)
-        setState(() => _files = files);
+        setState(() {
+          _files = files;
+          _filesLoading = false;
+        });
     } on Object catch (error) {
       if (mounted && generation == _selectionGeneration)
-        setState(
-          () => _failure = error is GitException
+        setState(() {
+          _filesLoading = false;
+          _fileFailure = error is GitException
               ? error
               : GitException(
                   GitErrorCode.disconnected,
                   diagnostic: sanitizeGitDiagnostic('$error'),
-                ),
-        );
+                );
+        });
     }
   }
 
@@ -1069,6 +1076,50 @@ final class _GitLogViewState extends State<GitLogView> {
     unawaited(_select(commit));
   }
 
+  Widget _changedFilesPane(GitCommit commit) {
+    if (_filesLoading) {
+      return Center(
+        child: CircularProgressIndicator(
+          semanticsLabel: gitString(context, 'Loading changed files'),
+        ),
+      );
+    }
+    if (_fileFailure case final error?) {
+      return SingleChildScrollView(
+        child: GitFailurePanel(
+          error: error,
+          onRefresh: () => unawaited(_select(commit, parent: _parent)),
+        ),
+      );
+    }
+    if (_files.isEmpty) {
+      return const Center(child: GitLabel('No changed files'));
+    }
+    return ListView.builder(
+      itemCount: _files.length,
+      itemBuilder: (context, i) {
+        final file = _files[i];
+        return ListTile(
+          dense: true,
+          leading: Text(file.index),
+          title: Text(
+            file.path.basename,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: file.path.parent.isEmpty
+              ? null
+              : Text(
+                  file.path.parent,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+          onTap: () => unawaited(_diff(file)),
+        );
+      },
+    );
+  }
+
   Widget _detailPane() {
     final commit = _selected;
     if (commit == null) return const Center(child: GitLabel('Select a commit'));
@@ -1093,31 +1144,14 @@ final class _GitLogViewState extends State<GitLogView> {
               ],
               onChanged: (parent) => unawaited(_select(commit, parent: parent)),
             ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _files.length,
-              itemBuilder: (context, i) {
-                final file = _files[i];
-                return ListTile(
-                  dense: true,
-                  leading: Text(file.index),
-                  title: Text(
-                    file.path.basename,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: file.path.parent.isEmpty
-                      ? null
-                      : Text(
-                          file.path.parent,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                  onTap: () => unawaited(_diff(file)),
-                );
-              },
+          Padding(
+            padding: EdgeInsets.all(widget.session.host.spacing),
+            child: const Align(
+              alignment: Alignment.centerLeft,
+              child: GitLabel('Changed files'),
             ),
           ),
+          Expanded(child: _changedFilesPane(commit)),
         ],
       ),
       second: SingleChildScrollView(
