@@ -498,11 +498,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
             ),
           const Divider(height: 1),
           Expanded(child: _diff == null ? _nonText() : _reviewRows(context)),
-          if (_diff != null)
+          if (_diff != null || !_stagingComparison)
             Padding(
               padding: EdgeInsets.all(host.spacing),
               child: Text(
-                '${_selected.length} changed lines selected · Display settings never alter the staged bytes.',
+                _stagingComparison
+                    ? '${_selected.length} changed lines selected · Display settings never alter the staged bytes.'
+                    : 'Read-only comparison · Copy text or adjust display settings.',
                 style: Theme.of(context).textTheme.bodySmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

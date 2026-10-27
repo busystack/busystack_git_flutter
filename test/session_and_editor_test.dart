@@ -136,12 +136,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(client.statusReads, 1);
       expect(find.text('Stage selected changed lines'), findsOneWidget);
+      expect(find.textContaining('Read-only comparison'), findsNothing);
       await tester.tap(find.byTooltip('Refresh comparison'));
       await tester.runAsync(
         () async => Future<void>.delayed(const Duration(milliseconds: 300)),
       );
       await tester.pumpAndSettle();
       expect(client.statusReads, 2);
+      expect(client.mutations, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
+    'historical comparisons identify read-only review without staging selection',
+    (tester) async {
+      final client = ControlledClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitDiffView(
+              session: session,
+              comparison: GitComparison(
+                RepoPath.text('chapter/notes.md'),
+                ContentVersion(ContentKind.commit, revision: GitOid('1' * 40)),
+                ContentVersion(ContentKind.commit, revision: GitOid('2' * 40)),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Read-only comparison'), findsOneWidget);
+      expect(find.textContaining('changed lines selected'), findsNothing);
+      expect(find.text('Stage whole file'), findsNothing);
+      expect(find.text('Unstage whole file'), findsNothing);
+      expect(find.text('Stage selected changed lines'), findsNothing);
       expect(client.mutations, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
