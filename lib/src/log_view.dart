@@ -1093,7 +1093,13 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     }
     if (_files.isEmpty) {
-      return const Center(child: GitLabel('No changed files'));
+      return Center(
+        child: Semantics(
+          container: true,
+          liveRegion: true,
+          child: const GitLabel('No changed files'),
+        ),
+      );
     }
     return ListView.builder(
       itemCount: _files.length,
@@ -1146,9 +1152,13 @@ final class _GitLogViewState extends State<GitLogView> {
             ),
           Padding(
             padding: EdgeInsets.all(widget.session.host.spacing),
-            child: const Align(
+            child: Align(
               alignment: Alignment.centerLeft,
-              child: GitLabel('Changed files'),
+              child: Semantics(
+                container: true,
+                header: true,
+                child: const GitLabel('Changed files'),
+              ),
             ),
           ),
           Expanded(child: _changedFilesPane(commit)),

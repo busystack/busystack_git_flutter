@@ -68,6 +68,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Loading changed files'), findsNothing);
     expect(find.text('No changed files'), findsOneWidget);
+    expect(find.bySemanticsLabel('No changed files'), findsOneWidget);
+    expect(find.bySemanticsLabel('Changed files'), findsOneWidget);
     expect(find.text('Current commit'), findsOneWidget);
   });
 
