@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'host.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -54,12 +55,13 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       states(refresh: refresh),
       if (session.snapshot != null && !session.canWriteMetadata)
         const GitLabel(
-          'Repository metadata is read-only. Branch inspection and comparison remain available.',
+          GitMessages
+              .repositoryMetadataIsReadOnlyBranchInspectionAndComparisonRemain,
         ),
       if (session.canWriteMetadata &&
           session.snapshot?.capabilities.replaceWorkingFiles == false)
         const GitLabel(
-          'Working files are unavailable or read-only. Branch switching and merging are unavailable.',
+          GitMessages.workingFilesAreUnavailableOrReadOnlyBranchSwitchingAnd,
         ),
       Row(
         children: [
@@ -67,7 +69,10 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
             child: TextField(
               decoration: InputDecoration(
                 prefixIcon: GitIcon(GitGlyph.search),
-                labelText: gitString(context, 'Search branches and tags'),
+                labelText: gitString(
+                  context,
+                  GitMessages.searchBranchesAndTags,
+                ),
               ),
               onChanged: (value) => setState(() => search = value),
             ),
@@ -81,7 +86,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                 ? null
                 : () => unawaited(createBranch()),
             icon: const GitIcon(GitGlyph.add),
-            label: const GitLabel('New branch…'),
+            label: const GitLabel(GitMessages.newBranch),
           ),
         ],
       ),
@@ -96,9 +101,15 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
               Padding(
                 padding: EdgeInsets.all(session.host.spacing),
                 child: Text(switch (prefix) {
-                  'refs/heads/' => 'Local branches',
-                  'refs/remotes/' => 'Remote branches',
-                  _ => 'Tags',
+                  'refs/heads/' => gitString(
+                    context,
+                    GitMessages.localBranches,
+                  ),
+                  'refs/remotes/' => gitString(
+                    context,
+                    GitMessages.remoteBranches,
+                  ),
+                  _ => gitString(context, GitMessages.tags),
                 }, style: Theme.of(context).textTheme.titleSmall),
               ),
               for (final reference in refs.where(
@@ -120,24 +131,36 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                   subtitle: Text(
                     [
                       if (reference.upstream != null)
-                        'Tracks ${reference.upstream}',
+                        gitString(
+                          context,
+                          GitMessages.tracksArg0,
+                          values: {'arg0': reference.upstream},
+                        ),
                       if (reference.worktreePath != null)
-                        'Checked out at ${reference.worktreePath}',
+                        gitString(
+                          context,
+                          GitMessages.checkedOutAtArg0,
+                          values: {'arg0': reference.worktreePath},
+                        ),
                       reference.oid.abbreviated,
                     ].join(' · '),
                   ),
                   trailing: GitMenuButton(
                     host: session.host,
                     enabled: !loading,
-                    disabledReason: 'Refreshing branch metadata',
+                    disabledReason: GitMessages.refreshingBranchMetadata,
                     onSelected: (action) => unawaited(act(reference, action)),
                     entries: [
                       if (prefix == 'refs/heads/' && !reference.current)
                         GitMenuEntry(
                           reference.worktreePath == null ? 'switch' : 'open',
                           reference.worktreePath == null
-                              ? 'Switch to ${reference.shortName}'
-                              : 'Open occupied worktree',
+                              ? gitString(
+                                  context,
+                                  GitMessages.switchToArg0,
+                                  values: {'arg0': reference.shortName},
+                                )
+                              : GitMessages.openOccupiedWorktree,
                           enabled: reference.worktreePath == null
                               ? session.canWriteMetadata &&
                                     session
@@ -151,7 +174,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                       if (prefix == 'refs/remotes/')
                         GitMenuEntry(
                           'track',
-                          'Create local tracking branch…',
+                          GitMessages.createLocalTrackingBranch,
                           enabled:
                               session.canWriteMetadata &&
                               session
@@ -160,10 +183,10 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                                       .replaceWorkingFiles ==
                                   true,
                         ),
-                      GitMenuEntry('compare', 'Compare to current HEAD'),
+                      GitMenuEntry('compare', GitMessages.compareToCurrentHEAD),
                       GitMenuEntry(
                         'merge',
-                        'Merge into current branch…',
+                        GitMessages.mergeIntoCurrentBranch,
                         enabled:
                             session.canWriteMetadata &&
                             session
@@ -175,12 +198,12 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                       if (prefix == 'refs/heads/') ...[
                         GitMenuEntry(
                           'rename',
-                          'Rename…',
+                          GitMessages.rename,
                           enabled: session.canWriteMetadata,
                         ),
                         GitMenuEntry(
                           'upstream',
-                          'Change upstream…',
+                          GitMessages.changeUpstream,
                           enabled: session.canWriteMetadata,
                         ),
                       ],
@@ -188,16 +211,20 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                       if (prefix != 'refs/remotes/')
                         GitMenuEntry(
                           'delete',
-                          'Delete…',
+                          GitMessages.delete,
                           enabled: session.canWriteMetadata,
                         ),
                       GitMenuEntry(
                         'remoteDelete',
-                        'Delete from remote…',
+                        GitMessages.deleteFromRemote,
                         enabled: session.canWriteMetadata,
                       ),
                     ],
-                    tooltip: 'Actions for ${reference.name}',
+                    tooltip: gitString(
+                      context,
+                      GitMessages.actionsForArg0,
+                      values: {'arg0': reference.name},
+                    ),
                   ),
                 ),
             ],
@@ -212,11 +239,19 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
     final name = await gitTextInput(
       context,
       session,
-      'Local branch name',
+      GitMessages.localBranchName,
       initial: tracking?.shortName.split('/').skip(1).join('/') ?? '',
       explanation: tracking == null
-          ? 'Create at ${state!.head!.abbreviated}. The new branch will be checked out.'
-          : 'The local branch will track ${tracking.name} and be checked out.',
+          ? gitString(
+              context,
+              GitMessages.createAtArg0TheNewBranchWillBeCheckedOut,
+              values: {'arg0': state!.head!.abbreviated},
+            )
+          : gitString(
+              context,
+              GitMessages.theLocalBranchWillTrackArg0AndBeCheckedOut,
+              values: {'arg0': tracking.name},
+            ),
     );
     if (!mounted || name == null || name.isEmpty) return;
     await apply(
@@ -273,7 +308,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
           owner ??
           await session.host.present<String>(
             context,
-            'Choose remote for deletion',
+            GitMessages.chooseRemoteForDeletion,
             GitActionMenu(actions: {for (final name in names) name: name}),
             expanded: false,
           );
@@ -282,7 +317,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
           ? 'refs/heads/${reference.name.substring('refs/remotes/$owner/'.length)}'
           : reference.name;
       await GitWorkflowUi(context, session).present(
-        'Delete remote reference',
+        GitMessages.deleteRemoteReference,
         GitDeleteRemoteView(
           session: session,
           remote: remote,
@@ -295,7 +330,11 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
     }
     if (action == 'merge') {
       await GitWorkflowUi(context, session).present(
-        'Merge $name into ${state.branch ?? 'HEAD'}',
+        gitString(
+          context,
+          GitMessages.mergeArg0IntoArg1,
+          values: {'arg0': name, 'arg1': state.branch ?? GitMessages.head},
+        ),
         GitMergeView(session: session, source: reference),
       );
       return;
@@ -313,7 +352,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       final value = await gitTextInput(
         context,
         session,
-        'Rename $name',
+        gitString(context, GitMessages.renameArg0, values: {'arg0': name}),
         initial: name,
       );
       if (value != null && value.isNotEmpty)
@@ -329,10 +368,10 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
     if (action == 'upstream') {
       final value = await session.host.present<String>(
         context,
-        'Upstream for $name',
+        gitString(context, GitMessages.upstreamForArg0, values: {'arg0': name}),
         GitActionMenu(
           actions: {
-            '': 'No upstream',
+            '': gitString(context, GitMessages.noUpstream),
             for (final ref in refs.where(
               (r) => r.name.startsWith('refs/remotes/'),
             ))
@@ -356,9 +395,13 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
         await gitConfirm(
           context,
           session,
-          'Delete $name?',
-          '${reference.name}\nTarget ${reference.oid.value}\nLocal deletion only. An unmerged branch is refused.',
-          action: 'Delete',
+          gitString(context, GitMessages.deleteArg0, values: {'arg0': name}),
+          gitString(
+            context,
+            GitMessages.arg0TargetArg1LocalDeletionOnlyAnUnmergedBranchIs,
+            values: {'arg0': reference.name, 'arg1': reference.oid.value},
+          ),
+          action: GitMessages.delete2,
         )) {
       request = reference.name.startsWith('refs/tags/')
           ? TagMutation(
@@ -386,9 +429,17 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
         if (await gitConfirm(
           context,
           session,
-          'Delete unmerged branch $name?',
-          '${reference.oid.value}\nGit reports this branch is not fully merged. Explicitly delete the local reference after reviewing its commits; remote copies are unchanged.',
-          action: 'Delete unmerged local branch',
+          gitString(
+            context,
+            GitMessages.deleteUnmergedBranchArg0,
+            values: {'arg0': name},
+          ),
+          gitString(
+            context,
+            GitMessages.arg0GitReportsThisBranchIsNotFullyMergedExplicitly,
+            values: {'arg0': reference.oid.value},
+          ),
+          action: GitMessages.deleteUnmergedLocalBranch,
         )) {
           await apply(
             BranchMutation(
@@ -445,14 +496,22 @@ final class _MergeState extends GitDialogState<GitMergeView> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        'Destination: ${reviewed.branch ?? 'detached HEAD'} · ${reviewed.head?.abbreviated}',
+        gitString(
+          context,
+          GitMessages.destinationArg0Arg1,
+          values: {
+            'arg0':
+                reviewed.branch ?? gitString(context, GitMessages.detachedHEAD),
+            'arg1': reviewed.head?.abbreviated,
+          },
+        ),
       ),
       states(),
       DropdownButtonFormField<String>(
         initialValue: source?.name,
         isExpanded: true,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Source branch or tag'),
+          labelText: gitString(context, GitMessages.sourceBranchOrTag),
         ),
         items: [
           for (final ref in refs)
@@ -469,17 +528,29 @@ final class _MergeState extends GitDialogState<GitMergeView> {
         initialValue: policy,
         isExpanded: true,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Merge policy'),
+          labelText: gitString(context, GitMessages.mergePolicy),
         ),
         items: [
           for (final p in MergePolicy.values)
             DropdownMenuItem(
               value: p,
               child: Text(switch (p) {
-                MergePolicy.fastForward => 'Fast-forward when possible',
-                MergePolicy.noFastForward => 'Always create a merge commit',
-                MergePolicy.fastForwardOnly => 'Fast-forward only',
-                MergePolicy.squash => 'Squash into staged changes',
+                MergePolicy.fastForward => gitString(
+                  context,
+                  GitMessages.fastForwardWhenPossible,
+                ),
+                MergePolicy.noFastForward => gitString(
+                  context,
+                  GitMessages.alwaysCreateAMergeCommit,
+                ),
+                MergePolicy.fastForwardOnly => gitString(
+                  context,
+                  GitMessages.fastForwardOnly,
+                ),
+                MergePolicy.squash => gitString(
+                  context,
+                  GitMessages.squashIntoStagedChanges,
+                ),
               }),
             ),
         ],
@@ -500,17 +571,24 @@ final class _MergeState extends GitDialogState<GitMergeView> {
                 loading
             ? null
             : (v) => setState(() => stop = v!),
-        title: const GitLabel('Stop before creating the merge commit'),
+        title: const GitLabel(GitMessages.stopBeforeCreatingTheMergeCommit),
         subtitle: stop
             ? const GitLabel(
-                'Fast-forward is disabled so HEAD cannot move before review.',
+                GitMessages.fastForwardIsDisabledSoHEADCannotMoveBeforeReview,
               )
             : null,
       ),
       Text(
         policy == MergePolicy.squash
-            ? 'Leaves staged changes for a separate commit; this is not a continuing merge.'
-            : 'Conflicts remain available in the shared resolution workspace.',
+            ? gitString(
+                context,
+                GitMessages.leavesStagedChangesForASeparateCommitThisIsNot,
+              )
+            : gitString(
+                context,
+                GitMessages
+                    .conflictsRemainAvailableInTheSharedResolutionWorkspace,
+              ),
       ),
       const SizedBox(height: 12),
       FilledButton(
@@ -533,7 +611,14 @@ final class _MergeState extends GitDialogState<GitMergeView> {
                   Navigator.of(context).pop();
               },
         child: Text(
-          'Merge ${source?.shortName ?? 'source'} into ${reviewed.branch ?? 'HEAD'}',
+          gitString(
+            context,
+            GitMessages.mergeArg0IntoArg1,
+            values: {
+              'arg0': source?.shortName ?? 'source',
+              'arg1': reviewed.branch ?? GitMessages.head,
+            },
+          ),
         ),
       ),
     ],
@@ -569,7 +654,7 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
               ? null
               : () => unawaited(edit(null, RemoteAction.add)),
           icon: const GitIcon(GitGlyph.add),
-          label: const GitLabel('Add remote…'),
+          label: const GitLabel(GitMessages.addRemote),
         ),
       ),
       Expanded(
@@ -579,7 +664,14 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
               ListTile(
                 title: Text(remote['name'] as String),
                 subtitle: SelectableText(
-                  'Fetch: ${(remote['fetchUrls'] as List).join(', ')}\nPush: ${(remote['pushUrls'] as List).join(', ')}',
+                  gitString(
+                    context,
+                    GitMessages.fetchArg0PushArg1,
+                    values: {
+                      'arg0': (remote['fetchUrls'] as List).join(', '),
+                      'arg1': (remote['pushUrls'] as List).join(', '),
+                    },
+                  ),
                 ),
                 trailing: GitMenuButton(
                   host: session.host,
@@ -591,16 +683,21 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
                       (e) => e != RemoteAction.add,
                     ))
                       GitMenuEntry((action).name, switch (action) {
-                        RemoteAction.rename => 'Rename…',
-                        RemoteAction.remove => 'Remove remote…',
-                        RemoteAction.setFetchUrl => 'Change fetch URL…',
-                        RemoteAction.addPushUrl => 'Add push destination…',
+                        RemoteAction.rename => GitMessages.rename,
+                        RemoteAction.remove => GitMessages.removeRemote,
+                        RemoteAction.setFetchUrl => GitMessages.changeFetchURL,
+                        RemoteAction.addPushUrl =>
+                          GitMessages.addPushDestination,
                         RemoteAction.removePushUrl =>
-                          'Remove push destination…',
+                          GitMessages.removePushDestination,
                         _ => '',
                       }),
                   ],
-                  tooltip: 'Manage ${remote['name']}',
+                  tooltip: gitString(
+                    context,
+                    GitMessages.manageArg0,
+                    values: {'arg0': remote['name']},
+                  ),
                 ),
               ),
           ],
@@ -612,7 +709,7 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
     final state = session.snapshot!;
     final name =
         remote?['name'] as String? ??
-        await gitTextInput(context, session, 'Remote name');
+        await gitTextInput(context, session, GitMessages.remoteName);
     if (!mounted || name == null || name.isEmpty) return;
     String? value;
     if (action != RemoteAction.remove)
@@ -620,18 +717,19 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
         context,
         session,
         action == RemoteAction.rename
-            ? 'New remote name'
-            : 'Repository URL or local source',
+            ? GitMessages.newRemoteName
+            : GitMessages.repositoryURLOrLocalSource,
         explanation: action == RemoteAction.removePushUrl
-            ? 'Enter the exact reviewed destination to remove.'
-            : 'Credentials are supplied by configured helpers or a private prompt.',
+            ? GitMessages.enterTheExactReviewedDestinationToRemove
+            : GitMessages
+                  .credentialsAreSuppliedByConfiguredHelpersOrAPrivatePrompt,
       );
     else if (!await gitConfirm(
       context,
       session,
-      'Remove remote $name?',
-      'Removes local remote configuration and tracking references. It does not delete the server repository.',
-      action: 'Remove remote',
+      gitString(context, GitMessages.removeRemoteArg0, values: {'arg0': name}),
+      GitMessages.removesLocalRemoteConfigurationAndTrackingReferencesItDoesNot,
+      action: GitMessages.removeRemote2,
     ))
       return;
     if (action != RemoteAction.remove && (value == null || value.isEmpty))

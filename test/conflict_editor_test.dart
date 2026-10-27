@@ -275,8 +275,14 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Current history · 1111111'), findsOneWidget);
-      expect(find.text('Incoming content · 3333333'), findsOneWidget);
+      expect(
+        find.text('Current history · ${client.ids.first.abbreviated}'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Incoming content · ${client.ids.last.abbreviated}'),
+        findsOneWidget,
+      );
       expect(find.text('Region 1/1 · 0 reviewed'), findsOneWidget);
       final editable = find.byWidgetPredicate(
         (w) => w is TextField && !w.readOnly,

@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
@@ -45,17 +47,18 @@ final class _OperationState extends GitDialogState<GitOperationView> {
         states(refresh: () => unawaited(session.refresh())),
         Text(
           operation == null || operation.kind == GitOperationKind.none
-              ? 'No continuing Git operation'
-              : '${operation.kind.name}${operation.editStop ? ' · stopped for editing/amend' : ''}',
+              ? gitString(context, GitMessages.noContinuingGitOperation)
+              : '${gitEnumLabel(context, operation.kind)}${operation.editStop ? gitString(context, GitMessages.stoppedForEditingAmend) : ''}',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         if (operation?.kind == GitOperationKind.unmerged)
           const GitLabel(
-            'These are unmerged index entries, possibly from a stash application. Git has no stash continue or abort command.',
+            GitMessages
+                .theseAreUnmergedIndexEntriesPossiblyFromAStashApplication,
           ),
         if (operation?.editStop == true)
           const GitLabel(
-            'Edit the working files, stage and amend the current commit, then continue this rebase.',
+            GitMessages.editTheWorkingFilesStageAndAmendTheCurrentCommit,
           ),
         Expanded(
           child: ListView(
@@ -66,7 +69,15 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                   leading: const GitIcon(GitGlyph.warning),
                   title: Text(change.path.display),
                   subtitle: Text(
-                    '${change.index}${change.worktree} · unmerged stages ${change.conflictStages.keys.join(', ')}',
+                    gitString(
+                      context,
+                      GitMessages.arg0Arg1UnmergedStagesArg2,
+                      values: {
+                        'arg0': change.index,
+                        'arg1': change.worktree,
+                        'arg2': change.conflictStages.keys.join(', '),
+                      },
+                    ),
                   ),
                   trailing: const GitIcon(GitGlyph.next),
                   onTap: () =>
@@ -74,7 +85,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                 ),
               if (state != null && !state.operation.unmerged)
                 const ListTile(
-                  title: GitLabel('The index has no unresolved entries.'),
+                  title: GitLabel(GitMessages.theIndexHasNoUnresolvedEntries),
                 ),
             ],
           ),
@@ -110,11 +121,11 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                         final message = await gitTextInput(
                           context,
                           session,
-                          'Keep the current commit as an empty commit',
+                          GitMessages.keepTheCurrentCommitAsAnEmptyCommit,
                           initial: page.commits.first.message,
                           multiline: true,
-                          explanation:
-                              'The real index has no staged changes. Create an explicit empty commit, then continue the sequencer if it remains active.',
+                          explanation: GitMessages
+                              .theRealIndexHasNoStagedChangesCreateAnExplicit,
                         );
                         if (!mounted || message == null) return;
                         await apply(
@@ -126,7 +137,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                           ),
                         );
                       },
-                child: const GitLabel('Keep empty commit…'),
+                child: const GitLabel(GitMessages.keepEmptyCommit),
               ),
             for (final action in operation?.actions ?? <GitContinuation>{})
               OutlinedButton(
@@ -137,13 +148,27 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                             !await gitConfirm(
                               context,
                               session,
-                              '${action.name} ${operation!.kind.name}?',
+                              '${gitString(context, switch (action) {
+                                GitContinuation.abort => GitMessages.abortInline,
+                                GitContinuation.skip => GitMessages.skipInline,
+                                GitContinuation.quit => GitMessages.quitInline,
+                                _ => GitMessages.continueAction,
+                              })} ${gitEnumLabel(context, operation!.kind)}?',
                               action == GitContinuation.abort
-                                  ? 'Git will try to return to the operation’s starting point. Pre-existing unstaged, untracked and unsaved contents are not guaranteed to be recovered.'
+                                  ? GitMessages
+                                        .gitWillTryToReturnToTheOperationSStarting
                                   : action == GitContinuation.skip
-                                  ? 'Skip the current commit and continue with the next planned commit.'
-                                  : 'Forget this operation’s bookkeeping while retaining the current files and index.',
-                              action: action.name,
+                                  ? GitMessages
+                                        .skipTheCurrentCommitAndContinueWithTheNextPlanned
+                                  : GitMessages
+                                        .forgetThisOperationSBookkeepingWhileRetainingTheCurrentFiles,
+                              action: gitString(context, switch (action) {
+                                GitContinuation.abort =>
+                                  GitMessages.abortInline,
+                                GitContinuation.skip => GitMessages.skipInline,
+                                GitContinuation.quit => GitMessages.quitInline,
+                                _ => GitMessages.continueAction,
+                              }),
                             ))
                           return;
                         await apply(
@@ -157,8 +182,33 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                       },
                 child: Text(
                   action == GitContinuation.continueOperation
-                      ? 'Continue ${operation!.kind.name}'
-                      : '${action.name}…',
+                      ? gitString(
+                          context,
+                          GitMessages.continueArg0,
+                          values: {
+                            'arg0': gitString(context, switch (operation!
+                                .kind) {
+                              GitOperationKind.merge => GitMessages.mergeInline,
+                              GitOperationKind.rebase =>
+                                GitMessages.rebaseInline,
+                              GitOperationKind.cherryPick =>
+                                GitMessages.cherryPickInline,
+                              GitOperationKind.revert =>
+                                GitMessages.revertInline,
+                              GitOperationKind.applyMailbox =>
+                                GitMessages.applyMailboxInline,
+                              GitOperationKind.squash =>
+                                GitMessages.squashInline,
+                              _ => GitMessages.unmergedInline,
+                            }),
+                          },
+                        )
+                      : '${gitString(context, switch (action) {
+                          GitContinuation.abort => GitMessages.abortInline,
+                          GitContinuation.skip => GitMessages.skipInline,
+                          GitContinuation.quit => GitMessages.quitInline,
+                          _ => GitMessages.continueAction,
+                        })}…',
                 ),
               ),
           ],
@@ -213,9 +263,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         !await gitConfirm(
           context,
           session,
-          'Reload conflict versions?',
-          'Replace the unsaved Result draft with the current working file. Saved working content is retained.',
-          action: 'Replace draft and reload',
+          GitMessages.reloadConflictVersions,
+          GitMessages.replaceTheUnsavedResultDraftWithTheCurrentWorkingFile,
+          action: GitMessages.replaceDraftAndReload,
         ))
       return;
     if (!mounted) return;
@@ -320,6 +370,41 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     }
   }
 
+  String _kindLabel() => gitString(context, switch (data?['kind']) {
+    'content' => GitMessages.contentConflict,
+    'submodule' => GitMessages.submoduleConflict,
+    'symlink' => GitMessages.symlinkConflict,
+    'add/add' => GitMessages.addAddConflict,
+    'modify/delete or rename/delete' => GitMessages.modifyDeleteConflict,
+    null => GitMessages.loadingConflict,
+    _ => GitMessages.conflicts,
+  });
+
+  String _sourceLabel({required bool leftSource}) {
+    final rebase =
+        (data?['operation'] as Map?)?['kind'] == GitOperationKind.rebase.name;
+    final revision =
+        data?[leftSource ? 'leftRevision' : 'rightRevision'] as String?;
+    return gitString(
+      context,
+      leftSource
+          ? (rebase
+                ? GitMessages.rebasedHistoryRevision
+                : GitMessages.currentHistoryRevision)
+          : (rebase
+                ? GitMessages.replayedCommitRevision
+                : GitMessages.incomingContentRevision),
+      values: {
+        'revision': revision == null
+            ? gitString(
+                context,
+                leftSource ? GitMessages.stage2 : GitMessages.stage3,
+              )
+            : GitOid(revision).abbreviated,
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final text =
@@ -337,9 +422,12 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         states(refresh: () => unawaited(refresh())),
         if (_readingVersions && !loading)
           LinearProgressIndicator(
-            semanticsLabel: gitString(context, 'Loading conflict versions…'),
+            semanticsLabel: gitString(
+              context,
+              GitMessages.loadingConflictVersions,
+            ),
           ),
-        Text('${widget.path.display} · ${data?['kind'] ?? 'Loading conflict'}'),
+        Text('${widget.path.display} · ${_kindLabel()}'),
         if (data != null)
           Wrap(
             spacing: session.host.spacing,
@@ -347,28 +435,28 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
               if (data!['baseAvailable'] == true)
                 TextButton(
                   onPressed: () => compareBase(2),
-                  child: const GitLabel('Base → left'),
+                  child: const GitLabel(GitMessages.baseLeft),
                 ),
               if (data!['baseAvailable'] == true)
                 TextButton(
                   onPressed: () => compareBase(3),
-                  child: const GitLabel('Base → right'),
+                  child: const GitLabel(GitMessages.baseRight),
                 ),
               if (data!['baseAvailable'] != true)
-                const GitLabel('No base entry for this conflict'),
+                const GitLabel(GitMessages.noBaseEntryForThisConflict),
               if (text)
                 TextButton(
                   onPressed: _busy
                       ? null
                       : () => unawaited(acceptWhole(ConflictChoice.left)),
-                  child: const GitLabel('Accept entire left file…'),
+                  child: const GitLabel(GitMessages.acceptEntireLeftFile),
                 ),
               if (text)
                 TextButton(
                   onPressed: _busy
                       ? null
                       : () => unawaited(acceptWhole(ConflictChoice.right)),
-                  child: const GitLabel('Accept entire right file…'),
+                  child: const GitLabel(GitMessages.acceptEntireRightFile),
                 ),
             ],
           ),
@@ -378,43 +466,52 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               GitIconButton(
-                tooltip: 'Previous conflict region',
+                tooltip: gitString(context, GitMessages.previousConflictRegion),
                 onPressed: _busy || regions.isEmpty ? null : () => navigate(-1),
                 icon: const GitIcon(GitGlyph.up),
               ),
               GitIconButton(
-                tooltip: 'Next conflict region',
+                tooltip: gitString(context, GitMessages.nextConflictRegion),
                 onPressed: _busy || regions.isEmpty ? null : () => navigate(1),
                 icon: const GitIcon(GitGlyph.down),
               ),
               Text(
                 regions.isEmpty
-                    ? 'Manual resolution'
-                    : 'Region ${activeRegion + 1}/${regions.length} · ${reviewedRegions.length} reviewed',
+                    ? gitString(context, GitMessages.manualResolution)
+                    : gitString(
+                        context,
+                        GitMessages.regionArg0Arg1Arg2Reviewed,
+                        values: {
+                          'arg0': activeRegion + 1,
+                          'arg1': regions.length,
+                          'arg2': reviewedRegions.length,
+                        },
+                      ),
               ),
               if (regions.any(
                 (r) => r.leftOffset == null || r.rightOffset == null,
               ))
                 const GitLabel(
-                  'Source alignment exceeded the text comparison limit; source panes remain available for manual review.',
+                  GitMessages
+                      .sourceAlignmentExceededTheTextComparisonLimitSourcePanesRemain,
                 ),
               TextButton(
                 onPressed: _busy || regions.isEmpty
                     ? null
                     : () => acceptRegion(true),
-                child: const GitLabel('Accept left region'),
+                child: const GitLabel(GitMessages.acceptLeftRegion),
               ),
               TextButton(
                 onPressed: _busy || regions.isEmpty
                     ? null
                     : () => acceptRegion(false),
-                child: const GitLabel('Accept right region'),
+                child: const GitLabel(GitMessages.acceptRightRegion),
               ),
               TextButton(
                 onPressed: _busy || regions.isEmpty
                     ? null
                     : () => setState(() => reviewedRegions.add(activeRegion)),
-                child: const GitLabel('Keep manual result for region'),
+                child: const GitLabel(GitMessages.keepManualResultForRegion),
               ),
               TextButton(
                 onPressed: _busy || preview?.text == null
@@ -423,9 +520,10 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                         if (!await gitConfirm(
                           context,
                           session,
-                          'Apply Git’s non-conflicting changes?',
-                          'Replace the current result draft with Git’s merge preview. This discards unsaved manual result edits; the working file is unchanged until Save.',
-                          action: 'Use merge preview',
+                          GitMessages.applyGitSNonConflictingChanges,
+                          GitMessages
+                              .replaceTheCurrentResultDraftWithGitSMergePreview,
+                          action: GitMessages.useMergePreview,
                         ))
                           return;
                         result.value = TextEditingValue(text: preview!.text!);
@@ -434,18 +532,24 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                           _draftDirty = true;
                         });
                       },
-                child: const GitLabel('Apply non-conflicting changes…'),
+                child: const GitLabel(GitMessages.applyNonConflictingChanges),
               ),
             ],
           ),
           Expanded(
             child: GitRevisionPanes(
-              labels: const ['Left source', 'Result', 'Right source'],
+              labels: const [
+                GitMessages.leftSource,
+                GitMessages.result,
+                GitMessages.rightSource,
+              ],
               anchorRevision: _anchorRevision,
               panes: [
                 (scroll) => GitTextPane(
-                  label: data?['leftLabel'] as String? ?? 'Stage 2',
-                  text: left!.text ?? '(absent)',
+                  label: _sourceLabel(leftSource: true),
+                  text:
+                      left!.text ??
+                      gitString(context, GitMessages.absentPlaceholder),
                   scrollController: scroll,
                   revealRevision: _anchorRevision,
                   revealOffset: regions.isEmpty
@@ -454,8 +558,10 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 ),
                 (scroll) => resultPane(scroll),
                 (scroll) => GitTextPane(
-                  label: data?['rightLabel'] as String? ?? 'Stage 3',
-                  text: right!.text ?? '(absent)',
+                  label: _sourceLabel(leftSource: false),
+                  text:
+                      right!.text ??
+                      gitString(context, GitMessages.absentPlaceholder),
                   scrollController: scroll,
                   revealRevision: _anchorRevision,
                   revealOffset: regions.isEmpty
@@ -472,16 +578,17 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                       ? const Center(child: CircularProgressIndicator())
                       : const Center(
                           child: GitLabel(
-                            'Conflict versions are unavailable. Refresh to review their current state.',
+                            GitMessages
+                                .conflictVersionsAreUnavailableRefreshToReviewTheirCurrentState,
                           ),
                         )
                 : nonText(),
           ),
         if (saved)
           const GitLabel(
-            'Result saved to disk. The index still determines whether this file is resolved.',
+            GitMessages.resultSavedToDiskTheIndexStillDeterminesWhetherThis,
           ),
-        if (text) GitLabel(gitTextFormatLabel(result.text)),
+        if (text) GitLabel(gitTextFormatLabel(result.text, context: context)),
         if (text)
           Wrap(
             alignment: WrapAlignment.end,
@@ -491,13 +598,15 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 onPressed: _busy || error != null || reviewed == null
                     ? null
                     : () => unawaited(save(false)),
-                child: const GitLabel('Save result draft'),
+                child: const GitLabel(GitMessages.saveResultDraft),
               ),
               FilledButton(
                 onPressed: _busy || error != null || reviewed == null
                     ? null
                     : () => unawaited(save(true)),
-                child: const GitLabel('Apply result and stage resolution'),
+                child: const GitLabel(
+                  GitMessages.applyResultAndStageResolution,
+                ),
               ),
             ],
           ),
@@ -506,8 +615,8 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   }
 
   Widget resultPane(ScrollController scroll) => GitTextPane(
-    label: gitString(context, 'Result · editable UTF-8 working content'),
-    semanticLabel: 'Editable conflict result',
+    label: gitString(context, GitMessages.resultEditableUTF8WorkingContent),
+    semanticLabel: gitString(context, GitMessages.editableConflictResult),
     controller: result,
     readOnly: _busy,
     undoController: undo,
@@ -525,10 +634,19 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Left: ${left!.availability.name} · ${left!.mode}\nRight: ${right!.availability.name} · ${right!.mode}',
+          gitString(
+            context,
+            GitMessages.leftArg0Arg1RightArg2Arg3,
+            values: {
+              'arg0': gitEnumLabel(context, left!.availability),
+              'arg1': left!.mode,
+              'arg2': gitEnumLabel(context, right!.availability),
+              'arg3': right!.mode,
+            },
+          ),
         ),
         const GitLabel(
-          'Choose content, deletion, or a submodule commit explicitly. No binary data is decoded as editable text.',
+          GitMessages.chooseContentDeletionOrASubmoduleCommitExplicitlyNoBinary,
         ),
         for (final choice in [
           ConflictChoice.left,
@@ -538,9 +656,15 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           TextButton(
             onPressed: _busy ? null : () => unawaited(acceptWhole(choice)),
             child: Text(switch (choice) {
-              ConflictChoice.left => 'Use entire left content…',
-              ConflictChoice.right => 'Use entire right content…',
-              _ => 'Delete this path…',
+              ConflictChoice.left => gitString(
+                context,
+                GitMessages.useEntireLeftContent,
+              ),
+              ConflictChoice.right => gitString(
+                context,
+                GitMessages.useEntireRightContent,
+              ),
+              _ => gitString(context, GitMessages.deleteThisPath),
             }),
           ),
         if (data?['kind'] == 'submodule')
@@ -551,9 +675,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                     final value = await gitTextInput(
                       context,
                       session,
-                      'Resolved submodule commit',
-                      explanation:
-                          'Stage this exact gitlink in the parent. This does not check out or commit the submodule.',
+                      GitMessages.resolvedSubmoduleCommit,
+                      explanation: GitMessages
+                          .stageThisExactGitlinkInTheParentThisDoesNot,
                     );
                     if (!mounted || value == null) return;
                     try {
@@ -569,14 +693,14 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                       );
                     }
                   },
-            child: const GitLabel('Set resolved gitlink…'),
+            child: const GitLabel(GitMessages.setResolvedGitlink),
           ),
       ],
     ),
   );
   Future<void> compareBase(int stage) => session.host.present<void>(
     context,
-    'Base → stage $stage',
+    gitString(context, GitMessages.baseStageArg0, values: {'arg0': stage}),
     GitDiffView(
       session: session,
       comparison: GitComparison(
@@ -611,7 +735,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     final offset = block == null ? -1 : result.text.indexOf(block);
     if (offset < 0) {
       session.host.notify(
-        'The result was edited. Keep the manual result or select another unchanged region.',
+        GitMessages.theResultWasEditedKeepTheManualResultOrSelect,
       );
       return;
     }
@@ -635,11 +759,19 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     if (!await gitConfirm(
       context,
       session,
-      'Apply ${choice.name} resolution?',
+      gitString(
+        context,
+        GitMessages.applyArg0Resolution,
+        values: {'arg0': gitEnumLabel(context, choice)},
+      ),
       data?['kind'] == 'submodule'
-          ? 'Stage the chosen gitlink commit in the parent. The submodule checkout and its files are not replaced.'
-          : 'Replaces the entire working path ${widget.path.display} and stages the decision. Current working content and any unsaved result draft will be discarded.',
-      action: 'Apply entire file decision',
+          ? GitMessages.stageTheChosenGitlinkCommitInTheParentTheSubmodule
+          : gitString(
+              context,
+              GitMessages.replacesTheEntireWorkingPathArg0AndStagesTheDecision,
+              values: {'arg0': widget.path.display},
+            ),
+      action: GitMessages.applyEntireFileDecision,
     ))
       return;
     await resolve(choice);
@@ -647,14 +779,25 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
 
   Future<void> save(bool stage) async {
     final text = result.text;
-    final formatChange = gitTextFormatChange(working!.text ?? '', text);
+    final formatChange = gitTextFormatChange(
+      working!.text ?? '',
+      text,
+      context: context,
+    );
     if (stage &&
         !await gitConfirm(
           context,
           session,
-          'Stage this conflict resolution?',
-          'Use the entire edited Result as ${widget.path.display}. Git records the path resolved when it is staged. Review all intended content first.${formatChange == null ? '' : '\n\n$formatChange'}',
-          action: 'Apply and stage',
+          GitMessages.stageThisConflictResolution,
+          gitString(
+            context,
+            GitMessages.useTheEntireEditedResultAsArg0GitRecordsThe,
+            values: {
+              'arg0': widget.path.display,
+              'arg1': formatChange == null ? '' : '\n\n$formatChange',
+            },
+          ),
+          action: GitMessages.applyAndStage,
         ))
       return;
     if (!stage &&
@@ -662,9 +805,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         !await gitConfirm(
           context,
           session,
-          'Review result text format changes',
+          GitMessages.reviewResultTextFormatChanges,
           formatChange,
-          action: 'Save reviewed result',
+          action: GitMessages.saveReviewedResult,
         ))
       return;
     if (!mounted) return;
@@ -673,7 +816,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         () => error = const GitException(
           GitErrorCode.staleReview,
           diagnostic:
-              'The edited result changed during format review. Review it again.',
+              GitMessages.theEditedResultChangedDuringFormatReviewReviewItAgain,
         ),
       );
       return;

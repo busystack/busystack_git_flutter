@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -19,30 +20,41 @@ final class GitWorkflowUi {
   final GitSession session;
   GitWorkflowClient get workflows => session.client as GitWorkflowClient;
   Future<void> branches() => _folderDialog(
-    'Branches',
+    GitMessages.branches,
     (open) => SizedBox(
       height: MediaQuery.sizeOf(context).height * .62,
       child: GitBranchesView(session: session, onOpenFolder: open),
     ),
   );
-  Future<void> push() =>
-      present('Push commits', GitPushView(session: session), expanded: true);
+  Future<void> push() => present(
+    GitMessages.pushCommits,
+    GitPushView(session: session),
+    expanded: true,
+  );
   Future<void> pull() => present(
-    'Pull into ${session.snapshot?.branch ?? 'detached HEAD'}',
+    gitString(
+      context,
+      GitMessages.pullIntoArg0,
+      values: {
+        'arg0':
+            session.snapshot?.branch ??
+            gitString(context, GitMessages.detachedHEAD),
+      },
+    ),
     GitPullView(session: session),
   );
   Future<void> conflict(RepoPath path) => present(
-    'Resolve ${path.display}',
+    gitString(context, GitMessages.resolveArg0, values: {'arg0': path.display}),
     GitConflictView(session: session, path: path),
     expanded: true,
   );
   Future<void> operation() => present(
-    'Current operation',
+    GitMessages.currentOperation,
     GitOperationView(session: session),
     expanded: true,
   );
   Future<void> rebase({GitOid? boundary}) => present(
-    'Rebase commits',
+    GitMessages.rebaseCommits,
     GitRebaseView(session: session, boundary: boundary),
     expanded: true,
   );
@@ -55,7 +67,7 @@ final class GitWorkflowUi {
   }) async {
     await session.host.present<void>(
       context,
-      '$title · ${session.repository.root}',
+      '${session.host.message(title)} · ${session.repository.root}',
       child,
       expanded: expanded,
     );
@@ -68,7 +80,7 @@ final class GitWorkflowUi {
   }) async {
     final folder = await session.host.present<String>(
       context,
-      '$title · ${session.repository.root}',
+      '${session.host.message(title)} · ${session.repository.root}',
       Builder(
         builder: (dialogContext) =>
             build((folder) => Navigator.of(dialogContext).pop(folder)),
@@ -80,41 +92,49 @@ final class GitWorkflowUi {
 
   Future<void> more() async {
     final actions = {
-      'fetch': 'Fetch…',
-      'pull': 'Pull…',
-      'push': 'Push…',
-      'branches': 'Branches…',
-      'remotes': 'Manage remotes…',
-      'merge': 'Merge into ${session.snapshot?.branch ?? 'HEAD'}…',
-      'rebase': 'Rebase…',
-      'conflicts': 'Conflicts and current operation…',
-      'stashes': 'Stashes…',
-      'worktrees': 'Worktrees…',
-      'submodules': 'Submodules…',
-      'recovery': 'Reflog and recovery…',
-      'clone': 'Clone repository…',
+      'fetch': GitMessages.fetch2,
+      'pull': GitMessages.pull,
+      'push': GitMessages.push2,
+      'branches': GitMessages.branches2,
+      'remotes': GitMessages.manageRemotes,
+      'merge': gitString(
+        context,
+        GitMessages.mergeIntoArg0,
+        values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
+      ),
+      'rebase': GitMessages.rebase2,
+      'conflicts': GitMessages.conflictsAndCurrentOperation,
+      'stashes': GitMessages.stashes2,
+      'worktrees': GitMessages.worktrees,
+      'submodules': GitMessages.submodules,
+      'recovery': GitMessages.reflogAndRecovery,
+      'clone': GitMessages.cloneRepository,
       if (session.host.revokeRepositoryTrust != null)
-        'revokeTrust': 'Revoke repository trust',
+        'revokeTrust': GitMessages.revokeRepositoryTrust,
     };
-    final action = await session.host.menu(context, 'Repository actions', [
-      for (final e in actions.entries)
-        GitMenuEntry(
-          e.key,
-          session.snapshot != null ||
-                  const {'clone', 'revokeTrust'}.contains(e.key)
-              ? e.value
-              : '${e.value} · ${session.loading ? 'Waiting for repository status' : 'Repository status unavailable; refresh'}',
-          enabled:
-              session.snapshot != null ||
-              const {'clone', 'revokeTrust'}.contains(e.key),
-          sectionStart: const {
-            'merge',
-            'stashes',
-            'clone',
-            'revokeTrust',
-          }.contains(e.key),
-        ),
-    ]);
+    final action = await session.host.menu(
+      context,
+      GitMessages.repositoryActions,
+      [
+        for (final e in actions.entries)
+          GitMenuEntry(
+            e.key,
+            session.snapshot != null ||
+                    const {'clone', 'revokeTrust'}.contains(e.key)
+                ? e.value
+                : '${session.host.message(e.value)} · ${session.loading ? gitString(context, GitMessages.waitingForRepositoryStatus) : gitString(context, GitMessages.repositoryStatusUnavailableRefresh)}',
+            enabled:
+                session.snapshot != null ||
+                const {'clone', 'revokeTrust'}.contains(e.key),
+            sectionStart: const {
+              'merge',
+              'stashes',
+              'clone',
+              'revokeTrust',
+            }.contains(e.key),
+          ),
+      ],
+    );
     if (!context.mounted || action == null) return;
     switch (action) {
       case 'branches':
@@ -124,16 +144,20 @@ final class GitWorkflowUi {
       case 'pull':
         await pull();
       case 'fetch':
-        await present('Fetch', GitFetchView(session: session));
+        await present(GitMessages.fetch, GitFetchView(session: session));
       case 'remotes':
         await present(
-          'Manage remotes',
+          GitMessages.manageRemotes2,
           GitRemotesView(session: session),
           expanded: true,
         );
       case 'merge':
         await present(
-          'Merge into ${session.snapshot?.branch ?? 'HEAD'}',
+          gitString(
+            context,
+            GitMessages.mergeIntoArg02,
+            values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
+          ),
           GitMergeView(session: session),
         );
       case 'rebase':
@@ -142,32 +166,36 @@ final class GitWorkflowUi {
         await operation();
       case 'stashes':
         await present(
-          'Stashes',
+          GitMessages.stashes,
           GitStashesView(session: session),
           expanded: true,
         );
       case 'worktrees':
         await _folderDialog(
-          'Worktrees',
+          GitMessages.worktrees2,
           (open) => GitWorktreesView(session: session, onOpenFolder: open),
           expanded: true,
         );
       case 'submodules':
         await _folderDialog(
-          'Submodules',
+          GitMessages.submodules2,
           (open) => GitSubmodulesView(session: session, onOpenFolder: open),
           expanded: true,
         );
       case 'recovery':
         await present(
-          'Reflog and recovery',
+          GitMessages.reflogAndRecovery2,
           GitRecoveryView(session: session),
           expanded: true,
         );
       case 'clone':
         final created = await session.host.present<RepositoryId>(
           context,
-          'Clone repository · ${session.repository.root}',
+          gitString(
+            context,
+            GitMessages.cloneRepositoryArg0,
+            values: {'arg0': session.repository.root},
+          ),
           GitCreationView(
             client: workflows,
             chooseDirectory: session.host.chooseDirectory,
@@ -259,7 +287,7 @@ final class _GitTextInputState extends State<_GitTextInput> {
       if (widget.explanation != null)
         Padding(
           padding: EdgeInsets.only(bottom: widget.spacing),
-          child: Text(widget.explanation!),
+          child: GitLabel(widget.explanation!),
         ),
       GitTextUndo(
         controller: controller,
@@ -268,7 +296,7 @@ final class _GitTextInputState extends State<_GitTextInput> {
           autofocus: true,
           maxLines: widget.multiline ? 8 : 1,
           decoration: InputDecoration(
-            labelText: widget.title,
+            labelText: gitString(context, widget.title),
             border: const OutlineInputBorder(),
           ),
           onSubmitted: widget.multiline
@@ -282,11 +310,11 @@ final class _GitTextInputState extends State<_GitTextInput> {
         children: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const GitLabel('Cancel'),
+            child: const GitLabel(GitMessages.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text),
-            child: const GitLabel('Apply'),
+            child: const GitLabel(GitMessages.apply),
           ),
         ],
       ),
@@ -299,7 +327,7 @@ Future<bool> gitConfirm(
   GitSession session,
   String title,
   String detail, {
-  String action = 'Continue',
+  String action = GitMessages.continueAction,
 }) async {
   var decisionSubmitted = false;
   final result = await session.host.present<bool>(
@@ -322,18 +350,18 @@ Future<bool> gitConfirm(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            GitSelectableText(detail),
+            GitSelectableText(gitString(context, detail)),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
                   onPressed: () => decide(false),
-                  child: const GitLabel('Cancel'),
+                  child: const GitLabel(GitMessages.cancel),
                 ),
                 FilledButton(
                   onPressed: () => decide(true),
-                  child: Text(action),
+                  child: GitLabel(action),
                 ),
               ],
             ),
@@ -404,6 +432,7 @@ abstract class GitDialogState<T extends StatefulWidget> extends State<T> {
           ) ==
           false)
         return;
+      if (!mounted || generation != current || token.isCancelled) return;
       final value = await workflows.inspect(
         session.repository,
         request,
@@ -447,12 +476,14 @@ abstract class GitDialogState<T extends StatefulWidget> extends State<T> {
           children: [
             Expanded(
               child: Text(
-                session.progress?.text ?? 'Git operation in progress',
+                session.progress?.text.isNotEmpty == true
+                    ? session.progress!.text
+                    : gitString(context, GitMessages.gitOperationInProgress),
               ),
             ),
             TextButton(
               onPressed: session.cancel,
-              child: const GitLabel('Cancel process'),
+              child: const GitLabel(GitMessages.cancelProcess),
             ),
           ],
         ),

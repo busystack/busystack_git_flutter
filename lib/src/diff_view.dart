@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
@@ -232,7 +234,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final comparison = widget.comparison, host = widget.session.host;
     final label = TextPainter(
       text: TextSpan(
-        text: gitString(context, 'Edit HEAD | Index | Working Tree…'),
+        text: gitString(context, GitMessages.editHEADIndexWorkingTree),
         style: Theme.of(context).textTheme.labelLarge,
       ),
       textDirection: Directionality.of(context),
@@ -252,12 +254,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
           if (_stale)
             MaterialBanner(
               content: const GitLabel(
-                'The reviewed index or working content changed. Refresh this comparison before staging.',
+                GitMessages
+                    .theReviewedIndexOrWorkingContentChangedRefreshThisComparison,
               ),
               actions: [
                 TextButton(
                   onPressed: () => unawaited(_load(refreshStatus: true)),
-                  child: const GitLabel('Refresh comparison'),
+                  child: const GitLabel(GitMessages.refreshComparison),
                 ),
               ],
             ),
@@ -269,7 +272,10 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   children: [
                     Expanded(child: SelectableText(comparison.path.display)),
                     GitIconButton(
-                      tooltip: 'Refresh comparison',
+                      tooltip: gitString(
+                        context,
+                        GitMessages.refreshComparison,
+                      ),
                       onPressed: () => unawaited(_load(refreshStatus: true)),
                       icon: const GitIcon(GitGlyph.refresh),
                     ),
@@ -282,40 +288,49 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     if (widget.onPreviousFile != null ||
                         widget.onNextFile != null) ...[
                       GitIconButton(
-                        tooltip: 'Previous changed file',
+                        tooltip: gitString(
+                          context,
+                          GitMessages.previousChangedFile,
+                        ),
                         onPressed: widget.onPreviousFile,
                         icon: const GitIcon(GitGlyph.previous),
                       ),
                       GitIconButton(
-                        tooltip: 'Next changed file',
+                        tooltip: gitString(
+                          context,
+                          GitMessages.nextChangedFile,
+                        ),
                         onPressed: widget.onNextFile,
                         icon: const GitIcon(GitGlyph.next),
                       ),
                     ],
                     GitIconButton(
-                      tooltip: 'Previous difference',
+                      tooltip: gitString(
+                        context,
+                        GitMessages.previousDifference,
+                      ),
                       onPressed: () => _jump(-1),
                       icon: const GitIcon(GitGlyph.up, size: 18),
                     ),
                     GitIconButton(
-                      tooltip: 'Next difference',
+                      tooltip: gitString(context, GitMessages.nextDifference),
                       onPressed: () => _jump(1),
                       icon: const GitIcon(GitGlyph.down, size: 18),
                     ),
                     if (compact)
                       GitMenuButton(
                         host: host,
-                        tooltip: 'Comparison mode',
+                        tooltip: gitString(context, GitMessages.comparisonMode),
                         entries: [
                           GitMenuEntry(
                             'side',
-                            'Side by side',
+                            GitMessages.sideBySide,
                             checked: !_unified,
                             radio: true,
                           ),
                           GitMenuEntry(
                             'unified',
-                            'Unified',
+                            GitMessages.unified,
                             checked: _unified,
                             radio: true,
                           ),
@@ -325,18 +340,26 @@ final class _GitDiffViewState extends State<GitDiffView> {
                           value == 'unified',
                           () => _unified = value == 'unified',
                         ),
-                        child: GitLabel(_unified ? 'Unified' : 'Side by side'),
+                        child: GitLabel(
+                          _unified
+                              ? GitMessages.unified
+                              : GitMessages.sideBySide,
+                        ),
                       )
                     else
                       SegmentedButton<bool>(
-                        segments: const [
+                        segments: [
                           ButtonSegment(
                             value: false,
-                            label: GitLabel('Side by side'),
+                            label: GitLabel(
+                              gitString(context, GitMessages.sideBySide),
+                            ),
                           ),
                           ButtonSegment(
                             value: true,
-                            label: GitLabel('Unified'),
+                            label: GitLabel(
+                              gitString(context, GitMessages.unified),
+                            ),
                           ),
                         ],
                         selected: {_unified},
@@ -348,18 +371,25 @@ final class _GitDiffViewState extends State<GitDiffView> {
                       ),
                     GitMenuButton(
                       host: host,
-                      tooltip: gitString(context, 'Diff display options'),
+                      tooltip: gitString(
+                        context,
+                        GitMessages.diffDisplayOptions,
+                      ),
                       entries: [
-                        GitMenuEntry('wrap', 'Wrap', checked: _wrap),
-                        GitMenuEntry('words', 'Words', checked: _words),
+                        GitMenuEntry('wrap', GitMessages.wrap, checked: _wrap),
+                        GitMenuEntry(
+                          'words',
+                          GitMessages.words,
+                          checked: _words,
+                        ),
                         GitMenuEntry(
                           'collapse',
-                          'Collapse context',
+                          GitMessages.collapseContext,
                           checked: _collapse,
                         ),
                         GitMenuEntry(
                           'whitespace',
-                          'Ignore whitespace',
+                          GitMessages.ignoreWhitespace,
                           checked: _ignoreWhitespace,
                         ),
                       ],
@@ -389,7 +419,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                       },
                     ),
                     GitIconButton(
-                      tooltip: 'Search comparison',
+                      tooltip: gitString(context, GitMessages.searchComparison),
                       onPressed: _openSearch,
                       icon: const GitIcon(GitGlyph.search),
                     ),
@@ -402,10 +432,10 @@ final class _GitDiffViewState extends State<GitDiffView> {
                       controller: _search,
                       focusNode: _searchFocus,
                       decoration: InputDecoration(
-                        labelText: gitString(context, 'Search'),
+                        labelText: gitString(context, GitMessages.search),
                         isDense: true,
                         suffixIcon: GitIconButton(
-                          tooltip: 'Close search',
+                          tooltip: gitString(context, GitMessages.closeSearch),
                           onPressed: () => setState(() {
                             _search.clear();
                             _searchVisible = false;
@@ -421,23 +451,25 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     alignment: Alignment.centerLeft,
                     child: GitMenuButton(
                       host: host,
-                      tooltip: 'Staging actions',
-                      child: const GitLabel('Staging actions…'),
+                      tooltip: gitString(context, GitMessages.stagingActions),
+                      child: const GitLabel(GitMessages.stagingActions2),
                       entries: [
                         GitMenuEntry(
                           'lines',
                           _unstage
-                              ? 'Unstage selected changed lines'
-                              : 'Stage selected changed lines',
+                              ? GitMessages.unstageSelectedChangedLines
+                              : GitMessages.stageSelectedChangedLines,
                           enabled: _selected.isNotEmpty,
                         ),
                         const GitMenuEntry(
                           'index',
-                          'Edit HEAD | Index | Working Tree…',
+                          GitMessages.editHEADIndexWorkingTree,
                         ),
                         GitMenuEntry(
                           'file',
-                          _unstage ? 'Unstage whole file' : 'Stage whole file',
+                          _unstage
+                              ? GitMessages.unstageWholeFile
+                              : GitMessages.stageWholeFile,
                         ),
                       ],
                       onSelected: (value) {
@@ -462,20 +494,28 @@ final class _GitDiffViewState extends State<GitDiffView> {
                             : () => unawaited(_applySelection()),
                         child: Text(
                           _unstage
-                              ? 'Unstage selected changed lines'
-                              : 'Stage selected changed lines',
+                              ? gitString(
+                                  context,
+                                  GitMessages.unstageSelectedChangedLines,
+                                )
+                              : gitString(
+                                  context,
+                                  GitMessages.stageSelectedChangedLines,
+                                ),
                         ),
                       ),
                       OutlinedButton(
                         onPressed: () => unawaited(_indexEditor()),
                         child: const GitLabel(
-                          'Edit HEAD | Index | Working Tree…',
+                          GitMessages.editHEADIndexWorkingTree,
                         ),
                       ),
                       TextButton(
                         onPressed: () => unawaited(_wholeFile()),
                         child: Text(
-                          _unstage ? 'Unstage whole file' : 'Stage whole file',
+                          _unstage
+                              ? gitString(context, GitMessages.unstageWholeFile)
+                              : gitString(context, GitMessages.stageWholeFile),
                         ),
                       ),
                     ],
@@ -493,7 +533,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
             TextButton(
               onPressed: () => setState(() => _ignoreWhitespace = false),
               child: Text(
-                '${_ignoredWhitespace().length} whitespace-only changed lines hidden · Show exact changes',
+                gitString(
+                  context,
+                  GitMessages
+                      .arg0WhitespaceOnlyChangedLinesHiddenShowExactChanges,
+                  values: {'arg0': _ignoredWhitespace().length},
+                ),
               ),
             ),
           const Divider(height: 1),
@@ -503,8 +548,17 @@ final class _GitDiffViewState extends State<GitDiffView> {
               padding: EdgeInsets.all(host.spacing),
               child: Text(
                 _stagingComparison
-                    ? '${_selected.length} changed lines selected · Display settings never alter the staged bytes.'
-                    : 'Read-only comparison · Copy text or adjust display settings.',
+                    ? gitString(
+                        context,
+                        GitMessages
+                            .arg0ChangedLinesSelectedDisplaySettingsNeverAlterTheStaged,
+                        values: {'arg0': _selected.length},
+                      )
+                    : gitString(
+                        context,
+                        GitMessages
+                            .readOnlyComparisonCopyTextOrAdjustDisplaySettings,
+                      ),
                 style: Theme.of(context).textTheme.bodySmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -518,7 +572,18 @@ final class _GitDiffViewState extends State<GitDiffView> {
   Widget _label(GitContent content) => Padding(
     padding: const EdgeInsets.all(6),
     child: Text(
-      '${content.version.label} · ${content.mode} · ${content.size} bytes${content.bytes.isNotEmpty && content.bytes.last != 10 ? ' · no final newline' : ''}',
+      gitString(
+        context,
+        GitMessages.arg0Arg1Arg2BytesArg3,
+        values: {
+          'arg0': gitVersionLabel(context, content.version),
+          'arg1': content.mode,
+          'arg2': content.size,
+          'arg3': content.bytes.isNotEmpty && content.bytes.last != 10
+              ? gitString(context, GitMessages.noFinalNewline)
+              : '',
+        },
+      ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
     ),
@@ -527,11 +592,20 @@ final class _GitDiffViewState extends State<GitDiffView> {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text('${_left!.availability.name} → ${_right!.availability.name}'),
+        Text(
+          '${gitEnumLabel(context, _left!.availability)} → ${gitEnumLabel(context, _right!.availability)}',
+        ),
         Text(
           _displayLimit == null
-              ? 'Text comparison is unavailable for these contents.'
-              : 'This comparison exceeds the bounded text review limit. The contents have not been declared identical.',
+              ? gitString(
+                  context,
+                  GitMessages.textComparisonIsUnavailableForTheseContents,
+                )
+              : gitString(
+                  context,
+                  GitMessages
+                      .thisComparisonExceedsTheBoundedTextReviewLimitTheContents,
+                ),
         ),
         if (_stagingComparison)
           TextButton(
@@ -541,7 +615,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     !widget.session.canWriteMetadata
                 ? null
                 : () => unawaited(_wholeFile()),
-            child: Text(_unstage ? 'Unstage whole file' : 'Stage whole file'),
+            child: Text(
+              _unstage
+                  ? gitString(context, GitMessages.unstageWholeFile)
+                  : gitString(context, GitMessages.stageWholeFile),
+            ),
           ),
       ],
     ),
@@ -658,7 +736,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final rows = _alignedRows(), edits = _diff!.edits;
     if (_diff!.changedIndices.isEmpty)
       return const Center(
-        child: GitLabel('The compared contents are identical.'),
+        child: GitLabel(GitMessages.theComparedContentsAreIdentical),
       );
     final host = widget.session.host;
     Widget cell(int? index, int? counterpart, bool right) {
@@ -674,8 +752,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
       return Semantics(
         selected: index != null && _selected.contains(index),
         label: changed
-            ? '${_unstage ? 'Unstage' : 'Stage'} changed line'
-            : 'Context',
+            ? gitString(
+                context,
+                GitMessages.arg0ChangedLine,
+                values: {
+                  'arg0': _unstage
+                      ? gitString(context, GitMessages.unstage)
+                      : gitString(context, GitMessages.stage),
+                },
+              )
+            : gitString(context, GitMessages.context),
         child: InkWell(
           canRequestFocus: changed && _canStage,
           onTap: !changed || !_canStage
@@ -729,7 +815,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               if (gap)
                 TextButton(
                   onPressed: () => setState(() => _collapse = false),
-                  child: const GitLabel('Expand unchanged context'),
+                  child: const GitLabel(GitMessages.expandUnchangedContext),
                 ),
               if (_canStage &&
                   changed &&
@@ -739,7 +825,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   child: TextButton(
                     onPressed: () => unawaited(_applySelection(_hunk(first))),
                     child: Text(
-                      _unstage ? 'Unstage this hunk' : 'Stage this hunk',
+                      _unstage
+                          ? gitString(context, GitMessages.unstageThisHunk)
+                          : gitString(context, GitMessages.stageThisHunk),
                     ),
                   ),
                 ),
@@ -1006,7 +1094,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
   Future<void> _indexEditor() async {
     await widget.session.host.present<void>(
       context,
-      'Edit staged content · ${widget.comparison.path.display}',
+      gitString(
+        context,
+        GitMessages.editStagedContentArg0,
+        values: {'arg0': widget.comparison.path.display},
+      ),
       GitIndexEditor(session: widget.session, path: widget.comparison.path),
       expanded: true,
     );
@@ -1112,7 +1204,10 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       children: [
         if (_saving)
           LinearProgressIndicator(
-            semanticsLabel: gitString(context, 'Writing reviewed index result'),
+            semanticsLabel: gitString(
+              context,
+              GitMessages.writingReviewedIndexResult,
+            ),
           ),
         if (_failure != null)
           Flexible(
@@ -1122,22 +1217,34 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
           ),
         Expanded(
           child: GitRevisionPanes(
-            labels: const ['HEAD', 'Index', 'Working Tree'],
+            labels: const [
+              GitMessages.head,
+              GitMessages.index,
+              GitMessages.workingTree,
+            ],
             panes: [
               (scroll) => GitTextPane(
-                label: 'HEAD · ${_snapshot!.head?.abbreviated ?? 'unborn'}',
+                label: gitString(
+                  context,
+                  GitMessages.headArg0,
+                  values: {
+                    'arg0':
+                        _snapshot!.head?.abbreviated ??
+                        gitString(context, GitMessages.unborn),
+                  },
+                ),
                 text: _head!.text ?? '',
                 scrollController: scroll,
               ),
               (scroll) => GitTextPane(
-                label: 'Index · editable UTF-8 blob',
+                label: gitString(context, GitMessages.indexEditableUTF8Blob),
                 controller: _result,
                 readOnly: _saving,
                 undoController: _undo,
                 scrollController: scroll,
               ),
               (scroll) => GitTextPane(
-                label: _working!.version.label,
+                label: gitVersionLabel(context, _working!.version),
                 text: _working!.text ?? '',
                 scrollController: scroll,
               ),
@@ -1158,13 +1265,13 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                       onPressed: _saving || !_undo.value.canUndo
                           ? null
                           : _undo.undo,
-                      child: const GitLabel('Undo'),
+                      child: const GitLabel(GitMessages.undo),
                     ),
                     TextButton(
                       onPressed: _saving || !_undo.value.canRedo
                           ? null
                           : _undo.redo,
-                      child: const GitLabel('Redo'),
+                      child: const GitLabel(GitMessages.redo),
                     ),
                   ],
                 ),
@@ -1176,18 +1283,19 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                         if (_result.text != (_index!.text ?? '') &&
                             await widget.session.host.present<bool>(
                                   context,
-                                  'Reload index review?',
+                                  GitMessages.reloadIndexReview,
                                   Column(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       const GitLabel(
-                                        'Reload the current HEAD, index and working versions. This replaces the unsaved index editor draft.',
+                                        GitMessages
+                                            .reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces,
                                       ),
                                       TextButton(
                                         onPressed: () =>
                                             Navigator.of(context).pop(true),
                                         child: const GitLabel(
-                                          'Replace draft and reload',
+                                          GitMessages.replaceDraftAndReload,
                                         ),
                                       ),
                                     ],
@@ -1201,21 +1309,22 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                           await _load();
                         }
                       },
-                child: const GitLabel('Reload versions…'),
+                child: const GitLabel(GitMessages.reloadVersions),
               ),
               FilledButton(
                 onPressed: _saving ? null : () => unawaited(_apply()),
                 child: const GitLabel(
-                  'Write edited result to this index entry',
+                  GitMessages.writeEditedResultToThisIndexEntry,
                 ),
               ),
               const GitLabel(
-                'Working files remain on disk. Review the edited index before applying.',
+                GitMessages.workingFilesRemainOnDiskReviewTheEditedIndexBefore,
               ),
               ListenableBuilder(
                 listenable: _result,
-                builder: (context, _) =>
-                    GitLabel(gitTextFormatLabel(_result.text)),
+                builder: (context, _) => GitLabel(
+                  gitTextFormatLabel(_result.text, context: context),
+                ),
               ),
             ],
           ),
@@ -1226,14 +1335,22 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
 
   Future<void> _apply() async {
     final text = _result.text;
-    final formatChange = gitTextFormatChange(_index!.text ?? '', text);
+    final formatChange = gitTextFormatChange(
+      _index!.text ?? '',
+      text,
+      context: context,
+    );
     if (formatChange != null &&
         !await gitConfirm(
           context,
           widget.session,
-          'Review index text format changes',
-          'Update only the reviewed index entry for ${widget.path.display}.\n\n$formatChange',
-          action: 'Write reviewed index result',
+          GitMessages.reviewIndexTextFormatChanges,
+          gitString(
+            context,
+            GitMessages.updateOnlyTheReviewedIndexEntryForArg0Arg1,
+            values: {'arg0': widget.path.display, 'arg1': formatChange},
+          ),
+          action: GitMessages.writeReviewedIndexResult,
         ))
       return;
     if (!mounted) return;
@@ -1242,7 +1359,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         () => _failure = const GitException(
           GitErrorCode.staleReview,
           diagnostic:
-              'The edited result changed during format review. Review it again.',
+              GitMessages.theEditedResultChangedDuringFormatReviewReviewItAgain,
         ),
       );
       return;
@@ -1361,14 +1478,17 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
                 SegmentedButton<int>(
                   segments: [
                     for (var i = 0; i < 3; i++)
-                      ButtonSegment(value: i, label: Text(widget.labels[i])),
+                      ButtonSegment(
+                        value: i,
+                        label: GitLabel(widget.labels[i]),
+                      ),
                   ],
                   selected: {_selected},
                   onSelectionChanged: (value) =>
                       setState(() => _selected = value.single),
                 ),
               FilterChip(
-                label: const GitLabel('Synchronize scrolling'),
+                label: const GitLabel(GitMessages.synchronizeScrolling),
                 selected: _sync,
                 onSelected: (value) => setState(() => _sync = value),
               ),

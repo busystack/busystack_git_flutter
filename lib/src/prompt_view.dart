@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -67,7 +68,9 @@ final class _PromptState extends State<_GitPromptView> {
       maxLines: message ? null : 1,
       textAlignVertical: TextAlignVertical.top,
       decoration: InputDecoration(
-        labelText: message ? 'Git message' : widget.prompt.title,
+        labelText: message
+            ? gitString(context, GitMessages.gitMessage)
+            : widget.prompt.title,
         border: const OutlineInputBorder(),
       ),
       onSubmitted: message ? null : (_) => accept(),
@@ -88,12 +91,14 @@ final class _PromptState extends State<_GitPromptView> {
           children: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const GitLabel('Cancel prompt'),
+              child: const GitLabel(GitMessages.cancelPrompt),
             ),
             FilledButton(
               onPressed: accept,
               child: Text(
-                message ? 'Use message and continue' : 'Respond privately',
+                message
+                    ? gitString(context, GitMessages.useMessageAndContinue)
+                    : gitString(context, GitMessages.respondPrivately),
               ),
             ),
           ],

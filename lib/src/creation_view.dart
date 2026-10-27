@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -57,9 +58,9 @@ final class _CreationState extends State<GitCreationView> {
             decoration: InputDecoration(
               labelText: gitString(
                 context,
-                'Repository URL or local Git source',
+                GitMessages.repositoryURLOrLocalGitSource,
               ),
-              hintText: gitString(context, 'HTTPS, SSH, or local path'),
+              hintText: gitString(context, GitMessages.httpsSSHOrLocalPath),
             ),
           ),
         if (!widget.initialize)
@@ -72,8 +73,8 @@ final class _CreationState extends State<GitCreationView> {
                 enabled: !running,
                 decoration: InputDecoration(
                   labelText: widget.initialize
-                      ? 'Folder to initialize'
-                      : 'Final clone destination',
+                      ? gitString(context, GitMessages.folderToInitialize)
+                      : gitString(context, GitMessages.finalCloneDestination),
                 ),
               ),
             ),
@@ -85,25 +86,35 @@ final class _CreationState extends State<GitCreationView> {
                       if (mounted && value != null)
                         setState(() => destination.text = value);
                     },
-              child: const GitLabel('Choose…'),
+              child: const GitLabel(GitMessages.choose),
             ),
           ],
         ),
         Text(
           widget.initialize
-              ? 'Creates Git metadata only. Existing files are not staged or committed.'
-              : 'The final destination must be absent or empty. Existing user data is never overwritten.',
+              ? gitString(
+                  context,
+                  GitMessages.createsGitMetadataOnlyExistingFilesAreNotStagedOr,
+                )
+              : gitString(
+                  context,
+                  GitMessages
+                      .theFinalDestinationMustBeAbsentOrEmptyExistingUser,
+                ),
         ),
         ExpansionTile(
-          title: const GitLabel('Options'),
+          title: const GitLabel(GitMessages.options),
           children: [
             TextField(
               controller: branch,
               enabled: !running,
               decoration: InputDecoration(
                 labelText: widget.initialize
-                    ? 'Initial branch · blank uses effective Git policy'
-                    : 'Selected branch · optional',
+                    ? gitString(
+                        context,
+                        GitMessages.initialBranchBlankUsesEffectiveGitPolicy,
+                      )
+                    : gitString(context, GitMessages.selectedBranchOptional),
               ),
             ),
             if (!widget.initialize)
@@ -111,7 +122,7 @@ final class _CreationState extends State<GitCreationView> {
                 dense: true,
                 value: recursive,
                 title: const GitLabel(
-                  'Explicitly initialize/update submodules recursively',
+                  GitMessages.explicitlyInitializeUpdateSubmodulesRecursively,
                 ),
                 onChanged: running
                     ? null
@@ -123,14 +134,17 @@ final class _CreationState extends State<GitCreationView> {
           Column(
             children: [
               const LinearProgressIndicator(),
-              Text(progress?.text ?? 'Preparing Git operation…'),
+              Text(
+                progress?.text ??
+                    gitString(context, GitMessages.preparingGitOperation),
+              ),
             ],
           ),
         if (outcome != null &&
             !{GitOperationPhase.completed}.contains(outcome!.phase))
           Text(
-            '${outcome!.createdDirectory ? 'This attempt created' : 'The destination existed before this attempt:'} ${destination.text}\n'
-            '${outcome!.destinationStillExists ? 'The directory remains for inspection. Review it before another clone attempt.' : 'No destination directory remains.'}',
+            '${outcome!.createdDirectory ? gitString(context, GitMessages.thisAttemptCreated) : gitString(context, GitMessages.theDestinationExistedBeforeThisAttempt)} ${destination.text}\n'
+            '${outcome!.destinationStillExists ? gitString(context, GitMessages.theDirectoryRemainsForInspectionReviewItBeforeAnotherClone) : gitString(context, GitMessages.noDestinationDirectoryRemains)}',
           ),
         const SizedBox(height: 12),
         Row(
@@ -140,11 +154,19 @@ final class _CreationState extends State<GitCreationView> {
               onPressed: running
                   ? () => cancellation?.cancel()
                   : () => Navigator.of(context).pop(),
-              child: Text(running ? 'Cancel process' : 'Cancel'),
+              child: Text(
+                running
+                    ? gitString(context, GitMessages.cancelProcess)
+                    : gitString(context, GitMessages.cancel),
+              ),
             ),
             FilledButton(
               onPressed: running ? null : () => unawaited(start()),
-              child: Text(widget.initialize ? 'Initialize' : 'Clone'),
+              child: Text(
+                widget.initialize
+                    ? gitString(context, GitMessages.initialize)
+                    : gitString(context, GitMessages.clone),
+              ),
             ),
           ],
         ),

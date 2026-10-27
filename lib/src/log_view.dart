@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
 import 'package:busystack_git/busystack_git.dart';
@@ -16,11 +17,15 @@ final class GitLogView extends StatefulWidget {
     super.key,
     required this.session,
     this.onCommitAction,
+    this.onChooseCommit,
     this.path,
     this.active = true,
   });
   final GitSession session;
   final void Function(GitCommit commit, String action)? onCommitAction;
+
+  /// Reuse the real paged, filterable Log as a read-only revision picker.
+  final ValueChanged<GitCommit>? onChooseCommit;
   final RepoPath? path;
   final bool active;
   @override
@@ -183,8 +188,8 @@ final class _GitLogViewState extends State<GitLogView> {
           _navigationOutsideFilters = true;
           _failure = const GitException(
             GitErrorCode.invalidRequest,
-            diagnostic:
-                'The requested revision is outside the current filters. Reset filters to reveal it.',
+            diagnostic: GitMessages
+                .theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
           );
         });
       } else if (reveal != null) {
@@ -355,29 +360,36 @@ final class _GitLogViewState extends State<GitLogView> {
                     if (compact)
                       GitMenuButton(
                         host: host,
-                        tooltip: 'Filter Log',
+                        tooltip: gitString(context, GitMessages.filterLog),
                         child: GitLabel(
                           activeFilters == 0
-                              ? 'Filters…'
-                              : 'Filters ({count})…',
+                              ? GitMessages.filters
+                              : GitMessages.filtersCount,
                           values: {'count': activeFilters},
                         ),
                         entries: const [
-                          GitMenuEntry('message', 'Message…'),
-                          GitMenuEntry('author', 'Author…'),
-                          GitMenuEntry('path', 'Path…'),
-                          GitMenuEntry('date', 'Date…'),
+                          GitMenuEntry('message', GitMessages.message),
+                          GitMenuEntry('author', GitMessages.author),
+                          GitMenuEntry('path', GitMessages.path),
+                          GitMenuEntry('date', GitMessages.date),
                         ],
                         onSelected: (value) {
                           switch (value) {
                             case 'message':
                               unawaited(
-                                _textFilter(_message, 'Message filter'),
+                                _textFilter(
+                                  _message,
+                                  GitMessages.messageFilter,
+                                ),
                               );
                             case 'author':
-                              unawaited(_textFilter(_author, 'Author filter'));
+                              unawaited(
+                                _textFilter(_author, GitMessages.authorFilter),
+                              );
                             case 'path':
-                              unawaited(_textFilter(_path, 'Path filter'));
+                              unawaited(
+                                _textFilter(_path, GitMessages.pathFilter),
+                              );
                             case 'date':
                               unawaited(_dates());
                           }
@@ -389,7 +401,7 @@ final class _GitLogViewState extends State<GitLogView> {
                         child: TextField(
                           controller: _message,
                           decoration: InputDecoration(
-                            labelText: gitString(context, 'Message'),
+                            labelText: gitString(context, GitMessages.message2),
                             isDense: true,
                           ),
                           onSubmitted: (_) => unawaited(_load()),
@@ -400,7 +412,7 @@ final class _GitLogViewState extends State<GitLogView> {
                         child: TextField(
                           controller: _author,
                           decoration: InputDecoration(
-                            labelText: gitString(context, 'Author'),
+                            labelText: gitString(context, GitMessages.author2),
                             isDense: true,
                           ),
                           onSubmitted: (_) => unawaited(_load()),
@@ -411,7 +423,7 @@ final class _GitLogViewState extends State<GitLogView> {
                         child: TextField(
                           controller: _path,
                           decoration: InputDecoration(
-                            labelText: gitString(context, 'Path'),
+                            labelText: gitString(context, GitMessages.path2),
                             isDense: true,
                           ),
                           onSubmitted: (_) => unawaited(_load()),
@@ -421,41 +433,45 @@ final class _GitLogViewState extends State<GitLogView> {
                         onPressed: () => unawaited(_dates()),
                         child: Text(
                           _since == null && _until == null
-                              ? 'Date…'
-                              : 'Date filter…',
+                              ? gitString(context, GitMessages.date)
+                              : gitString(context, GitMessages.dateFilter),
                         ),
                       ),
                     ],
                     TextButton(
                       onPressed: _resetFilters,
-                      child: const GitLabel('Reset filters'),
+                      child: const GitLabel(GitMessages.resetFilters),
                     ),
                     GitIconButton(
-                      tooltip: 'Refresh Log',
+                      tooltip: gitString(context, GitMessages.refreshLog),
                       onPressed: _loading ? null : () => unawaited(_load()),
                       icon: const GitIcon(GitGlyph.refresh),
                     ),
                     if (compact)
                       GitIconButton(
-                        tooltip: 'Go to commit/reference…',
+                        tooltip: gitString(
+                          context,
+                          GitMessages.goToCommitReference,
+                        ),
                         onPressed: () => unawaited(_goto()),
                         icon: const GitIcon(GitGlyph.search),
                       )
                     else
                       TextButton(
                         onPressed: () => unawaited(_goto()),
-                        child: const GitLabel('Go to commit/reference…'),
+                        child: const GitLabel(GitMessages.goToCommitReference),
                       ),
                     TextButton(
                       onPressed: () =>
-                          unawaited(_navigate('HEAD', reload: true)),
-                      child: const GitLabel('Back to HEAD'),
+                          unawaited(_navigate(GitMessages.head, reload: true)),
+                      child: const GitLabel(GitMessages.backToHEAD),
                     ),
-                    if (_selectedIds.length > 1)
+                    if (widget.onChooseCommit == null &&
+                        _selectedIds.length > 1)
                       TextButton(
                         onPressed: () =>
                             GitWorkflowUi(context, widget.session).present(
-                              'Ordered cherry-pick',
+                              GitMessages.orderedCherryPick,
                               GitCherryPickView(
                                 session: widget.session,
                                 commits: _commits
@@ -467,7 +483,11 @@ final class _GitLogViewState extends State<GitLogView> {
                               expanded: true,
                             ),
                         child: Text(
-                          'Review cherry-pick (${_selectedIds.length})…',
+                          gitString(
+                            context,
+                            GitMessages.reviewCherryPickArg0,
+                            values: {'arg0': _selectedIds.length},
+                          ),
                         ),
                       ),
                     if (_selectedIds.length == 2)
@@ -481,13 +501,16 @@ final class _GitLogViewState extends State<GitLogView> {
                           );
                         },
                         child: const GitLabel(
-                          'Compare two selected revisions…',
+                          GitMessages.compareTwoSelectedRevisions,
                         ),
                       ),
                     GitIconButton(
                       tooltip: canShowBranches
-                          ? 'Toggle branches pane'
-                          : 'Filter branches and tags',
+                          ? gitString(context, GitMessages.toggleBranchesPane)
+                          : gitString(
+                              context,
+                              GitMessages.filterBranchesAndTags,
+                            ),
                       onPressed: canShowBranches
                           ? () => setState(() => _branches = !_branches)
                           : () => unawaited(_showBranchFilter()),
@@ -497,11 +520,15 @@ final class _GitLogViewState extends State<GitLogView> {
                       TextButton(
                         onPressed: () => widget.session.host.present<void>(
                           context,
-                          'Commit ${_selected!.oid.abbreviated}',
+                          gitString(
+                            context,
+                            GitMessages.commitArg0,
+                            values: {'arg0': _selected!.oid.abbreviated},
+                          ),
                           SizedBox(height: 500, child: _detailPane()),
                           expanded: true,
                         ),
-                        child: const GitLabel('Commit details…'),
+                        child: const GitLabel(GitMessages.commitDetails),
                       ),
                   ],
                 ),
@@ -511,13 +538,13 @@ final class _GitLogViewState extends State<GitLogView> {
                     child: Text(
                       [
                         if (_message.text.isNotEmpty)
-                          '${gitString(context, 'Message')}: ${_message.text}',
+                          '${gitString(context, GitMessages.message2)}: ${_message.text}',
                         if (_author.text.isNotEmpty)
-                          '${gitString(context, 'Author')}: ${_author.text}',
+                          '${gitString(context, GitMessages.author2)}: ${_author.text}',
                         if (_path.text.isNotEmpty)
-                          '${gitString(context, 'Path')}: ${_path.text}',
+                          '${gitString(context, GitMessages.path2)}: ${_path.text}',
                         if (_since != null || _until != null)
-                          gitString(context, 'Date filter…'),
+                          gitString(context, GitMessages.dateFilter),
                       ].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -527,7 +554,13 @@ final class _GitLogViewState extends State<GitLogView> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: InputChip(
-                      label: Text('Reference: $_reference'),
+                      label: Text(
+                        gitString(
+                          context,
+                          GitMessages.referenceArg0,
+                          values: {'arg0': _reference},
+                        ),
+                      ),
                       onDeleted: () {
                         _reference = null;
                         unawaited(_load());
@@ -542,18 +575,32 @@ final class _GitLogViewState extends State<GitLogView> {
             GitFailurePanel(
               error: _failure!,
               message: _navigationOutsideFilters
-                  ? 'The requested revision is outside the current filters. Reset filters to reveal it.'
+                  ? gitString(
+                      context,
+                      GitMessages
+                          .theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
+                    )
                   : null,
               onRefresh: () => unawaited(_load()),
             ),
           Expanded(child: main),
+          if (widget.onChooseCommit != null)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: FilledButton(
+                onPressed: _loading || _selected == null
+                    ? null
+                    : () => widget.onChooseCommit!(_selected!),
+                child: const GitLabel(GitMessages.selectThisCommit),
+              ),
+            ),
         ],
       );
     },
   );
   Future<void> _showBranchFilter() => widget.session.host.present<void>(
     context,
-    'Filter branches and tags',
+    GitMessages.filterBranchesAndTags,
     Builder(
       builder: (dialogContext) => SizedBox(
         width: 420,
@@ -575,7 +622,7 @@ final class _GitLogViewState extends State<GitLogView> {
         TextField(
           controller: _referenceSearch,
           decoration: InputDecoration(
-            labelText: gitString(context, 'Branch or tag'),
+            labelText: gitString(context, GitMessages.branchOrTag),
             prefixIcon: GitIcon(GitGlyph.search),
           ),
           onChanged: (_) => setState(() {}),
@@ -585,7 +632,7 @@ final class _GitLogViewState extends State<GitLogView> {
             children: [
               ListTile(
                 dense: true,
-                title: const GitLabel('All references'),
+                title: const GitLabel(GitMessages.allReferences),
                 selected: _reference == null,
                 onTap: () {
                   _reference = null;
@@ -593,7 +640,11 @@ final class _GitLogViewState extends State<GitLogView> {
                   unawaited(_load());
                 },
               ),
-              for (final group in ['Local', 'Remote', 'Tags'])
+              for (final group in [
+                GitMessages.local,
+                GitMessages.remote,
+                GitMessages.tags,
+              ])
                 ExpansionTile(
                   initiallyExpanded: true,
                   title: Text(group),
@@ -601,9 +652,9 @@ final class _GitLogViewState extends State<GitLogView> {
                     for (final ref in _references.where(
                       (ref) =>
                           ref.name.startsWith(
-                            group == 'Local'
+                            group == GitMessages.local
                                 ? 'refs/heads/'
-                                : group == 'Remote'
+                                : group == GitMessages.remote
                                 ? 'refs/remotes/'
                                 : 'refs/tags/',
                           ) &&
@@ -614,7 +665,7 @@ final class _GitLogViewState extends State<GitLogView> {
                         leading: GitIcon(
                           ref.current
                               ? GitGlyph.check
-                              : group == 'Tags'
+                              : group == GitMessages.tags
                               ? GitGlyph.tag
                               : GitGlyph.branch,
                           size: 16,
@@ -645,7 +696,7 @@ final class _GitLogViewState extends State<GitLogView> {
         rowHeight = widget.session.host.rowHeight(context);
     if (!_loading && _commits.isEmpty)
       return const Center(
-        child: GitLabel('No commits match the current filters.'),
+        child: GitLabel(GitMessages.noCommitsMatchTheCurrentFilters),
       );
     return LayoutBuilder(
       builder: (context, bounds) {
@@ -659,7 +710,9 @@ final class _GitLogViewState extends State<GitLogView> {
           'ffffffffffff',
           Theme.of(context).textTheme.bodySmall,
         );
-        final idTitleWidth = _textWidth(gitString(context, 'Object ID'));
+        final idTitleWidth = _textWidth(
+          gitString(context, GitMessages.objectID),
+        );
         final idWidth =
             (idTextWidth > idTitleWidth ? idTextWidth : idTitleWidth) +
             spacing * 2;
@@ -670,17 +723,17 @@ final class _GitLogViewState extends State<GitLogView> {
             bounds.maxWidth >=
             subjectMinimum + idWidth + authorWidth + dateWidth;
         final columns = [
-          gitString(context, 'Subject / references'),
-          if (showAuthor) gitString(context, 'Author'),
-          if (showDate) gitString(context, 'Date'),
-          if (showId) gitString(context, 'Object ID'),
+          gitString(context, GitMessages.subjectReferences),
+          if (showAuthor) gitString(context, GitMessages.author2),
+          if (showDate) gitString(context, GitMessages.date2),
+          if (showId) gitString(context, GitMessages.objectID),
         ];
         Widget columnCell(Widget child) => Padding(
           padding: EdgeInsetsDirectional.only(start: spacing),
           child: child,
         );
         return GitNativeTable(
-          name: gitString(context, 'Git commits'),
+          name: gitString(context, GitMessages.gitCommits),
           description: widget.session.repository.root,
           revision: (widget.session.repository.key, _historyRevision),
           active: widget.active,
@@ -718,7 +771,7 @@ final class _GitLogViewState extends State<GitLogView> {
               ],
               description:
                   '${commit.oid.value}; '
-                  '${gitString(context, 'Parents')}: '
+                  '${gitString(context, GitMessages.parents)}: '
                   '${commit.parents.map((p) => p.value).join(', ')}',
             );
           },
@@ -792,7 +845,7 @@ final class _GitLogViewState extends State<GitLogView> {
                     role: SemanticsRole.table,
                     container: true,
                     explicitChildNodes: true,
-                    label: gitString(context, 'Git commits'),
+                    label: gitString(context, GitMessages.gitCommits),
                     sliver: SliverFixedExtentList(
                       itemExtent: rowHeight,
                       delegate: SliverChildBuilderDelegate(
@@ -809,7 +862,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                     child: Semantics(
                                       role: SemanticsRole.columnHeader,
                                       child: const GitLabel(
-                                        'Subject / references',
+                                        GitMessages.subjectReferences,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
@@ -822,7 +875,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                         Semantics(
                                           role: SemanticsRole.columnHeader,
                                           child: const GitLabel(
-                                            'Author',
+                                            GitMessages.author2,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -836,7 +889,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                         Semantics(
                                           role: SemanticsRole.columnHeader,
                                           child: const GitLabel(
-                                            'Date',
+                                            GitMessages.date2,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -850,7 +903,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                         Semantics(
                                           role: SemanticsRole.columnHeader,
                                           child: const GitLabel(
-                                            'Object ID',
+                                            GitMessages.objectID,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -910,8 +963,13 @@ final class _GitLogViewState extends State<GitLogView> {
                                       child: Semantics(
                                         role: SemanticsRole.cell,
                                         container: true,
-                                        label:
-                                            '${commit.parents.length} parents',
+                                        label: gitString(
+                                          context,
+                                          GitMessages.arg0Parents,
+                                          values: {
+                                            'arg0': commit.parents.length,
+                                          },
+                                        ),
                                         child: Text(
                                           '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
                                           maxLines: 1,
@@ -988,7 +1046,7 @@ final class _GitLogViewState extends State<GitLogView> {
                       onPressed: _loading
                           ? null
                           : () => unawaited(_load(append: true)),
-                      child: const GitLabel('Load more commits'),
+                      child: const GitLabel(GitMessages.loadMoreCommits),
                     ),
                   ),
               ],
@@ -1080,7 +1138,7 @@ final class _GitLogViewState extends State<GitLogView> {
     if (_filesLoading) {
       return Center(
         child: CircularProgressIndicator(
-          semanticsLabel: gitString(context, 'Loading changed files'),
+          semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
         ),
       );
     }
@@ -1097,7 +1155,7 @@ final class _GitLogViewState extends State<GitLogView> {
         child: Semantics(
           container: true,
           liveRegion: true,
-          child: const GitLabel('No changed files'),
+          child: const GitLabel(GitMessages.noChangedFiles),
         ),
       );
     }
@@ -1128,7 +1186,8 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Widget _detailPane() {
     final commit = _selected;
-    if (commit == null) return const Center(child: GitLabel('Select a commit'));
+    if (commit == null)
+      return const Center(child: GitLabel(GitMessages.selectACommit));
     return GitSplitter(
       axis: Axis.vertical,
       initial: .52,
@@ -1144,7 +1203,14 @@ final class _GitLogViewState extends State<GitLogView> {
                   DropdownMenuItem(
                     value: commit.parents[i],
                     child: Text(
-                      'Compare parent ${i + 1}: ${commit.parents[i].abbreviated}',
+                      gitString(
+                        context,
+                        GitMessages.compareParentArg0Arg1,
+                        values: {
+                          'arg0': i + 1,
+                          'arg1': commit.parents[i].abbreviated,
+                        },
+                      ),
                     ),
                   ),
               ],
@@ -1157,7 +1223,7 @@ final class _GitLogViewState extends State<GitLogView> {
               child: Semantics(
                 container: true,
                 header: true,
-                child: const GitLabel('Changed files'),
+                child: const GitLabel(GitMessages.changedFiles),
               ),
             ),
           ),
@@ -1176,15 +1242,31 @@ final class _GitLogViewState extends State<GitLogView> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Author: ${commit.author} <${commit.email}>\n${commit.date.toLocal()}',
+                gitString(
+                  context,
+                  GitMessages.authorArg0Arg1Arg2,
+                  values: {
+                    'arg0': commit.author,
+                    'arg1': commit.email,
+                    'arg2': commit.date.toLocal(),
+                  },
+                ),
               ),
               Text(
-                'Committer: ${commit.committer} <${commit.committerEmail}>\n${commit.committerDate?.toLocal()}',
+                gitString(
+                  context,
+                  GitMessages.committerArg0Arg1Arg2,
+                  values: {
+                    'arg0': commit.committer,
+                    'arg1': commit.committerEmail,
+                    'arg2': commit.committerDate?.toLocal(),
+                  },
+                ),
               ),
               GitSelectableText(commit.oid.value),
               if (commit.boundary)
                 const GitLabel(
-                  'Shallow/partial boundary: a parent object is unavailable.',
+                  GitMessages.shallowPartialBoundaryAParentObjectIsUnavailable,
                 ),
               for (final parent in commit.parents)
                 TextButton(
@@ -1196,17 +1278,24 @@ final class _GitLogViewState extends State<GitLogView> {
                       unawaited(_select(target));
                     else
                       widget.session.host.notify(
-                        'Parent is outside this page or a shallow boundary.',
+                        GitMessages.parentIsOutsideThisPageOrAShallowBoundary,
                       );
                   },
-                  child: Text('Parent ${parent.abbreviated}'),
+                  child: Text(
+                    gitString(
+                      context,
+                      GitMessages.parentArg0,
+                      values: {'arg0': parent.abbreviated},
+                    ),
+                  ),
                 ),
               for (final ref in _references.where((r) => r.oid == commit.oid))
                 Text(ref.name),
-              TextButton(
-                onPressed: () => unawaited(_menu(commit)),
-                child: const GitLabel('Commit actions…'),
-              ),
+              if (widget.onChooseCommit == null)
+                TextButton(
+                  onPressed: () => unawaited(_menu(commit)),
+                  child: const GitLabel(GitMessages.commitActions),
+                ),
             ],
           ),
         ),
@@ -1216,7 +1305,7 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Future<void> _diff(GitChange file) => widget.session.host.present<void>(
     context,
-    '${_parent?.abbreviated ?? 'empty tree'} → ${_selected!.oid.abbreviated}',
+    '${_parent?.abbreviated ?? GitMessages.emptyTree} → ${_selected!.oid.abbreviated}',
     GitDiffView(
       session: widget.session,
       comparison: GitComparison(
@@ -1230,31 +1319,45 @@ final class _GitLogViewState extends State<GitLogView> {
     expanded: true,
   );
   Future<void> _menu(GitCommit commit, {Offset? position}) async {
-    final action = await widget.session.host.menu(context, commit.subject, [
-      for (final action in [
-        'Create branch',
-        'Create tag',
-        'Compare revisions',
-        'Open snapshot',
-        'Cherry-pick',
-        'Revert commit',
-        'Interactive rebase after this boundary',
-        'Reset current branch',
-      ])
-        GitMenuEntry(
-          action,
-          action,
-          enabled:
-              const {'Compare revisions', 'Open snapshot'}.contains(action) ||
-              !widget.session.running && widget.session.canWriteMetadata,
-          sectionStart: const {
-            'Cherry-pick',
-            'Revert commit',
-            'Reset current branch',
-          }.contains(action),
+    if (widget.onChooseCommit != null) return;
+    final action = await widget.session.host.menu(
+      context,
+      commit.subject,
+      [
+        for (final action in [
+          GitMessages.createBranch2,
+          GitMessages.createTag,
+          GitMessages.compareRevisions,
+          GitMessages.openSnapshot,
+          GitMessages.cherryPickOperation,
+          GitMessages.revertCommit,
+          GitMessages.interactiveRebaseAfterThisBoundary,
+          GitMessages.resetCurrentBranch,
+        ])
+          GitMenuEntry(
+            action,
+            action,
+            enabled:
+                const {
+                  GitMessages.compareRevisions,
+                  GitMessages.openSnapshot,
+                }.contains(action) ||
+                !widget.session.running && widget.session.canWriteMetadata,
+            sectionStart: const {
+              GitMessages.cherryPickOperation,
+              GitMessages.revertCommit,
+              GitMessages.resetCurrentBranch,
+            }.contains(action),
+          ),
+        const GitMenuEntry(
+          'copy',
+          GitMessages.copyFullObjectID,
+          sectionStart: true,
         ),
-      const GitMenuEntry('copy', 'Copy full object ID', sectionStart: true),
-    ], position: position);
+      ],
+      position: position,
+      localizeTitle: false,
+    );
     if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: commit.oid.value));
       return;
@@ -1275,8 +1378,8 @@ final class _GitLogViewState extends State<GitLogView> {
     final value = await gitTextInput(
       context,
       widget.session,
-      'Go to commit/reference',
-      explanation: 'Enter a commit ID or reference to reveal in Log.',
+      GitMessages.goToCommitReference2,
+      explanation: GitMessages.enterACommitIDOrReferenceToRevealInLog,
     );
     if (value == null || value.isEmpty || !mounted) return;
     await _navigate(value);
@@ -1314,7 +1417,7 @@ final class _GitLogViewState extends State<GitLogView> {
       if (page.commits.isEmpty) {
         throw const GitException(
           GitErrorCode.unavailable,
-          diagnostic: 'The requested revision is unavailable.',
+          diagnostic: GitMessages.theRequestedRevisionIsUnavailable,
         );
       }
       final target = page.commits.first;

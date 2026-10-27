@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -137,7 +138,7 @@ final class _GitTextUndoState extends State<GitTextUndo> {
 
     _child.currentContext?.visitChildElements(visit);
     if (editable == null) {
-      throw StateError('A Git text history must own its editable field.');
+      throw StateError(GitMessages.aGitTextHistoryMustOwnItsEditableField);
     }
     _applying = true;
     try {

@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/foundation.dart';
@@ -83,8 +85,10 @@ final class GitSession extends ChangeNotifier {
           if (!_disposed) {
             failure = GitException(
               GitErrorCode.commandFailed,
-              diagnostic:
-                  'View preferences could not be saved: ${sanitizeGitDiagnostic('$error')}',
+              diagnostic: host.message(
+                GitMessages.viewPreferencesCouldNotBeSavedArg0,
+                values: {'arg0': sanitizeGitDiagnostic('$error')},
+              ),
             );
             notifyListeners();
           }
@@ -103,7 +107,10 @@ final class GitSession extends ChangeNotifier {
     } on Object catch (error) {
       draftFailure = GitException(
         GitErrorCode.commandFailed,
-        diagnostic: 'Commit draft storage: ${sanitizeGitDiagnostic('$error')}',
+        diagnostic: host.message(
+          GitMessages.commitDraftStorageArg0,
+          values: {'arg0': sanitizeGitDiagnostic('$error')},
+        ),
       );
     }
     if (_disposed) return;
@@ -115,8 +122,10 @@ final class GitSession extends ChangeNotifier {
       if (!_disposed)
         failure = GitException(
           GitErrorCode.commandFailed,
-          diagnostic:
-              'View preferences could not be read: ${sanitizeGitDiagnostic('$error')}',
+          diagnostic: host.message(
+            GitMessages.viewPreferencesCouldNotBeReadArg0,
+            values: {'arg0': sanitizeGitDiagnostic('$error')},
+          ),
         );
     }
     await refresh();
@@ -164,8 +173,10 @@ final class GitSession extends ChangeNotifier {
               if (!_disposed && generation == _draftGeneration) {
                 draftFailure = GitException(
                   GitErrorCode.commandFailed,
-                  diagnostic:
-                      'Commit draft was retained in memory but could not be saved: ${sanitizeGitDiagnostic('$error')}',
+                  diagnostic: host.message(
+                    GitMessages.commitDraftWasRetainedInMemoryButCouldNotBe,
+                    values: {'arg0': sanitizeGitDiagnostic('$error')},
+                  ),
                 );
                 notifyListeners();
               }
@@ -225,8 +236,8 @@ final class GitSession extends ChangeNotifier {
       reportFailure(
         const GitException(
           GitErrorCode.readOnly,
-          diagnostic:
-              'The reviewed repository is read-only for this operation. History and content inspection remain available.',
+          diagnostic: GitMessages
+              .theReviewedRepositoryIsReadOnlyForThisOperationHistory,
         ),
       );
       return null;
@@ -268,8 +279,14 @@ final class GitSession extends ChangeNotifier {
         reportFailure(
           GitException(
             GitErrorCode.commandFailed,
-            diagnostic:
-                'Git returned ${result.phase.name}. The application could not refresh its documents: ${sanitizeGitDiagnostic('$error')}',
+            diagnostic: host.message(
+              GitMessages
+                  .gitReturnedArg0TheApplicationCouldNotRefreshItsDocuments,
+              values: {
+                'arg0': host.message(gitEnumMessage(result.phase)),
+                'arg1': sanitizeGitDiagnostic('$error'),
+              },
+            ),
           ),
         );
       }

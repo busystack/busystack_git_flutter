@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -128,7 +129,7 @@ final class _TextPaneState extends State<GitTextPane> {
       children: [
         Padding(
           padding: const EdgeInsets.all(6),
-          child: Text(widget.label, maxLines: 2),
+          child: GitLabel(widget.label, maxLines: 2),
         ),
         const Divider(height: 1),
         Expanded(
@@ -203,8 +204,8 @@ final class _TextPaneState extends State<GitTextPane> {
                             context,
                             widget.semanticLabel ??
                                 (widget.controller == null
-                                    ? 'Read-only revision content'
-                                    : 'Editable index content'),
+                                    ? GitMessages.readOnlyRevisionContent
+                                    : GitMessages.editableIndexContent),
                           ),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.all(8),

@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
 import 'package:busystack_git/busystack_git.dart';
@@ -174,7 +176,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
         row +
         spacing * 2 +
         height(
-          'Commit scope: entire repository',
+          GitMessages.commitScopeEntireRepository,
           theme.bodySmall,
           inner,
           maxLines: 1,
@@ -182,7 +184,12 @@ final class _GitCommitViewState extends State<GitCommitView> {
         height(session.repository.root, theme.bodySmall, inner, maxLines: 1) +
         (session.snapshot?.upstream == null
             ? 0
-            : height('Cached tracking', theme.bodySmall, inner, maxLines: 1)) +
+            : height(
+                GitMessages.cachedTracking,
+                theme.bodySmall,
+                inner,
+                maxLines: 1,
+              )) +
         (widget.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
         (session.snapshot?.capabilities.writeMetadata == false ? row * 3 : 0);
@@ -226,19 +233,20 @@ final class _GitCommitViewState extends State<GitCommitView> {
 
     return row * 2 +
         textHeight(
-          'Amend last commit',
+          GitMessages.amendLastCommit,
           theme.bodyMedium,
           inset: 96,
           maxLines: 1,
         ).clamp(48.0, double.infinity) +
         textHeight(
-          'Configured hooks and signing are respected.',
+          GitMessages.configuredHooksAndSigningAreRespected,
           theme.bodySmall,
           maxLines: 1,
         ) +
         (_amend
             ? textHeight(
-                'Rewrites the selected HEAD commit. Remote tracking cannot prove it is unpublished.',
+                GitMessages
+                    .rewritesTheSelectedHEADCommitRemoteTrackingCannotProveIt,
                 theme.bodyMedium,
               )
             : 0) +
@@ -272,20 +280,26 @@ final class _GitCommitViewState extends State<GitCommitView> {
                         label: Text(
                           snapshot?.branch ??
                               (snapshot?.head == null
-                                  ? 'Repository'
-                                  : 'Detached ${snapshot!.head!.abbreviated}'),
+                                  ? gitString(context, GitMessages.repository)
+                                  : gitString(
+                                      context,
+                                      GitMessages.detachedArg0,
+                                      values: {
+                                        'arg0': snapshot!.head!.abbreviated,
+                                      },
+                                    )),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ),
                     GitIconButton(
-                      tooltip: 'Log',
+                      tooltip: gitString(context, GitMessages.log),
                       onPressed: () => _leaveReview(widget.onLog),
                       icon: GitIcon(GitGlyph.history, size: 18),
                     ),
                     GitIconButton(
-                      tooltip: 'Refresh',
+                      tooltip: gitString(context, GitMessages.refresh),
                       onPressed: session.refreshing
                           ? null
                           : () => unawaited(
@@ -295,7 +309,10 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     ),
                     Builder(
                       builder: (anchor) => GitIconButton(
-                        tooltip: 'Repository actions',
+                        tooltip: gitString(
+                          context,
+                          GitMessages.repositoryActions,
+                        ),
                         onPressed: () =>
                             _leaveReview(() => widget.onMore(anchor)),
                         icon: const GitIcon(GitGlyph.more, size: 18),
@@ -315,10 +332,10 @@ final class _GitCommitViewState extends State<GitCommitView> {
                 Tooltip(
                   message: gitString(
                     context,
-                    'Commit scope: entire repository',
+                    GitMessages.commitScopeEntireRepository,
                   ),
                   child: GitLabel(
-                    'Commit scope: entire repository',
+                    GitMessages.commitScopeEntireRepository,
                     style: Theme.of(context).textTheme.bodySmall,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -328,7 +345,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                   Tooltip(
                     message: gitString(
                       context,
-                      'Cached tracking · {upstream} · {ahead} ahead · {behind} behind',
+                      GitMessages.cachedTrackingUpstreamAheadAheadBehindBehind,
                       values: {
                         'upstream': snapshot!.upstream!,
                         'ahead': snapshot.ahead,
@@ -336,7 +353,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       },
                     ),
                     child: GitLabel(
-                      'Cached tracking · {upstream} · {ahead} ahead · {behind} behind',
+                      GitMessages.cachedTrackingUpstreamAheadAheadBehindBehind,
                       values: {
                         'upstream': snapshot.upstream!,
                         'ahead': snapshot.ahead,
@@ -349,11 +366,12 @@ final class _GitCommitViewState extends State<GitCommitView> {
                   ),
                 if (session.repository.bare)
                   const GitLabel(
-                    'Bare repository · no working tree. Open Log to inspect its history.',
+                    GitMessages.bareRepositoryNoWorkingTreeOpenLogToInspectIts,
                   ),
                 if (snapshot != null && !snapshot.capabilities.writeMetadata)
                   const GitLabel(
-                    'Read-only repository · staging and commits are unavailable.',
+                    GitMessages
+                        .readOnlyRepositoryStagingAndCommitsAreUnavailable,
                   ),
                 if (widget.notice != null) widget.notice!,
               ],
@@ -388,7 +406,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                   ? const Center(child: CircularProgressIndicator())
                   : snapshot == null
                   ? const Center(
-                      child: GitLabel('Repository status unavailable'),
+                      child: GitLabel(GitMessages.repositoryStatusUnavailable),
                     )
                   : GitChangeTree(
                       active: widget.active,
@@ -410,7 +428,9 @@ final class _GitCommitViewState extends State<GitCommitView> {
                         Semantics(
                           label: gitString(
                             context,
-                            _amend ? 'Amend {revision}' : 'Amend last commit',
+                            _amend
+                                ? GitMessages.amendRevision
+                                : GitMessages.amendLastCommit,
                             values: {
                               'revision': snapshot?.head?.abbreviated ?? '',
                             },
@@ -433,7 +453,9 @@ final class _GitCommitViewState extends State<GitCommitView> {
                         Expanded(
                           child: ExcludeSemantics(
                             child: GitLabel(
-                              _amend ? 'Amend {revision}' : 'Amend last commit',
+                              _amend
+                                  ? GitMessages.amendRevision
+                                  : GitMessages.amendLastCommit,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               values: {
@@ -448,51 +470,62 @@ final class _GitCommitViewState extends State<GitCommitView> {
                           entries: [
                             GitMenuEntry(
                               'signoff',
-                              'Add sign-off trailer',
+                              GitMessages.addSignOffTrailer,
                               checked: _signOff,
                             ),
                             GitMenuEntry(
                               'configuredSigning',
-                              'Use configured signing policy',
+                              GitMessages.useConfiguredSigningPolicy,
                               checked: _sign == null,
                               radio: true,
                             ),
                             GitMenuEntry(
                               'sign',
-                              'Cryptographically sign this commit',
+                              GitMessages.cryptographicallySignThisCommit,
                               checked: _sign == true,
                               radio: true,
                             ),
                             GitMenuEntry(
                               'unsigned',
-                              'Do not sign this commit',
+                              GitMessages.doNotSignThisCommit,
                               checked: _sign == false,
                               radio: true,
                             ),
                             const GitMenuEntry.separator(),
-                            GitMenuEntry('recent', 'Recent commit messages…'),
+                            GitMenuEntry(
+                              'recent',
+                              GitMessages.recentCommitMessages,
+                            ),
                             GitMenuEntry(
                               'template',
-                              'Use configured commit template…',
+                              GitMessages.useConfiguredCommitTemplate,
                             ),
                             GitMenuEntry(
                               'identity',
-                              'Author identity and configured hooks…',
+                              GitMessages.authorIdentityAndConfiguredHooks,
                             ),
                             if (host.draftMessage != null)
-                              GitMenuEntry('draft', 'Draft message…'),
+                              GitMenuEntry('draft', GitMessages.draftMessage),
                           ],
-                          tooltip: gitString(context, 'Commit options'),
+                          tooltip: gitString(
+                            context,
+                            GitMessages.commitOptions,
+                          ),
                         ),
                       ],
                     ),
                     if (_amend)
                       const GitLabel(
-                        'Rewrites the selected HEAD commit. Remote tracking cannot prove it is unpublished.',
+                        GitMessages
+                            .rewritesTheSelectedHEADCommitRemoteTrackingCannotProveIt,
                       ),
                     if (session.draftFailure != null)
                       Text(
-                        'Draft retained in memory; saving it failed. ${session.draftFailure!.diagnostic}',
+                        gitString(
+                          context,
+                          GitMessages.draftRetainedInMemorySavingItFailedArg0,
+                          values: {'arg0': session.draftFailure!.diagnostic},
+                        ),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
@@ -507,7 +540,10 @@ final class _GitCommitViewState extends State<GitCommitView> {
                           minLines: null,
                           textAlignVertical: TextAlignVertical.top,
                           decoration: InputDecoration(
-                            labelText: gitString(context, 'Commit message'),
+                            labelText: gitString(
+                              context,
+                              GitMessages.commitMessage,
+                            ),
                             alignLabelWithHint: true,
                             border: OutlineInputBorder(),
                           ),
@@ -519,7 +555,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       ),
                     ),
                     GitLabel(
-                      'Configured hooks and signing are respected.',
+                      GitMessages.configuredHooksAndSigningAreRespected,
                       style: Theme.of(context).textTheme.bodySmall,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -547,14 +583,17 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       child: Text(
                         session.progress?.text.isNotEmpty == true
                             ? session.progress!.text
-                            : 'Git operation in progress',
+                            : gitString(
+                                context,
+                                GitMessages.gitOperationInProgress,
+                              ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     TextButton(
                       onPressed: session.cancel,
-                      child: const GitLabel('Cancel'),
+                      child: const GitLabel(GitMessages.cancel),
                     ),
                   ],
                 ),
@@ -575,13 +614,13 @@ final class _GitCommitViewState extends State<GitCommitView> {
         FilledButton(
           onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
           child: GitLabel(
-            _amend ? 'Amend staged' : 'Commit staged ({count})',
+            _amend ? GitMessages.amendStaged : GitMessages.commitStagedCount,
             values: {'count': staged},
           ),
         ),
         OutlinedButton(
           onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
-          child: const GitLabel('Commit and Push…'),
+          child: const GitLabel(GitMessages.commitAndPush),
         ),
       ],
     ),
@@ -619,7 +658,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       if (!mounted) return;
       final template = options['template'] as String?;
       if (template == null) {
-        host.notify('No readable commit template is configured.');
+        host.notify(GitMessages.noReadableCommitTemplateIsConfigured);
         return;
       }
       if (_message.text.isNotEmpty && !await _confirmReplace()) return;
@@ -634,7 +673,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
   Future<void> _identity() async {
     await host.present<void>(
       context,
-      'Commit identity and hooks',
+      GitMessages.commitIdentityAndHooks,
       GitIdentityView(session: session),
       expanded: false,
     );
@@ -656,7 +695,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       if (!mounted) return;
       final value = await host.present<String>(
         context,
-        'Recent messages',
+        GitMessages.recentMessages,
         SizedBox(
           height: 350,
           child: ListView(
@@ -684,16 +723,16 @@ final class _GitCommitViewState extends State<GitCommitView> {
   Future<bool> _confirmReplace() async =>
       await host.present<bool>(
         context,
-        'Replace message draft?',
+        GitMessages.replaceMessageDraft,
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const GitLabel(
-              'Replace the existing commit message with the selected message?',
+              GitMessages.replaceTheExistingCommitMessageWithTheSelectedMessage,
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
-              child: const GitLabel('Replace draft'),
+              child: const GitLabel(GitMessages.replaceDraft),
             ),
           ],
         ),
@@ -727,12 +766,23 @@ final class _GitCommitViewState extends State<GitCommitView> {
         _message.clear();
         session.setDraft('');
       }
-      host.notify('Local commit ${result.createdCommit!.abbreviated} exists.');
+      host.notify(
+        gitString(
+          context,
+          GitMessages.localCommitArg0Exists,
+          values: {'arg0': result.createdCommit!.abbreviated},
+        ),
+      );
       setState(() => _amend = false);
       if (push) widget.onPush();
     } else if (result.createdCommit != null) {
       host.notify(
-        'Local commit ${result.createdCommit!.abbreviated} exists. Review Log before attempting another commit. The message draft has been retained.',
+        gitString(
+          context,
+          GitMessages
+              .localCommitArg0ExistsReviewLogBeforeAttemptingAnotherCommit,
+          values: {'arg0': result.createdCommit!.abbreviated},
+        ),
       );
     }
   }
@@ -780,24 +830,37 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
       TextField(
         controller: name,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Commit author name'),
+          labelText: gitString(context, GitMessages.commitAuthorName),
         ),
       ),
       TextField(
         controller: email,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Commit author email'),
+          labelText: gitString(context, GitMessages.commitAuthorEmail),
         ),
       ),
       Text(
-        'Signing: ${data?['signing'] ?? 'configured default'} · ${data?['signingFormat'] ?? 'OpenPGP'}',
+        gitString(
+          context,
+          GitMessages.signingArg0Arg1,
+          values: {
+            'arg0':
+                data?['signing'] ??
+                gitString(context, GitMessages.configuredDefault),
+            'arg1':
+                data?['signingFormat'] ??
+                gitString(context, GitMessages.openpgp),
+          },
+        ),
       ),
       SelectableText(
-        'Configured hooks: ${(data?['hooks'] as List? ?? []).join(', ')}',
+        gitString(
+          context,
+          GitMessages.configuredHooksArg0,
+          values: {'arg0': (data?['hooks'] as List? ?? []).join(', ')},
+        ),
       ),
-      const GitLabel(
-        'A sign-off trailer is a statement in the message. It is separate from a cryptographic signature. Saving identity changes repository-local configuration only; your draft is retained.',
-      ),
+      const GitLabel(GitMessages.aSignOffTrailerIsAStatementInTheMessage),
       FilledButton(
         onPressed: loading
             ? null
@@ -814,7 +877,7 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
                 if (mounted && result?.completed == true)
                   Navigator.of(context).pop();
               },
-        child: const GitLabel('Save repository identity'),
+        child: const GitLabel(GitMessages.saveRepositoryIdentity),
       ),
     ],
   );
@@ -856,13 +919,13 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     if (target == null || target == oldWidget.selectedComparison) return;
     _selectionGeneration++;
     final group = target.right.kind == ContentKind.indexVersion
-        ? 'Staged'
+        ? GitMessages.staged
         : widget.session.snapshot?.changes.any(
                 (c) => c.path == target.path && c.untracked,
               ) ==
               true
-        ? 'Untracked'
-        : 'Unstaged';
+        ? GitMessages.untracked
+        : GitMessages.unstaged;
     _selected
       ..clear()
       ..add('$group:${target.path.key}');
@@ -891,15 +954,15 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     final rows = <_ChangeRow>[];
     final changes = widget.session.snapshot?.changes ?? [];
     final groups = {
-      'Conflicts': changes.where((e) => e.conflicted),
-      'Staged': changes.where((e) => e.staged),
-      'Unstaged': changes.where((e) => e.unstaged),
-      'Untracked': changes.where((e) => e.untracked),
+      GitMessages.conflicts: changes.where((e) => e.conflicted),
+      GitMessages.staged: changes.where((e) => e.staged),
+      GitMessages.unstaged: changes.where((e) => e.unstaged),
+      GitMessages.untracked: changes.where((e) => e.untracked),
     };
     for (final group in groups.entries) {
       final entries = group.value.toList()
         ..sort((a, b) => a.path.compareTo(b.path));
-      if (entries.isEmpty && group.key != 'Staged') continue;
+      if (entries.isEmpty && group.key != GitMessages.staged) continue;
       rows.add(
         _ChangeRow(
           group.key,
@@ -949,7 +1012,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     _selected.removeWhere((key) => !_rowKeys.contains(key));
     _focused = _focused.clamp(0, rows.isEmpty ? 0 : rows.length - 1);
     if (rows.length == 1 && rows.first.change == null)
-      return const Center(child: GitLabel('No changes'));
+      return const Center(child: GitLabel(GitMessages.noChanges));
     final parents = <int>[];
     final ancestors = <int>[];
     for (var i = 0; i < rows.length; i++) {
@@ -962,7 +1025,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     }
     return LayoutBuilder(
       builder: (context, bounds) => GitNativeTable(
-        name: gitString(context, 'Repository change tree'),
+        name: gitString(context, GitMessages.repositoryChangeTree),
         description: widget.session.repository.root,
         revision: (widget.session.repository.key, _cachedKey),
         active: widget.active,
@@ -970,7 +1033,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         headers: false,
         busy: widget.session.running,
         rowCount: rows.length,
-        columns: [gitString(context, 'Changes')],
+        columns: [gitString(context, GitMessages.changes)],
         widths: [bounds.maxWidth],
         rowHeight: host.rowHeight(context),
         rowAt: (index) {
@@ -993,7 +1056,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
               change == null && row.depth == 0
                   ? gitString(
                       context,
-                      '{group} ({count})',
+                      GitMessages.groupCount,
                       values: {
                         'group': gitString(context, row.group),
                         'count': row.count,
@@ -1014,12 +1077,16 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
               if (change == null)
                 'toggle': gitString(
                   context,
-                  _collapsed.contains(row.key) ? 'Expand' : 'Collapse',
+                  _collapsed.contains(row.key)
+                      ? GitMessages.expand
+                      : GitMessages.collapse,
                 ),
               if (canStage)
                 'stage': gitString(
                   context,
-                  row.group == 'Staged' ? 'Unstage file' : 'Stage file',
+                  row.group == GitMessages.staged
+                      ? GitMessages.unstageFile
+                      : GitMessages.stageFile,
                 ),
             },
           );
@@ -1131,7 +1198,9 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
             }
             if (event.logicalKey == LogicalKeyboardKey.space &&
                 rows[_focused].change != null) {
-              unawaited(_stage(rows[_focused].group == 'Staged', rows));
+              unawaited(
+                _stage(rows[_focused].group == GitMessages.staged, rows),
+              );
               return KeyEventResult.handled;
             }
             return KeyEventResult.ignored;
@@ -1148,7 +1217,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                 slivers: [
                   SliverSemantics(
                     role: SemanticsRole.list,
-                    label: gitString(context, 'Repository change tree'),
+                    label: gitString(context, GitMessages.repositoryChangeTree),
                     container: true,
                     explicitChildNodes: true,
                     sliver: SliverFixedExtentList(
@@ -1167,7 +1236,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                 ? row.depth == 0
                                       ? gitString(
                                           context,
-                                          '{group} ({count})',
+                                          GitMessages.groupCount,
                                           values: {
                                             'group': gitString(
                                               context,
@@ -1230,7 +1299,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                                 ? '!'
                                                 : change.untracked
                                                 ? '?'
-                                                : row.group == 'Staged'
+                                                : row.group ==
+                                                      GitMessages.staged
                                                 ? change.index
                                                 : change.worktree,
                                             style: Theme.of(
@@ -1241,7 +1311,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                       Expanded(
                                         child: change == null && row.depth == 0
                                             ? GitLabel(
-                                                '{group} ({count})',
+                                                GitMessages.groupCount,
                                                 values: {
                                                   'group': gitString(
                                                     context,
@@ -1269,9 +1339,16 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                       ),
                                       if (change != null && !change.conflicted)
                                         GitIconButton(
-                                          tooltip: row.group == 'Staged'
-                                              ? 'Unstage file'
-                                              : 'Stage file',
+                                          tooltip:
+                                              row.group == GitMessages.staged
+                                              ? gitString(
+                                                  context,
+                                                  GitMessages.unstageFile,
+                                                )
+                                              : gitString(
+                                                  context,
+                                                  GitMessages.stageFile,
+                                                ),
                                           onPressed:
                                               widget.session.running ||
                                                   _preparingStage ||
@@ -1286,13 +1363,14 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                                     _select(rows, index);
                                                   unawaited(
                                                     _stage(
-                                                      row.group == 'Staged',
+                                                      row.group ==
+                                                          GitMessages.staged,
                                                       rows,
                                                     ),
                                                   );
                                                 },
                                           icon: GitIcon(
-                                            row.group == 'Staged'
+                                            row.group == GitMessages.staged
                                                 ? GitGlyph.remove
                                                 : GitGlyph.add,
                                             size: 16,
@@ -1353,7 +1431,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         // staging remains available in the existing contextual selection menu.
         unawaited(
           _stage(
-            rows[index].group == 'Staged',
+            rows[index].group == GitMessages.staged,
             rows,
             selection: {rows[index].key},
           ),
@@ -1417,7 +1495,11 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       return;
     }
     widget.onReview(
-      gitStatusComparison(snapshot, row.change!, staged: row.group == 'Staged'),
+      gitStatusComparison(
+        snapshot,
+        row.change!,
+        staged: row.group == GitMessages.staged,
+      ),
     );
   }
 
@@ -1439,7 +1521,9 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
               keys.contains(row.key) &&
               row.change != null &&
               !row.change!.conflicted &&
-              (unstage ? row.group == 'Staged' : row.group != 'Staged'),
+              (unstage
+                  ? row.group == GitMessages.staged
+                  : row.group != GitMessages.staged),
         )
         .toList();
     final paths = {
@@ -1524,49 +1608,57 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     final session = widget.session, reviewed = widget.session.snapshot!;
     final selection = Set<String>.from(_selected), change = row.change;
     final writable = !session.running && session.canWriteMetadata;
-    final action = await session.host.menu(context, row.label, [
-      GitMenuEntry(
-        'review',
-        change == null
-            ? _collapsed.contains(row.key)
-                  ? 'Expand group'
-                  : 'Collapse group'
-            : 'Review difference',
-      ),
-      if (change != null && !change.conflicted)
+    final action = await session.host.menu(
+      context,
+      row.label,
+      [
         GitMenuEntry(
-          'stage',
-          row.group == 'Staged'
-              ? 'Unstage selected files'
-              : 'Stage selected files',
-          enabled: writable,
+          'review',
+          change == null
+              ? _collapsed.contains(row.key)
+                    ? GitMessages.expandGroup
+                    : GitMessages.collapseGroup
+              : GitMessages.reviewDifference,
         ),
-      if (change != null && reviewed.head != null)
-        const GitMenuEntry('history', 'File history and blame…'),
-      if (change != null && row.group != 'Staged' && !change.conflicted)
-        GitMenuEntry(
-          'discard',
-          change.untracked
-              ? 'Delete untracked file…'
-              : 'Discard unstaged change…',
-          enabled: writable,
-          sectionStart: true,
-        ),
-    ], position: position);
+        if (change != null && !change.conflicted)
+          GitMenuEntry(
+            'stage',
+            row.group == GitMessages.staged
+                ? GitMessages.unstageSelectedFiles
+                : GitMessages.stageSelectedFiles,
+            enabled: writable,
+          ),
+        if (change != null && reviewed.head != null)
+          const GitMenuEntry('history', GitMessages.fileHistoryAndBlame),
+        if (change != null &&
+            row.group != GitMessages.staged &&
+            !change.conflicted)
+          GitMenuEntry(
+            'discard',
+            change.untracked
+                ? GitMessages.deleteUntrackedFile
+                : GitMessages.discardUnstagedChange,
+            enabled: writable,
+            sectionStart: true,
+          ),
+      ],
+      position: position,
+      localizeTitle: false,
+    );
     if (!mounted || action == null) return;
     switch (action) {
       case 'review':
         _activate(row);
       case 'stage':
         await _stage(
-          row.group == 'Staged',
+          row.group == GitMessages.staged,
           rows,
           reviewed: reviewed,
           selection: selection,
         );
       case 'history':
         await GitWorkflowUi(context, session).present(
-          'File history',
+          GitMessages.fileHistory,
           GitFileHistoryView(session: session, path: change!.path),
           expanded: true,
         );
@@ -1586,11 +1678,22 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
             !await gitConfirm(
               context,
               session,
-              'Discard unstaged ${change.path.display}?',
-              '${working.size} bytes · ${working.availability.name}\nReplaces working content with the index, or deletes this untracked file. Staged content is retained. Unsaved host documents must be reviewed first.',
+              gitString(
+                context,
+                GitMessages.discardUnstagedArg0,
+                values: {'arg0': change.path.display},
+              ),
+              gitString(
+                context,
+                GitMessages.arg0BytesArg1ReplacesWorkingContentWithTheIndexOr,
+                values: {
+                  'arg0': working.size,
+                  'arg1': gitEnumLabel(context, working.availability),
+                },
+              ),
               action: change.untracked
-                  ? 'Delete untracked file'
-                  : 'Discard working change',
+                  ? GitMessages.deleteUntrackedFile2
+                  : GitMessages.discardWorkingChange,
             ))
           return;
         await session.mutate(

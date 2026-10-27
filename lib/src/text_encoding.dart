@@ -1,12 +1,34 @@
-String gitUtf8EncodingLabel(String text) => text.startsWith('\uFEFF')
-    ? 'UTF-8 with byte-order mark (BOM)'
-    : 'UTF-8 without byte-order mark (BOM)';
+import 'package:flutter/widgets.dart';
+import 'host.dart';
+import 'messages.dart';
 
-String? gitUtf8BomChange(String reviewed, String edited) {
+String _label(
+  BuildContext? context,
+  String template, [
+  Map<String, Object?> values = const {},
+]) => context == null
+    ? template.replaceAllMapped(
+        RegExp(r'\{([A-Za-z0-9_]+)\}'),
+        (match) =>
+            values.containsKey(match[1]) ? '${values[match[1]]}' : match[0]!,
+      )
+    : gitString(context, template, values: values);
+
+String gitUtf8EncodingLabel(String text, {BuildContext? context}) => _label(
+  context,
+  text.startsWith('\uFEFF') ? GitMessages.utf8Bom : GitMessages.utf8NoBom,
+);
+
+String? gitUtf8BomChange(
+  String reviewed,
+  String edited, {
+  BuildContext? context,
+}) {
   if (reviewed.startsWith('\uFEFF') == edited.startsWith('\uFEFF')) return null;
-  return edited.startsWith('\uFEFF')
-      ? 'This edit adds a UTF-8 byte-order mark (BOM) at the start of the file.'
-      : 'This edit removes the UTF-8 byte-order mark (BOM) from the start of the file.';
+  return _label(
+    context,
+    edited.startsWith('\uFEFF') ? GitMessages.addsBom : GitMessages.removesBom,
+  );
 }
 
 final _bareLf = RegExp(r'(^|[^\r])\n');
@@ -17,19 +39,25 @@ Set<String> _lineEndings(String text) => {
   if (_bareCr.hasMatch(text)) 'CR',
 };
 
-String gitLineEndingLabel(String text) {
+String gitLineEndingLabel(String text, {BuildContext? context}) {
   final endings = _lineEndings(text).toList()..sort();
   final format = endings.isEmpty
-      ? 'No line terminators'
+      ? _label(context, GitMessages.noLineTerminators)
       : endings.length == 1
-      ? '${endings.single} line endings'
-      : 'Mixed line endings (${endings.join(', ')})';
+      ? _label(context, GitMessages.lineEndings, {'format': endings.single})
+      : _label(context, GitMessages.mixedLineEndings, {
+          'formats': endings.join(', '),
+        });
   return text.isNotEmpty && !text.endsWith('\n')
-      ? '$format · no final LF'
+      ? _label(context, GitMessages.noFinalLf, {'format': format})
       : format;
 }
 
-String? gitLineEndingChange(String reviewed, String edited) {
+String? gitLineEndingChange(
+  String reviewed,
+  String edited, {
+  BuildContext? context,
+}) {
   final before = _lineEndings(reviewed), after = _lineEndings(edited);
   // Joining/deleting all lines or introducing the first line break is ordinary
   // editing. A change of an existing newline convention needs explicit review.
@@ -37,16 +65,23 @@ String? gitLineEndingChange(String reviewed, String edited) {
       after.isEmpty ||
       before.length == after.length && before.containsAll(after))
     return null;
-  return 'Line ending format changes from ${gitLineEndingLabel(reviewed)} to ${gitLineEndingLabel(edited)}. Clipboard text can use different line endings from the original file.';
+  return _label(context, GitMessages.lineEndingChange, {
+    'before': gitLineEndingLabel(reviewed, context: context),
+    'after': gitLineEndingLabel(edited, context: context),
+  });
 }
 
-String gitTextFormatLabel(String text) =>
-    '${gitUtf8EncodingLabel(text)} · ${gitLineEndingLabel(text)}';
+String gitTextFormatLabel(String text, {BuildContext? context}) =>
+    '${gitUtf8EncodingLabel(text, context: context)} · ${gitLineEndingLabel(text, context: context)}';
 
-String? gitTextFormatChange(String reviewed, String edited) {
+String? gitTextFormatChange(
+  String reviewed,
+  String edited, {
+  BuildContext? context,
+}) {
   final changes = [
-    gitUtf8BomChange(reviewed, edited),
-    gitLineEndingChange(reviewed, edited),
+    gitUtf8BomChange(reviewed, edited, context: context),
+    gitLineEndingChange(reviewed, edited, context: context),
   ].whereType<String>().toList();
   return changes.isEmpty ? null : changes.join('\n\n');
 }

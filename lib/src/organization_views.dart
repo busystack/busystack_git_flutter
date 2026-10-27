@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -49,7 +51,7 @@ mixin _MetadataRefresh<T extends StatefulWidget> on GitDialogState<T> {
     children: [
       Expanded(child: super.states(refresh: refresh)),
       GitIconButton(
-        tooltip: 'Refresh',
+        tooltip: gitString(context, GitMessages.refresh),
         onPressed: session.running ? null : () => unawaited(refreshMetadata()),
         icon: const GitIcon(GitGlyph.refresh),
       ),
@@ -128,14 +130,14 @@ final class _StashesState extends GitDialogState<GitStashesView>
               ? null
               : () async {
                   await GitWorkflowUi(context, session).present(
-                    'Create named stash',
+                    GitMessages.createNamedStash,
                     GitCreateStashView(session: session),
                     expanded: true,
                   );
                   await refresh();
                 },
           icon: const GitIcon(GitGlyph.add),
-          label: const GitLabel('Create stash…'),
+          label: const GitLabel(GitMessages.createStash),
         ),
       ),
       Expanded(
@@ -145,7 +147,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
           first: ListView(
             children: [
               if ((data?['entries'] as List? ?? []).isEmpty && !loading)
-                const ListTile(title: GitLabel('No stashes')),
+                const ListTile(title: GitLabel(GitMessages.noStashes)),
               for (final entry
                   in (data?['entries'] as List? ?? []).cast<Json>())
                 ListTile(
@@ -162,7 +164,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
           ),
           second: commit == null
               ? const Center(
-                  child: GitLabel('Select a stash to inspect its changes'),
+                  child: GitLabel(GitMessages.selectAStashToInspectItsChanges),
                 )
               : GitCommitFiles(session: session, commit: commit!),
         ),
@@ -183,18 +185,18 @@ final class _StashesState extends GitDialogState<GitStashesView>
       if (commit != null && commit!.parents.length > 2)
         TextButton(
           onPressed: () => GitWorkflowUi(context, session).present(
-            'Stashed untracked files',
+            GitMessages.stashedUntrackedFiles,
             GitSnapshotView(session: session, revision: commit!.parents[2]),
             expanded: true,
           ),
-          child: const GitLabel('Inspect stashed untracked files…'),
+          child: const GitLabel(GitMessages.inspectStashedUntrackedFiles),
         ),
       CheckboxListTile(
         dense: true,
         value: restoreIndex,
         onChanged: (v) => setState(() => restoreIndex = v!),
         title: const GitLabel(
-          'Reinstate the stash’s staged/index state when applying',
+          GitMessages.reinstateTheStashSStagedIndexStateWhenApplying,
         ),
       ),
       Wrap(
@@ -212,10 +214,16 @@ final class _StashesState extends GitDialogState<GitStashesView>
                   ? null
                   : () => unawaited(act(action)),
               child: Text(switch (action) {
-                StashAction.apply => 'Apply and retain',
-                StashAction.pop => 'Pop…',
-                StashAction.branch => 'Create branch…',
-                _ => 'Drop stash…',
+                StashAction.apply => gitString(
+                  context,
+                  GitMessages.applyAndRetain,
+                ),
+                StashAction.pop => gitString(context, GitMessages.pop),
+                StashAction.branch => gitString(
+                  context,
+                  GitMessages.createBranch,
+                ),
+                _ => gitString(context, GitMessages.dropStash),
               }),
             ),
         ],
@@ -231,18 +239,21 @@ final class _StashesState extends GitDialogState<GitStashesView>
       branch = await gitTextInput(
         context,
         session,
-        'Branch from stash',
-        explanation:
-            'Create/switch to a branch at the stash’s original base, then apply it. The original stash is retained for explicit later deletion.',
+        GitMessages.branchFromStash,
+        explanation: GitMessages.createSwitchToABranchAtTheStashSOriginal,
       );
       if (branch == null || branch.isEmpty) return;
     } else if (action != StashAction.apply &&
         !await gitConfirm(
           context,
           session,
-          '${action.name} this stash?',
-          '${entry['message']}\n${identity.value}\n${action == StashAction.pop ? 'The original stash is retained if applying conflicts.' : 'Deletes this stash entry. Its changes are not applied.'}',
-          action: action.name,
+          gitString(
+            context,
+            GitMessages.arg0ThisStash,
+            values: {'arg0': gitEnumLabel(context, action)},
+          ),
+          '${entry['message']}\n${identity.value}\n${action == StashAction.pop ? GitMessages.theOriginalStashIsRetainedIfApplyingConflicts : GitMessages.deletesThisStashEntryItsChangesAreNotApplied}',
+          action: gitEnumLabel(context, action),
         ))
       return;
     final result = await apply(
@@ -263,7 +274,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
     if (result.error == null) await refresh();
     if (result.phase == GitOperationPhase.stopped)
       session.host.notify(
-        'Resolve the unmerged files. Git has no stash continue or abort command; the original stash remains.',
+        GitMessages.resolveTheUnmergedFilesGitHasNoStashContinueOr,
       );
   }
 }
@@ -335,7 +346,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
         TextField(
           controller: message,
           decoration: InputDecoration(
-            labelText: gitString(context, 'Stash name/message'),
+            labelText: gitString(context, GitMessages.stashNameMessage),
           ),
         ),
         SizedBox(height: session.host.spacing),
@@ -343,22 +354,25 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
           initialValue: mode,
           isExpanded: true,
           decoration: InputDecoration(
-            labelText: gitString(context, 'Stash content and resulting index'),
+            labelText: gitString(
+              context,
+              GitMessages.stashContentAndResultingIndex,
+            ),
           ),
           items: const [
             DropdownMenuItem(
               value: 0,
-              child: GitLabel('Stash tracked working and staged changes'),
+              child: GitLabel(GitMessages.stashTrackedWorkingAndStagedChanges),
             ),
             DropdownMenuItem(
               value: 1,
               child: GitLabel(
-                'Stash changes, leave staged changes in place (--keep-index)',
+                GitMessages.stashChangesLeaveStagedChangesInPlaceKeepIndex,
               ),
             ),
             DropdownMenuItem(
               value: 2,
-              child: GitLabel('Stash only staged changes (--staged)'),
+              child: GitLabel(GitMessages.stashOnlyStagedChangesStaged),
             ),
           ],
           onChanged: (v) => setState(() {
@@ -370,19 +384,19 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
           dense: true,
           value: untracked,
           onChanged: mode == 2 ? null : (v) => setState(() => untracked = v!),
-          title: const GitLabel('Include untracked files'),
+          title: const GitLabel(GitMessages.includeUntrackedFiles),
         ),
         CheckboxListTile(
           dense: true,
           value: all,
           onChanged: (v) => setState(() => all = v!),
-          title: const GitLabel('All eligible paths in this repository'),
+          title: const GitLabel(GitMessages.allEligiblePathsInThisRepository),
         ),
         Expanded(
           child: eligible.isEmpty
               ? const Center(
                   child: GitLabel(
-                    'No eligible changes for these stash options.',
+                    GitMessages.noEligibleChangesForTheseStashOptions,
                   ),
                 )
               : ListView.builder(
@@ -395,8 +409,8 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                       dense: true,
                       value: true,
                       onChanged: null,
-                      title: Text('M\nM', maxLines: 2),
-                      subtitle: Text('MM'),
+                      title: Text('\u2007\n\u2007', maxLines: 2),
+                      subtitle: Text('\u2007\u2007'),
                     ),
                   ),
                   itemBuilder: (context, index) {
@@ -427,7 +441,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                 ),
         ),
         if (eligible.isNotEmpty && chosen.isEmpty)
-          const GitLabel('Select at least one eligible path.'),
+          const GitLabel(GitMessages.selectAtLeastOneEligiblePath),
         FilledButton(
           onPressed: loading || chosen.isEmpty
               ? null
@@ -450,7 +464,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                   if (mounted && result?.completed == true)
                     Navigator.of(context).pop();
                 },
-          child: const GitLabel('Create stash'),
+          child: const GitLabel(GitMessages.createStash2),
         ),
       ],
     );
@@ -494,13 +508,13 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
               ? null
               : () => unawaited(create()),
           icon: const GitIcon(GitGlyph.add),
-          label: const GitLabel('Create worktree…'),
+          label: const GitLabel(GitMessages.createWorktree),
         ),
       ),
       if (!loading &&
           session.snapshot != null &&
           session.snapshot?.head == null)
-        const GitLabel('Create a commit before creating a worktree at HEAD.'),
+        const GitLabel(GitMessages.createACommitBeforeCreatingAWorktreeAtHEAD),
       Expanded(
         child: ListView(
           children: [
@@ -509,14 +523,14 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
                 key: ValueKey(entry['path']),
                 title: Text(entry['path'] as String),
                 subtitle: Text(
-                  '${entry['branch'] ?? 'detached HEAD'}\n'
-                  '${entry['current'] == true ? 'Current · ' : ''}${entry.containsKey('locked') ? 'Locked · ' : ''}'
-                  '${entry['inUse'] == true ? 'Open in BusyStack · ' : ''}'
+                  '${entry['branch'] ?? gitString(context, GitMessages.detachedHEAD)}\n'
+                  '${entry['current'] == true ? gitString(context, GitMessages.current) : ''}${entry.containsKey('locked') ? gitString(context, GitMessages.locked) : ''}'
+                  '${entry['inUse'] == true ? gitString(context, GitMessages.openInBusyStack) : ''}'
                   '${entry['dirty'] == null
-                      ? 'Status not inspected'
+                      ? gitString(context, GitMessages.statusNotInspected)
                       : entry['dirty'] == true
-                      ? 'Dirty'
-                      : 'Clean'}',
+                      ? gitString(context, GitMessages.dirty)
+                      : gitString(context, GitMessages.clean)}',
                 ),
                 trailing: GitMenuButton(
                   host: session.host,
@@ -524,22 +538,24 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
                   entries: [
                     GitMenuEntry(
                       'open',
-                      'Open working folder',
+                      GitMessages.openWorkingFolder,
                       enabled:
                           widget.onOpenFolder != null ||
                           session.host.openFolder != null,
                     ),
                     if (entry['current'] != true) ...[
-                      GitMenuEntry('move', 'Move worktree…'),
+                      GitMenuEntry('move', GitMessages.moveWorktree),
                       GitMenuEntry(
                         entry.containsKey('locked') ? 'unlock' : 'lock',
-                        entry.containsKey('locked') ? 'Unlock' : 'Lock',
+                        entry.containsKey('locked')
+                            ? GitMessages.unlock
+                            : GitMessages.lock,
                       ),
                       const GitMenuEntry.separator(),
-                      GitMenuEntry('remove', 'Remove clean worktree…'),
+                      GitMenuEntry('remove', GitMessages.removeCleanWorktree),
                       GitMenuEntry(
                         'forceRemove',
-                        'Review removal including local changes…',
+                        GitMessages.reviewRemovalIncludingLocalChanges,
                       ),
                     ],
                   ],
@@ -567,7 +583,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
     final folder = await gitTextInput(
       context,
       session,
-      'New worktree folder name',
+      GitMessages.newWorktreeFolderName,
     );
     if (!mounted ||
         folder == null ||
@@ -579,9 +595,18 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
     final branch = await gitTextInput(
       context,
       session,
-      'New worktree branch',
-      explanation:
-          'Create $parent/$folder with a new local branch at ${reviewed.head!.abbreviated} (${reviewed.branch ?? 'detached HEAD'}).',
+      GitMessages.newWorktreeBranch,
+      explanation: gitString(
+        context,
+        GitMessages.createArg0Arg1WithANewLocalBranchAtArg2,
+        values: {
+          'arg0': parent,
+          'arg1': folder,
+          'arg2': reviewed.head!.abbreviated,
+          'arg3':
+              reviewed.branch ?? gitString(context, GitMessages.detachedHEAD),
+        },
+      ),
     );
     if (!mounted || branch == null || branch.isEmpty) return;
     await apply(
@@ -614,7 +639,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
       final name = await gitTextInput(
         context,
         session,
-        'Destination folder name',
+        GitMessages.destinationFolderName,
       );
       if (name == null ||
           name.isEmpty ||
@@ -629,11 +654,11 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
         !await gitConfirm(
           context,
           session,
-          'Remove worktree?',
-          '$path\n${force ? 'Explicitly discard all local tracked/untracked changes in this worktree. Locked/in-use worktrees remain protected.' : 'Git refuses removal if there are local changes, untracked files, or a lock.'}',
+          GitMessages.removeWorktree,
+          '$path\n${force ? GitMessages.explicitlyDiscardAllLocalTrackedUntrackedChangesInThisWorktree : GitMessages.gitRefusesRemovalIfThereAreLocalChangesUntrackedFiles}',
           action: force
-              ? 'Discard local worktree contents and remove'
-              : 'Remove clean worktree',
+              ? GitMessages.discardLocalWorktreeContentsAndRemove
+              : GitMessages.removeCleanWorktree2,
         ))
       return;
     await apply(
@@ -696,14 +721,15 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
         value: recursive,
         onChanged: (v) => setState(() => recursive = v!),
         title: const GitLabel(
-          'Explicitly recurse into nested submodules for updates/synchronization',
+          GitMessages
+              .explicitlyRecurseIntoNestedSubmodulesForUpdatesSynchronization,
         ),
       ),
       Expanded(
         child: ListView(
           children: [
             if ((data?['entries'] as List? ?? []).isEmpty && !loading)
-              const ListTile(title: GitLabel('No recorded submodules')),
+              const ListTile(title: GitLabel(GitMessages.noRecordedSubmodules)),
             for (final entry in (data?['entries'] as List? ?? []).cast<Json>())
               Builder(
                 builder: (context) {
@@ -712,12 +738,24 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
                     key: ValueKey(path.key),
                     title: Text(path.display),
                     subtitle: GitSelectableText(
-                      'Parent gitlink: ${entry['recorded']}\nChecked out: ${entry['checkedOut'] ?? 'not initialized'}\n'
-                      '${entry['dirty'] == true
-                          ? 'Dirty nested repository'
-                          : entry['dirty'] == false
-                          ? 'Clean nested repository'
-                          : 'Nested status unavailable'}',
+                      gitString(
+                            context,
+                            GitMessages.parentGitlinkArg0CheckedOutArg1,
+                            values: {
+                              'arg0': entry['recorded'],
+                              'arg1':
+                                  entry['checkedOut'] ??
+                                  gitString(
+                                    context,
+                                    GitMessages.notInitialized,
+                                  ),
+                            },
+                          ) +
+                          '${entry['dirty'] == true
+                              ? gitString(context, GitMessages.dirtyNestedRepository)
+                              : entry['dirty'] == false
+                              ? gitString(context, GitMessages.cleanNestedRepository)
+                              : gitString(context, GitMessages.nestedStatusUnavailable)}',
                     ),
                     trailing: GitMenuButton(
                       host: session.host,
@@ -726,28 +764,31 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
                         if (entry['initialized'] == true)
                           GitMenuEntry(
                             'open',
-                            'Enter nested repository',
+                            GitMessages.enterNestedRepository,
                             enabled:
                                 widget.onOpenFolder != null ||
                                 session.host.openFolder != null,
                           ),
-                        GitMenuEntry('initialize', 'Initialize configuration'),
+                        GitMenuEntry(
+                          'initialize',
+                          GitMessages.initializeConfiguration,
+                        ),
                         GitMenuEntry(
                           'updateRecorded',
-                          'Update to parent’s recorded commit…',
+                          GitMessages.updateToParentSRecordedCommit,
                         ),
                         GitMenuEntry(
                           'updateRemote',
-                          'Follow configured remote branch…',
+                          GitMessages.followConfiguredRemoteBranch,
                         ),
                         GitMenuEntry(
                           'synchronize',
-                          'Synchronize configured URLs…',
+                          GitMessages.synchronizeConfiguredURLs,
                         ),
                         const GitMenuEntry.separator(),
                         GitMenuEntry(
                           'stagePointer',
-                          'Stage current submodule pointer in parent',
+                          GitMessages.stageCurrentSubmodulePointerInParent,
                         ),
                       ],
                     ),
@@ -767,7 +808,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
         },
       ),
       const GitLabel(
-        'Parent and submodule commits, pushes, and dirty state remain separate. Browsing does not initialize or update them.',
+        GitMessages.parentAndSubmoduleCommitsPushesAndDirtyStateRemainSeparate,
       ),
     ],
   );
@@ -788,11 +829,25 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
           session,
           '$action ${path.display}?',
           action == 'updateRemote'
-              ? 'Fetch and check out the configured remote branch’s commit. This differs from the parent’s recorded gitlink. Recursive: $recursive.'
+              ? gitString(
+                  context,
+                  GitMessages.fetchAndCheckOutTheConfiguredRemoteBranchSCommit,
+                  values: {'arg0': recursive},
+                )
               : action == 'updateRecorded'
-              ? 'Initialize as needed and check out exactly ${entry['recorded']}. Recursive: $recursive.'
-              : 'Apply the reviewed submodule configuration operation. Recursive: $recursive.',
-          action: 'Apply submodule operation',
+              ? gitString(
+                  context,
+                  GitMessages
+                      .initializeAsNeededAndCheckOutExactlyArg0RecursiveArg1,
+                  values: {'arg0': entry['recorded'], 'arg1': recursive},
+                )
+              : gitString(
+                  context,
+                  GitMessages
+                      .applyTheReviewedSubmoduleConfigurationOperationRecursiveArg0,
+                  values: {'arg0': recursive},
+                ),
+          action: GitMessages.applySubmoduleOperation,
         ))
       return;
     final request = SubmoduleMutation(
@@ -893,7 +948,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
     children: [
       states(refresh: () => unawaited(refresh())),
       const GitLabel(
-        'Inspect a recorded revision or create a recovery branch. Reflog does not recover arbitrary unsaved or untracked content.',
+        GitMessages.inspectARecordedRevisionOrCreateARecoveryBranchReflog,
       ),
       Expanded(
         child: GitSplitter(
@@ -935,7 +990,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
             ],
           ),
           second: commit == null
-              ? const Center(child: GitLabel('Select a reflog entry'))
+              ? const Center(child: GitLabel(GitMessages.selectAReflogEntry))
               : GitCommitFiles(session: session, commit: commit!),
         ),
       ),
@@ -949,7 +1004,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                     offset = (offset - 100).clamp(0, 1000000);
                     unawaited(refresh());
                   },
-            child: const GitLabel('Previous page'),
+            child: const GitLabel(GitMessages.previousPage),
           ),
           TextButton(
             onPressed: data?['hasMore'] != true
@@ -958,7 +1013,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                     offset += 100;
                     unawaited(refresh());
                   },
-            child: const GitLabel('Next page'),
+            child: const GitLabel(GitMessages.nextPage),
           ),
           FilledButton(
             onPressed: selected == null
@@ -969,9 +1024,13 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                     final name = await gitTextInput(
                       context,
                       session,
-                      'Recovery branch name',
-                      explanation:
-                          'Creates a branch at ${oid.value}; working files and the current branch are unchanged.',
+                      GitMessages.recoveryBranchName,
+                      explanation: gitString(
+                        context,
+                        GitMessages
+                            .createsABranchAtArg0WorkingFilesAndTheCurrent,
+                        values: {'arg0': oid.value},
+                      ),
                     );
                     if (name == null || name.isEmpty) return;
                     await apply(
@@ -984,20 +1043,20 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                       ),
                     );
                   },
-            child: const GitLabel('Create recovery branch…'),
+            child: const GitLabel(GitMessages.createRecoveryBranch),
           ),
           TextButton(
             onPressed: selected == null
                 ? null
                 : () => GitWorkflowUi(context, session).present(
-                    'Read-only recovery snapshot',
+                    GitMessages.readOnlyRecoverySnapshot,
                     GitSnapshotView(
                       session: session,
                       revision: GitOid(selected!['revision'] as String),
                     ),
                     expanded: true,
                   ),
-            child: const GitLabel('Inspect snapshot…'),
+            child: const GitLabel(GitMessages.inspectSnapshot),
           ),
           TextButton(
             onPressed: selected == null
@@ -1005,7 +1064,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                 : () => GitHistoryActions(
                     GitWorkflowUi(context, session),
                   ).reset(GitOid(selected!['revision'] as String)),
-            child: const GitLabel('Review reset…'),
+            child: const GitLabel(GitMessages.reviewReset),
           ),
         ],
       ),
@@ -1028,16 +1087,22 @@ final class GitPageNavigation extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     mainAxisAlignment: MainAxisAlignment.end,
     children: [
-      Text('Page ${offset ~/ 100 + 1}'),
+      Text(
+        gitString(
+          context,
+          GitMessages.pageArg0,
+          values: {'arg0': offset ~/ 100 + 1},
+        ),
+      ),
       TextButton(
         onPressed: loading || offset == 0
             ? null
             : () => onPage((offset - 100).clamp(0, 1000000)),
-        child: const GitLabel('Previous page'),
+        child: const GitLabel(GitMessages.previousPage),
       ),
       TextButton(
         onPressed: loading || !hasMore ? null : () => onPage(offset + 100),
-        child: const GitLabel('Next page'),
+        child: const GitLabel(GitMessages.nextPage),
       ),
     ],
   );

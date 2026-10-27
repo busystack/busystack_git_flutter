@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -75,13 +76,14 @@ final class GitHost {
     required this.openDocument,
     required this.prepareMutation,
     required this.chooseDirectory,
-    required this.notify,
+    required void Function(String) notify,
     required this.drafts,
     this.afterMutation,
     this.openFolder,
     this.prepareInspection,
     this.draftMessage,
     this.translate,
+    this.localize,
     this.spacing = 8,
     this.minimumRowHeight = 30,
     this.measureText,
@@ -90,7 +92,8 @@ final class GitHost {
     this.writeViewState,
     this.revokeRepositoryTrust,
     this.presentMenu,
-  }) : _present = present;
+  }) : _present = present,
+       _notify = notify;
   final GitPresentSurface _present;
   final GitPresentMenu? presentMenu;
   Future<T?> present<T>(
@@ -98,9 +101,10 @@ final class GitHost {
     String title,
     Widget child, {
     bool expanded = false,
+    bool localizeTitle = true,
   }) => _present<T>(
     context,
-    text('git.$title', title),
+    localizeTitle ? message(title) : title,
     GitHostScope(host: this, child: child),
     expanded: expanded,
   );
@@ -109,6 +113,7 @@ final class GitHost {
     String title,
     List<GitMenuEntry> entries, {
     Offset? position,
+    bool localizeTitle = true,
   }) async {
     final localized = <GitMenuEntry>[];
     var section = false;
@@ -120,7 +125,7 @@ final class GitHost {
       localized.add(
         GitMenuEntry(
           e.id,
-          e.localize ? text('git.${e.label}', e.label) : e.label,
+          e.localize ? message(e.label) : e.label,
           enabled: e.enabled,
           sectionStart: section || e.sectionStart,
           checked: e.checked,
@@ -168,6 +173,7 @@ final class GitHost {
           ],
         ),
       ),
+      localizeTitle: localizeTitle,
     );
   }
 
@@ -175,7 +181,8 @@ final class GitHost {
   openDocument;
   final Future<bool> Function(RepositoryId, GitMutation) prepareMutation;
   final Future<String?> Function(BuildContext context) chooseDirectory;
-  final void Function(String) notify;
+  final void Function(String) _notify;
+  void notify(String template) => _notify(message(template));
   final GitDraftStore drafts;
   final Future<void> Function(RepositoryId, GitOutcome)? afterMutation;
   final Future<void> Function(String localPath)? openFolder;
@@ -183,6 +190,10 @@ final class GitHost {
   final Future<void> Function(RepositoryId)? revokeRepositoryTrust;
   final Future<String?> Function(RepositoryId)? draftMessage;
   final String Function(String key, String fallback)? translate;
+
+  /// The host's generated Flutter localization methods own grammar and named
+  /// values. Repository data is passed only as values, never as message IDs.
+  final String Function(String message, Map<String, Object?> values)? localize;
   final double spacing, minimumRowHeight;
   final double Function(BuildContext context, TextStyle? style)? measureText;
 
@@ -195,6 +206,16 @@ final class GitHost {
   writeViewState;
   String text(String key, String fallback) =>
       translate?.call(key, fallback) ?? fallback;
+  String message(String template, {Map<String, Object?> values = const {}}) {
+    if (localize != null) return localize!(template, values);
+    final translated = text('git.$template', template);
+    return translated.replaceAllMapped(
+      RegExp(r'\{([A-Za-z0-9_]+)\}'),
+      (match) =>
+          values.containsKey(match[1]) ? '${values[match[1]]}' : match[0]!,
+    );
+  }
+
   double rowHeight(BuildContext context) {
     final style = Theme.of(context).textTheme.bodyMedium;
     final painter = TextPainter(
@@ -283,12 +304,12 @@ String gitString(
   Map<String, Object?> values = const {},
 }) {
   Localizations.maybeLocaleOf(context);
-  var translated =
-      GitHostScope.of(context)?.text('git.$message', message) ?? message;
-  for (final value in values.entries) {
-    translated = translated.replaceAll('{${value.key}}', '${value.value}');
-  }
-  return translated;
+  final host = GitHostScope.of(context);
+  if (host != null) return host.message(message, values: values);
+  return message.replaceAllMapped(
+    RegExp(r'\{([A-Za-z0-9_]+)\}'),
+    (match) => values.containsKey(match[1]) ? '${values[match[1]]}' : match[0]!,
+  );
 }
 
 /// Selectable Git details also need a label on Linux's native accessibility
@@ -383,13 +404,29 @@ final class _GitSplitterState extends State<GitSplitter> {
           .toDouble();
       final divisor = available > 0 ? available : 1.0;
       final handle = Semantics(
-        label: gitString(context, 'Resize Git panes'),
+        label: gitString(context, GitMessages.resizeGitPanes),
         slider: true,
-        value: '${(first / divisor * 100).round()} percent',
-        increasedValue:
-            '${((first + 24).clamp(minimum, maximum) / divisor * 100).round()} percent',
-        decreasedValue:
-            '${((first - 24).clamp(minimum, maximum) / divisor * 100).round()} percent',
+        value: gitString(
+          context,
+          GitMessages.arg0Percent,
+          values: {'arg0': (first / divisor * 100).round()},
+        ),
+        increasedValue: gitString(
+          context,
+          GitMessages.arg0Percent,
+          values: {
+            'arg0': ((first + 24).clamp(minimum, maximum) / divisor * 100)
+                .round(),
+          },
+        ),
+        decreasedValue: gitString(
+          context,
+          GitMessages.arg0Percent,
+          values: {
+            'arg0': ((first - 24).clamp(minimum, maximum) / divisor * 100)
+                .round(),
+          },
+        ),
         onIncrease: available > 0
             ? () => _update((first + 24) / divisor)
             : null,
@@ -481,7 +518,7 @@ final class GitFailurePanel extends StatelessWidget {
     if (error.exitCode case final status?)
       gitString(
         context,
-        'Exit status: {status}',
+        GitMessages.exitStatusStatus,
         values: {'status': '$status'},
       ),
     if (error.diagnostic.isNotEmpty) error.diagnostic,
@@ -496,39 +533,51 @@ final class GitFailurePanel extends StatelessWidget {
           message ??
               switch (error.code) {
                 GitErrorCode.staleReview =>
-                  'Repository changed. Refresh and review before trying again.',
+                  GitMessages
+                      .repositoryChangedRefreshAndReviewBeforeTryingAgain,
                 GitErrorCode.locked =>
-                  'Another operation holds the repository or index lock. Wait, then refresh.',
+                  GitMessages
+                      .anotherOperationHoldsTheRepositoryOrIndexLockWaitThen,
                 GitErrorCode.trustRequired =>
-                  'Repository trust is required for this operation.',
+                  GitMessages.repositoryTrustIsRequiredForThisOperation,
                 GitErrorCode.disconnected =>
-                  'The Git service disconnected. Reconnect and reconcile the repository.',
+                  GitMessages
+                      .theGitServiceDisconnectedReconnectAndReconcileTheRepository,
                 GitErrorCode.unavailable || GitErrorCode.unsupportedVersion =>
-                  'The installed Git executable cannot support this operation. Review its runtime requirements below.',
+                  GitMessages
+                      .theInstalledGitExecutableCannotSupportThisOperationReviewIts,
                 GitErrorCode.readOnly =>
-                  'This repository is read-only for the requested operation. Review and history remain available.',
+                  GitMessages
+                      .thisRepositoryIsReadOnlyForTheRequestedOperationReview,
                 GitErrorCode.uncertainOutcome =>
-                  'The operation needs reconciliation. Review the resulting repository or remote state before repeating it.',
+                  GitMessages
+                      .theOperationNeedsReconciliationReviewTheResultingRepositoryOrRemote,
                 GitErrorCode.authentication =>
-                  'Git authentication failed. Review the credential helper or unlock the configured keyring.',
+                  GitMessages
+                      .gitAuthenticationFailedReviewTheCredentialHelperOrUnlockThe,
                 GitErrorCode.unknownHost =>
-                  'SSH host verification failed. Review the host identity through your configured SSH tools.',
+                  GitMessages
+                      .sshHostVerificationFailedReviewTheHostIdentityThroughYour,
                 GitErrorCode.signing =>
-                  'Commit signing failed or was cancelled. Review the signing key, agent and configured signing tool.',
+                  GitMessages
+                      .commitSigningFailedOrWasCancelledReviewTheSigningKey,
                 GitErrorCode.authorIdentity =>
-                  'Set a repository author name and email, then return to the preserved message draft.',
+                  GitMessages.setARepositoryAuthorNameAndEmailThenReturnTo,
                 GitErrorCode.rejected =>
-                  'Git rejected the reviewed update. Refresh and review the actual destination before trying again.',
+                  GitMessages
+                      .gitRejectedTheReviewedUpdateRefreshAndReviewTheActual,
                 GitErrorCode.dirty =>
-                  'Working or staged changes prevent this operation. Review, commit or explicitly stash them.',
+                  GitMessages
+                      .workingOrStagedChangesPreventThisOperationReviewCommitOr,
                 GitErrorCode.missingContent =>
-                  'A required Git object is unavailable. Review shallow or partial-repository boundaries and fetch explicitly if needed.',
-                _ => 'Git operation failed: ${error.code.name}',
+                  GitMessages
+                      .aRequiredGitObjectIsUnavailableReviewShallowOrPartial,
+                _ => GitMessages.gitFailure,
               },
         ),
         if (_diagnostics(context).isNotEmpty)
           ExpansionTile(
-            title: const GitLabel('Diagnostics'),
+            title: const GitLabel(GitMessages.diagnostics),
             children: [SelectableText(_diagnostics(context))],
           ),
       ],
@@ -537,16 +586,19 @@ final class GitFailurePanel extends StatelessWidget {
       if (onAuthorize != null)
         TextButton(
           onPressed: onAuthorize,
-          child: const GitLabel('Authorize Git inspection…'),
+          child: const GitLabel(GitMessages.authorizeGitInspection),
         ),
       if (onRefresh != null)
-        TextButton(onPressed: onRefresh, child: const GitLabel('Refresh'))
+        TextButton(
+          onPressed: onRefresh,
+          child: const GitLabel(GitMessages.refresh),
+        )
       else
         TextButton(
           onPressed: () => Clipboard.setData(
             ClipboardData(text: '${error.code.name}\n${_diagnostics(context)}'),
           ),
-          child: const GitLabel('Copy diagnostics'),
+          child: const GitLabel(GitMessages.copyDiagnostics),
         ),
     ],
   );
@@ -588,7 +640,7 @@ final class GitMenuButton extends StatelessWidget {
     required this.host,
     required this.entries,
     required this.onSelected,
-    this.tooltip = 'Actions',
+    this.tooltip = GitMessages.actions,
     this.child,
     this.enabled = true,
     this.disabledReason,
@@ -618,7 +670,7 @@ final class GitMenuButton extends StatelessWidget {
 
     final available = enabled && entries.isNotEmpty;
     final description = !available && disabledReason != null
-        ? '$tooltip · ${gitString(context, disabledReason!)}'
+        ? '${gitString(context, tooltip)} · ${gitString(context, disabledReason!)}'
         : tooltip;
     return child == null
         ? GitIconButton(

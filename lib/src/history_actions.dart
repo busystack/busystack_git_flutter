@@ -1,3 +1,5 @@
+import 'value_labels.dart';
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -14,13 +16,17 @@ final class GitHistoryActions {
   BuildContext get context => ui.context;
   Future<void> run(GitCommit commit, String action) async {
     switch (action) {
-      case 'Create branch':
+      case GitMessages.createBranch2:
         final reviewed = session.snapshot!;
         final name = await gitTextInput(
           context,
           session,
-          'Branch at ${commit.oid.abbreviated}',
-          explanation: 'Creates a local branch without checking it out.',
+          gitString(
+            context,
+            GitMessages.branchAtArg0,
+            values: {'arg0': commit.oid.abbreviated},
+          ),
+          explanation: GitMessages.createsALocalBranchWithoutCheckingItOut,
         );
         if (name == null || name.isEmpty) return;
         await session.mutate(
@@ -32,34 +38,42 @@ final class GitHistoryActions {
             expectedIndex: reviewed.indexToken,
           ),
         );
-      case 'Create tag':
+      case GitMessages.createTag:
         await ui.present(
-          'Tag ${commit.oid.abbreviated}',
+          gitString(
+            context,
+            GitMessages.tagArg0,
+            values: {'arg0': commit.oid.abbreviated},
+          ),
           GitTagView(session: session, target: commit.oid),
         );
-      case 'Compare revisions':
+      case GitMessages.compareRevisions:
         await compare(commit.oid, null);
-      case 'Open snapshot':
+      case GitMessages.openSnapshot:
         await ui.present(
-          'Read-only snapshot · ${commit.oid.abbreviated}',
+          gitString(
+            context,
+            GitMessages.readOnlySnapshotArg0,
+            values: {'arg0': commit.oid.abbreviated},
+          ),
           GitSnapshotView(session: session, revision: commit.oid),
           expanded: true,
         );
       case 'Cherry-pick':
         await ui.present(
-          'Cherry-pick commits',
+          GitMessages.cherryPickCommits,
           GitCherryPickView(session: session, commits: [commit]),
           expanded: true,
         );
-      case 'Revert commit':
+      case GitMessages.revertCommit:
         await ui.present(
-          'Revert commits',
+          GitMessages.revertCommits,
           GitCherryPickView(session: session, commits: [commit], revert: true),
           expanded: true,
         );
-      case 'Interactive rebase after this boundary':
+      case GitMessages.interactiveRebaseAfterThisBoundary:
         await ui.rebase(boundary: commit.oid);
-      case 'Reset current branch':
+      case GitMessages.resetCurrentBranch:
         await reset(commit.oid);
     }
   }
@@ -69,22 +83,29 @@ final class GitHistoryActions {
       final input = await gitTextInput(
         context,
         session,
-        'Compare to full revision ID',
+        GitMessages.compareToFullRevisionID,
         initial: session.snapshot?.head?.value ?? '',
-        explanation:
-            'Tree comparison direction: ${left.abbreviated} → the revision entered here.',
+        explanation: gitString(
+          context,
+          GitMessages.treeComparisonDirectionArg0TheRevisionEnteredHere,
+          values: {'arg0': left.abbreviated},
+        ),
       );
       if (input == null) return;
       try {
         right = GitOid(input);
       } on FormatException {
-        session.host.notify('Enter a full valid object ID.');
+        session.host.notify(GitMessages.enterAFullValidObjectID);
         return;
       }
     }
     if (!context.mounted) return;
     await ui.present(
-      '${left.abbreviated} → ${right.abbreviated} · tree comparison',
+      gitString(
+        context,
+        GitMessages.arg0Arg1TreeComparison,
+        values: {'arg0': left.abbreviated, 'arg1': right.abbreviated},
+      ),
       GitRevisionComparison(session: session, left: left, right: right),
       expanded: true,
     );
@@ -94,24 +115,43 @@ final class GitHistoryActions {
     final state = session.snapshot!;
     final mode = await session.host.present<ResetMode>(
       context,
-      'Reset ${state.branch ?? 'HEAD'} to ${target.abbreviated}',
+      gitString(
+        context,
+        GitMessages.resetArg0ToArg1,
+        values: {
+          'arg0': state.branch ?? GitMessages.head,
+          'arg1': target.abbreviated,
+        },
+      ),
       Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const GitLabel(
-            'Moves HEAD/current branch. Reflog does not recover arbitrary untracked or unsaved content.',
+            GitMessages
+                .movesHEADCurrentBranchReflogDoesNotRecoverArbitraryUntracked,
           ),
           for (final mode in ResetMode.values)
             ListTile(
-              title: Text(mode.name),
+              title: Text(gitEnumLabel(context, mode)),
               subtitle: Text(switch (mode) {
-                ResetMode.soft => 'Move HEAD; keep index and working files.',
-                ResetMode.mixed =>
-                  'Move HEAD and replace index; keep working files.',
-                ResetMode.hard =>
-                  'Replace HEAD, index and tracked working files; may overwrite obstructing untracked files.',
-                ResetMode.keep =>
-                  'Replace HEAD/index and eligible files; refuse if local changes would be lost.',
+                ResetMode.soft => gitString(
+                  context,
+                  GitMessages.moveHEADKeepIndexAndWorkingFiles,
+                ),
+                ResetMode.mixed => gitString(
+                  context,
+                  GitMessages.moveHEADAndReplaceIndexKeepWorkingFiles,
+                ),
+                ResetMode.hard => gitString(
+                  context,
+                  GitMessages
+                      .replaceHEADIndexAndTrackedWorkingFilesMayOverwriteObstructing,
+                ),
+                ResetMode.keep => gitString(
+                  context,
+                  GitMessages
+                      .replaceHEADIndexAndEligibleFilesRefuseIfLocalChanges,
+                ),
               }),
               onTap: () => Navigator.of(context).pop(mode),
             ),
@@ -123,9 +163,21 @@ final class GitHistoryActions {
     if (!await gitConfirm(
       context,
       session,
-      'Reset with ${mode.name}?',
-      '${state.head?.value} → ${target.value}\nReview the selected mode’s effects before applying.',
-      action: 'Reset ${mode.name}',
+      gitString(
+        context,
+        GitMessages.resetWithArg0,
+        values: {'arg0': gitEnumLabel(context, mode)},
+      ),
+      gitString(
+        context,
+        GitMessages.arg0Arg1ReviewTheSelectedModeSEffectsBeforeApplying,
+        values: {'arg0': state.head?.value, 'arg1': target.value},
+      ),
+      action: gitString(
+        context,
+        GitMessages.resetArg0,
+        values: {'arg0': gitEnumLabel(context, mode)},
+      ),
     ))
       return;
     await session.mutate(
@@ -165,26 +217,37 @@ final class _TagState extends GitDialogState<GitTagView> {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      SelectableText('Target ${widget.target.value}'),
+      SelectableText(
+        gitString(
+          context,
+          GitMessages.targetArg0,
+          values: {'arg0': widget.target.value},
+        ),
+      ),
       states(),
       TextField(
         controller: name,
-        decoration: InputDecoration(labelText: gitString(context, 'Tag name')),
+        decoration: InputDecoration(
+          labelText: gitString(context, GitMessages.tagName),
+        ),
       ),
       CheckboxListTile(
         value: annotated,
-        title: const GitLabel('Annotated tag'),
+        title: const GitLabel(GitMessages.annotatedTag),
         onChanged: (v) => setState(() => annotated = v!),
       ),
       DropdownButtonFormField<int>(
         initialValue: 0,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Cryptographic signing'),
+          labelText: gitString(context, GitMessages.cryptographicSigning),
         ),
         items: const [
-          DropdownMenuItem(value: 0, child: GitLabel('Configured policy')),
-          DropdownMenuItem(value: 1, child: GitLabel('Sign this tag')),
-          DropdownMenuItem(value: 2, child: GitLabel('Do not sign')),
+          DropdownMenuItem(
+            value: 0,
+            child: GitLabel(GitMessages.configuredPolicy),
+          ),
+          DropdownMenuItem(value: 1, child: GitLabel(GitMessages.signThisTag)),
+          DropdownMenuItem(value: 2, child: GitLabel(GitMessages.doNotSign)),
         ],
         onChanged: (v) => setState(() {
           sign = v == 0 ? null : v == 1;
@@ -196,11 +259,11 @@ final class _TagState extends GitDialogState<GitTagView> {
           controller: message,
           maxLines: 5,
           decoration: InputDecoration(
-            labelText: gitString(context, 'Tag message'),
+            labelText: gitString(context, GitMessages.tagMessage),
           ),
         ),
       const GitLabel(
-        'Creates the tag locally. Publish selected tags explicitly in Push review.',
+        GitMessages.createsTheTagLocallyPublishSelectedTagsExplicitlyInPush,
       ),
       FilledButton(
         onPressed: loading
@@ -222,7 +285,7 @@ final class _TagState extends GitDialogState<GitTagView> {
                 if (mounted && result?.completed == true)
                   Navigator.of(context).pop();
               },
-        child: const GitLabel('Create tag'),
+        child: const GitLabel(GitMessages.createTag),
       ),
     ],
   );
@@ -265,7 +328,14 @@ final class _ComparisonState extends GitDialogState<GitRevisionComparison> {
     children: [
       states(),
       Text(
-        'Complete trees: ${widget.left.abbreviated} → ${widget.right.abbreviated}',
+        gitString(
+          context,
+          GitMessages.completeTreesArg0Arg1,
+          values: {
+            'arg0': widget.left.abbreviated,
+            'arg1': widget.right.abbreviated,
+          },
+        ),
       ),
       Expanded(
         child: ListView(
@@ -320,7 +390,7 @@ final class _ComparisonState extends GitDialogState<GitRevisionComparison> {
               ),
             );
           },
-          child: const GitLabel('Next changed-file page'),
+          child: const GitLabel(GitMessages.nextChangedFilePage),
         ),
     ],
   );
@@ -361,7 +431,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
     children: [
       states(),
       const GitLabel(
-        'Read-only repository snapshot. Opening a file never checks out this revision.',
+        GitMessages.readOnlyRepositorySnapshotOpeningAFileNeverChecksOut,
       ),
       Expanded(
         child: ListView(
@@ -378,17 +448,21 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                       host: session.host,
                       onSelected: (action) => unawaited(open(entry, action)),
                       entries: [
-                        const GitMenuEntry('open', 'Open read-only version'),
+                        const GitMenuEntry(
+                          'open',
+                          GitMessages.openReadOnlyVersion,
+                        ),
                         const GitMenuEntry(
                           'history',
-                          'File history and blame…',
+                          GitMessages.fileHistoryAndBlame,
                         ),
                         const GitMenuEntry.separator(),
                         GitMenuEntry(
                           'restore',
                           session.snapshot == null
-                              ? 'Restore this path… · Waiting for repository status'
-                              : 'Restore this path…',
+                              ? GitMessages
+                                    .restoreThisPathWaitingForRepositoryStatus
+                              : GitMessages.restoreThisPath,
                           enabled:
                               session.snapshot != null &&
                               session.canWriteMetadata &&
@@ -413,7 +487,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                     offset = (offset - 200).clamp(0, 1000000);
                     unawaited(refresh());
                   },
-            child: const GitLabel('Previous page'),
+            child: const GitLabel(GitMessages.previousPage),
           ),
           TextButton(
             onPressed: data?['hasMore'] != true
@@ -422,7 +496,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                     offset += 200;
                     unawaited(refresh());
                   },
-            child: const GitLabel('Next page'),
+            child: const GitLabel(GitMessages.nextPage),
           ),
         ],
       ),
@@ -431,7 +505,11 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
   Future<void> open(IndexEntry entry, String action) async {
     if (action == 'history') {
       await GitWorkflowUi(context, session).present(
-        'History · ${entry.path.display}',
+        gitString(
+          context,
+          GitMessages.historyArg0,
+          values: {'arg0': entry.path.display},
+        ),
         GitFileHistoryView(
           session: session,
           path: entry.path,
@@ -454,9 +532,18 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
       if (!await gitConfirm(
         context,
         session,
-        'Restore ${entry.path.display}?',
-        'Replace this working path with revision ${widget.revision.value}. Existing staged content is retained.',
-        action: 'Restore working file',
+        gitString(
+          context,
+          GitMessages.restoreArg0,
+          values: {'arg0': entry.path.display},
+        ),
+        gitString(
+          context,
+          GitMessages
+              .replaceThisWorkingPathWithRevisionArg0ExistingStagedContent,
+          values: {'arg0': widget.revision.value},
+        ),
+        action: GitMessages.restoreWorkingFile,
       ))
         return;
       await apply(
@@ -527,12 +614,16 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         children: [
           Expanded(
             child: Text(
-              'File history follows renames · ${widget.path.display}',
+              gitString(
+                context,
+                GitMessages.fileHistoryFollowsRenamesArg0,
+                values: {'arg0': widget.path.display},
+              ),
             ),
           ),
           TextButton(
             onPressed: () => GitWorkflowUi(context, session).present(
-              'Blame · committed content',
+              GitMessages.blameCommittedContent,
               GitBlameView(
                 session: session,
                 path: widget.path,
@@ -540,7 +631,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
               ),
               expanded: true,
             ),
-            child: const GitLabel('Blame…'),
+            child: const GitLabel(GitMessages.blame),
           ),
         ],
       ),
@@ -578,7 +669,11 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                         } else if (action == 'current') {
                           await session.host.present<void>(
                             context,
-                            '${commit.oid.abbreviated} → Working Tree',
+                            gitString(
+                              context,
+                              GitMessages.arg0WorkingTree,
+                              values: {'arg0': commit.oid.abbreviated},
+                            ),
                             GitDiffView(
                               session: session,
                               comparison: GitComparison(
@@ -595,16 +690,26 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                           );
                         } else {
                           await GitWorkflowUi(context, session).present(
-                            'Commit ${commit.oid.abbreviated}',
+                            gitString(
+                              context,
+                              GitMessages.commitArg0,
+                              values: {'arg0': commit.oid.abbreviated},
+                            ),
                             GitCommitFiles(session: session, commit: commit),
                             expanded: true,
                           );
                         }
                       },
                       entries: const [
-                        GitMenuEntry('open', 'Open read-only historical file'),
-                        GitMenuEntry('current', 'Compare to current file'),
-                        GitMenuEntry('parent', 'Compare to parent…'),
+                        GitMenuEntry(
+                          'open',
+                          GitMessages.openReadOnlyHistoricalFile,
+                        ),
+                        GitMenuEntry(
+                          'current',
+                          GitMessages.compareToCurrentFile,
+                        ),
+                        GitMenuEntry('parent', GitMessages.compareToParent),
                       ],
                     ),
                   );
@@ -622,7 +727,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                     offset = (offset - 100).clamp(0, 1000000);
                     unawaited(refresh());
                   },
-            child: const GitLabel('Previous page'),
+            child: const GitLabel(GitMessages.previousPage),
           ),
           TextButton(
             onPressed: data?['hasMore'] != true
@@ -631,7 +736,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                     offset += 100;
                     unawaited(refresh());
                   },
-            child: const GitLabel('Next page'),
+            child: const GitLabel(GitMessages.nextPage),
           ),
         ],
       ),
@@ -697,7 +802,11 @@ final class _BlameState extends GitDialogState<GitBlameView> {
     children: [
       states(),
       Text(
-        'Committed ${widget.revision.abbreviated} · unsaved editor content is not part of these annotations',
+        gitString(
+          context,
+          GitMessages.committedArg0UnsavedEditorContentIsNotPartOfThese,
+          values: {'arg0': widget.revision.abbreviated},
+        ),
       ),
       Expanded(
         child: ListView.builder(
@@ -707,7 +816,11 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                 number = row['line'] as int;
             return InkWell(
               onTap: () => GitWorkflowUi(context, session).present(
-                'History from ${row['revision']}',
+                gitString(
+                  context,
+                  GitMessages.historyFromArg0,
+                  values: {'arg0': row['revision']},
+                ),
                 GitFileHistoryView(
                   session: session,
                   path: RepoPath.fromJson(row['path']),
@@ -726,7 +839,21 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                     SizedBox(
                       width: 220,
                       child: Text(
-                        '${(row['revision'] as String).substring(0, 10)}  ${row['author']}\nOriginal line ${row['originalLine']}${row['boundary'] == true ? ' · boundary' : ''}',
+                        gitString(
+                          context,
+                          GitMessages.arg0Arg1OriginalLineArg2Arg3,
+                          values: {
+                            'arg0': (row['revision'] as String).substring(
+                              0,
+                              10,
+                            ),
+                            'arg1': row['author'],
+                            'arg2': row['originalLine'],
+                            'arg3': row['boundary'] == true
+                                ? gitString(context, GitMessages.boundary)
+                                : '',
+                          },
+                        ),
                         style: Theme.of(context).textTheme.labelSmall,
                       ),
                     ),
@@ -757,7 +884,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                     offset = (offset - 200).clamp(0, lines.length);
                     unawaited(refresh());
                   },
-            child: const GitLabel('Previous lines'),
+            child: const GitLabel(GitMessages.previousLines),
           ),
           TextButton(
             onPressed: offset + 200 >= lines.length
@@ -766,7 +893,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                     offset += 200;
                     unawaited(refresh());
                   },
-            child: const GitLabel('Next lines'),
+            child: const GitLabel(GitMessages.nextLines),
           ),
         ],
       ),
@@ -807,7 +934,11 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
     children: [
       states(),
       Text(
-        'Explicit application order · destination ${reviewed.branch ?? 'HEAD'}',
+        gitString(
+          context,
+          GitMessages.explicitApplicationOrderDestinationArg0,
+          values: {'arg0': reviewed.branch ?? GitMessages.head},
+        ),
       ),
       Wrap(
         children: [
@@ -818,7 +949,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                     final value = await gitTextInput(
                       context,
                       session,
-                      'Add full commit object ID',
+                      GitMessages.addFullCommitObjectID,
                     );
                     if (value == null) return;
                     try {
@@ -839,7 +970,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                         );
                     }
                   },
-            child: const GitLabel('Add reviewed commit…'),
+            child: const GitLabel(GitMessages.addReviewedCommit),
           ),
           TextButton(
             onPressed: selected <= 0
@@ -848,7 +979,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                     final c = commits.removeAt(selected);
                     commits.insert(--selected, c);
                   }),
-            child: const GitLabel('Move earlier'),
+            child: const GitLabel(GitMessages.moveEarlier),
           ),
           TextButton(
             onPressed: selected + 1 >= commits.length
@@ -857,7 +988,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                     final c = commits.removeAt(selected);
                     commits.insert(++selected, c);
                   }),
-            child: const GitLabel('Move later'),
+            child: const GitLabel(GitMessages.moveLater),
           ),
         ],
       ),
@@ -874,7 +1005,10 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
               subtitle: Text(commits[i].oid.abbreviated),
               onTap: () => setState(() => selected = i),
               trailing: GitIconButton(
-                tooltip: 'Remove from reviewed sequence',
+                tooltip: gitString(
+                  context,
+                  GitMessages.removeFromReviewedSequence,
+                ),
                 onPressed: commits.length < 2
                     ? null
                     : () => setState(() {
@@ -891,7 +1025,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
       CheckboxListTile(
         dense: true,
         value: noCommit,
-        title: const GitLabel('Apply changes without creating commits'),
+        title: const GitLabel(GitMessages.applyChangesWithoutCreatingCommits),
         onChanged: (v) => setState(() => noCommit = v!),
       ),
       if (commits.any((e) => e.parents.length > 1))
@@ -902,7 +1036,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                 dense: true,
                 value: reviewedMainline,
                 title: const GitLabel(
-                  'Use this explicit mainline parent for merge commits',
+                  GitMessages.useThisExplicitMainlineParentForMergeCommits,
                 ),
                 onChanged: (v) => setState(() => reviewedMainline = v!),
               ),
@@ -919,15 +1053,22 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                           .reduce((a, b) => a < b ? a : b);
                   i++
                 )
-                  DropdownMenuItem(value: i, child: Text('Parent $i')),
+                  DropdownMenuItem(
+                    value: i,
+                    child: Text(
+                      gitString(
+                        context,
+                        GitMessages.parentArg0,
+                        values: {'arg0': i},
+                      ),
+                    ),
+                  ),
               ],
               onChanged: (v) => setState(() => mainline = v!),
             ),
           ],
         ),
-      const GitLabel(
-        'Empty or already-applied commits may stop Git for an explicit skip or continuation decision.',
-      ),
+      const GitLabel(GitMessages.emptyOrAlreadyAppliedCommitsMayStopGitForAn),
       FilledButton(
         onPressed:
             loading ||
@@ -954,8 +1095,8 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
               },
         child: Text(
           widget.revert
-              ? 'Revert in reviewed order'
-              : 'Cherry-pick in reviewed order',
+              ? gitString(context, GitMessages.revertInReviewedOrder)
+              : gitString(context, GitMessages.cherryPickInReviewedOrder),
         ),
       ),
     ],

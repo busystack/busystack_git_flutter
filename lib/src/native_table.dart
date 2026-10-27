@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
@@ -258,8 +259,8 @@ final class _GitNativeTableState extends State<GitNativeTable>
     if (!mounted) return;
     setState(() {
       _ready = false;
-      _failure =
-          'Native Git table accessibility is unavailable. Retry after reconnecting the application.';
+      _failure = GitMessages
+          .nativeGitTableAccessibilityIsUnavailableRetryAfterReconnectingThe;
     });
     unawaited(_remove());
   }
@@ -321,16 +322,16 @@ final class _GitNativeTableState extends State<GitNativeTable>
       'y': rect.top,
       'width': rect.width,
       'height': rect.height,
-      'fontFamily': style?.fontFamily ?? 'Sans',
+      'fontFamily': style?.fontFamily ?? GitMessages.sans,
       'fontSize': MediaQuery.textScalerOf(context).scale(style?.fontSize ?? 14),
       'rtl': Directionality.of(context) == TextDirection.rtl,
       'headers': widget.headers,
       'actionLabels': [
-        gitString(context, 'Select'),
-        gitString(context, 'Context menu'),
-        gitString(context, 'Copy text'),
+        gitString(context, GitMessages.select),
+        gitString(context, GitMessages.contextMenu),
+        gitString(context, GitMessages.copyText),
       ],
-      'loadingLabel': gitString(context, 'Loading row'),
+      'loadingLabel': gitString(context, GitMessages.loadingRow),
       'rows': _rows(first, count),
     };
     // A host rebuild can change the draft/editor without changing any table
@@ -408,7 +409,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
                 });
                 _changed();
               },
-              child: const GitLabel('Retry'),
+              child: const GitLabel(GitMessages.retry),
             ),
           ],
         ),

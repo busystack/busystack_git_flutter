@@ -113,3 +113,19 @@ dbus-run-session -- xvfb-run -a ctest --test-dir build/native --output-on-failur
 Widget tests verify presentation interactions. Native accessibility, input,
 scaling, window integration and installed-helper behavior must additionally be
 verified through each consuming application's native workflows.
+
+Git message templates are declared in `GitMessages` and
+`tool/git_messages.json`. Hosts resolve them through `GitHost.localize` into
+their existing Flutter ARB localization classes. Named repository values are
+passed separately and inserted once; paths, references, messages, revision IDs
+and Git diagnostics remain data. `tool/sync_host_localizations.py` updates a
+host's English ARB contract and generated adapter; `--check` verifies both.
+Translations continue to be maintained in the consuming application's ARBs.
+Locale changes refresh the active host callback without replacing the session.
+
+The rebase setup selects branches/tags from a searchable list or commits from
+the existing paginated Log. Its configured upstream is visible by default.
+Targets retain reviewed reference tips and resolved commit identities; preparing
+and starting a plan revalidates those references. Plan, selection and message
+preview requests have separate generations. Replaced plans and obsolete row
+callbacks cannot change the active review or retarget its repository.

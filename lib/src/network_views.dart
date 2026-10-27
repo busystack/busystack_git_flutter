@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -47,18 +48,31 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
     children: [
       states(refresh: () => unawaited(refresh())),
       Text(
-        'Delete REMOTE reference ${widget.reference}',
+        gitString(
+          context,
+          GitMessages.deleteREMOTEReferenceArg0,
+          values: {'arg0': widget.reference},
+        ),
         style: Theme.of(context).textTheme.titleMedium,
       ),
       const GitLabel(
-        'This removes the reference on every actual push destination listed below. Local branches/tags are retained. The expected tips are fixed by this review.',
+        GitMessages.thisRemovesTheReferenceOnEveryActualPushDestinationListed,
       ),
       for (final destination
           in (data?['destinations'] as List? ?? []).cast<Json>())
         GitSelectableText(
-          '${destination['url']}\nExpected tip: ${destination['expectedTip'] ?? 'reference does not exist'}',
+          gitString(
+            context,
+            GitMessages.arg0ExpectedTipArg1,
+            values: {
+              'arg0': destination['url'],
+              'arg1':
+                  destination['expectedTip'] ??
+                  gitString(context, GitMessages.referenceDoesNotExist),
+            },
+          ),
         ),
-      if (completed) const GitLabel('Remote deletion completed.'),
+      if (completed) const GitLabel(GitMessages.remoteDeletionCompleted),
       const SizedBox(height: 12),
       FilledButton(
         onPressed:
@@ -74,9 +88,13 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
                 if (!await gitConfirm(
                   context,
                   session,
-                  'Delete ${widget.reference} from the remote?',
-                  'The exact destination tips shown above will be removed. Any changed remote tip stops the operation for another review.',
-                  action: 'Delete remote reference',
+                  gitString(
+                    context,
+                    GitMessages.deleteArg0FromTheRemote,
+                    values: {'arg0': widget.reference},
+                  ),
+                  GitMessages.theExactDestinationTipsShownAboveWillBeRemovedAny,
+                  action: GitMessages.deleteRemoteReference,
                 ))
                   return;
                 final result = await apply(
@@ -92,7 +110,7 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
                     data = null;
                   });
               },
-        child: const GitLabel('Review and delete from remote…'),
+        child: const GitLabel(GitMessages.reviewAndDeleteFromRemote),
       ),
     ],
   );
@@ -216,7 +234,7 @@ final class _PushState extends GitDialogState<GitPushView> {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
-              '${reviewed.branch ?? 'detached HEAD'} · ${reviewed.head?.abbreviated ?? 'unborn'} →',
+              '${reviewed.branch ?? gitString(context, GitMessages.detachedHEAD)} · ${reviewed.head?.abbreviated ?? 'unborn'} →',
             ),
             SizedBox(
               width: 170,
@@ -224,7 +242,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                 key: ValueKey(remote),
                 initialValue: remote,
                 decoration: InputDecoration(
-                  labelText: gitString(context, 'Remote'),
+                  labelText: gitString(context, GitMessages.remote),
                 ),
                 isExpanded: true,
                 items: [
@@ -247,7 +265,10 @@ final class _PushState extends GitDialogState<GitPushView> {
               child: TextField(
                 controller: destination,
                 decoration: InputDecoration(
-                  labelText: gitString(context, 'Destination reference'),
+                  labelText: gitString(
+                    context,
+                    GitMessages.destinationReference,
+                  ),
                 ),
                 onChanged: (_) => invalidate(),
               ),
@@ -256,7 +277,7 @@ final class _PushState extends GitDialogState<GitPushView> {
               onPressed: loading || remote == null || reviewed.head == null
                   ? null
                   : () => unawaited(preview()),
-              child: const GitLabel('Review destinations'),
+              child: const GitLabel(GitMessages.reviewDestinations),
             ),
           ],
         ),
@@ -267,14 +288,25 @@ final class _PushState extends GitDialogState<GitPushView> {
               [
                 for (final target
                     in (data!['destinations'] as List).cast<Json>())
-                  '${target['url']}\n${data!['destination']} · expected ${target['expectedTip'] ?? 'new remote branch'}',
+                  gitString(
+                    context,
+                    GitMessages.arg0Arg1ExpectedArg2,
+                    values: {
+                      'arg0': target['url'],
+                      'arg1': data!['destination'],
+                      'arg2':
+                          target['expectedTip'] ??
+                          gitString(context, GitMessages.newRemoteBranch),
+                    },
+                  ),
               ].join('\n'),
             ),
           ),
         if (data?['needsFetch'] == true)
           MaterialBanner(
             content: const GitLabel(
-              'A destination has commits that are unavailable locally. Fetch that reviewed destination before reviewing outgoing history.',
+              GitMessages
+                  .aDestinationHasCommitsThatAreUnavailableLocallyFetchThat,
             ),
             actions: [
               TextButton(
@@ -290,7 +322,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                         );
                         if (result?.completed == true) await preview();
                       },
-                child: const GitLabel('Fetch reviewed destination'),
+                child: const GitLabel(GitMessages.fetchReviewedDestination),
               ),
             ],
           ),
@@ -298,7 +330,7 @@ final class _PushState extends GitDialogState<GitPushView> {
           child: data?['outgoing'] == null
               ? const Center(
                   child: GitLabel(
-                    'Choose a destination and review the outgoing commits.',
+                    GitMessages.chooseADestinationAndReviewTheOutgoingCommits,
                   ),
                 )
               : GitSplitter(
@@ -316,7 +348,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                         ),
                         if ((entry['commits'] as List).isEmpty)
                           const ListTile(
-                            title: GitLabel('No outgoing commits'),
+                            title: GitLabel(GitMessages.noOutgoingCommits),
                           ),
                         for (final commit
                             in (entry['commits'] as List).cast<Json>().map(
@@ -336,7 +368,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                   ),
                   second: selected == null
                       ? const Center(
-                          child: GitLabel('Select an outgoing commit'),
+                          child: GitLabel(GitMessages.selectAnOutgoingCommit),
                         )
                       : GitCommitFiles(session: session, commit: selected!),
                 ),
@@ -344,7 +376,7 @@ final class _PushState extends GitDialogState<GitPushView> {
         if (data?['hasMore'] == true)
           TextButton(
             onPressed: loading ? null : () => unawaited(nextPage()),
-            child: const GitLabel('Load more outgoing commits'),
+            child: const GitLabel(GitMessages.loadMoreOutgoingCommits),
           ),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -357,7 +389,9 @@ final class _PushState extends GitDialogState<GitPushView> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: upstream,
-                  title: const GitLabel('Set this destination as upstream'),
+                  title: const GitLabel(
+                    GitMessages.setThisDestinationAsUpstream,
+                  ),
                   onChanged: loading
                       ? null
                       : (v) => setState(() => upstream = v!),
@@ -378,23 +412,33 @@ final class _PushState extends GitDialogState<GitPushView> {
                     localize: false,
                   ),
               ],
-              tooltip: gitString(context, 'Choose exact tags to publish'),
+              tooltip: gitString(context, GitMessages.chooseExactTagsToPublish),
               child: Padding(
                 padding: EdgeInsets.all(session.host.spacing),
                 child: Text(
                   selectedTags.isEmpty
-                      ? 'Tags: none'
-                      : 'Tags: ${selectedTags.length} selected',
+                      ? gitString(context, GitMessages.tagsNone)
+                      : gitString(
+                          context,
+                          GitMessages.tagsArg0Selected,
+                          values: {'arg0': selectedTags.length},
+                        ),
                 ),
               ),
             ),
           ],
         ),
         if (selectedTags.isNotEmpty)
-          GitSelectableText('Publish exactly: ${selectedTags.join(', ')}'),
+          GitSelectableText(
+            gitString(
+              context,
+              GitMessages.publishExactlyArg0,
+              values: {'arg0': selectedTags.join(', ')},
+            ),
+          ),
         if (completed)
           const GitLabel(
-            'Push completed. The local commit remains available in Log.',
+            GitMessages.pushCompletedTheLocalCommitRemainsAvailableInLog,
           ),
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
@@ -402,18 +446,22 @@ final class _PushState extends GitDialogState<GitPushView> {
             Tooltip(
               message:
                   data?['forceDisabledReason'] as String? ??
-                  'Force requires the exact destination tips shown in this review.',
+                  gitString(
+                    context,
+                    GitMessages
+                        .forceRequiresTheExactDestinationTipsShownInThisReview,
+                  ),
               child: TextButton(
                 onPressed: eligible && data?['forceAllowed'] != false
                     ? () => unawaited(push(true))
                     : null,
-                child: const GitLabel('Force with reviewed lease…'),
+                child: const GitLabel(GitMessages.forceWithReviewedLease),
               ),
             ),
             const SizedBox(width: 8),
             FilledButton(
               onPressed: eligible ? () => unawaited(push(false)) : null,
-              child: const GitLabel('Push'),
+              child: const GitLabel(GitMessages.push),
             ),
           ],
         ),
@@ -468,10 +516,17 @@ final class _PushState extends GitDialogState<GitPushView> {
         !await gitConfirm(
           context,
           session,
-          'Force push with reviewed leases?',
-          'Rewrite ${plan['destination']} only if every remote destination still has the exact tip shown above.\n'
-              'Other people may already use this history. A background fetch will not renew this lease.',
-          action: 'Force with lease',
+          GitMessages.forcePushWithReviewedLeases,
+          gitString(
+                context,
+                GitMessages.rewriteArg0OnlyIfEveryRemoteDestinationStillHasThe,
+                values: {'arg0': plan['destination']},
+              ) +
+              gitString(
+                context,
+                GitMessages.otherPeopleMayAlreadyUseThisHistoryABackgroundFetch,
+              ),
+          action: GitMessages.forceWithLease,
         ))
       return;
     final result = await apply(
@@ -500,7 +555,8 @@ final class _PushState extends GitDialogState<GitPushView> {
     });
     if (result?.phase == GitOperationPhase.uncertain)
       session.host.notify(
-        'The remote outcome is uncertain. Review destinations again before another push.',
+        GitMessages
+            .theRemoteOutcomeIsUncertainReviewDestinationsAgainBeforeAnother,
       );
   }
 }
@@ -574,7 +630,14 @@ final class _CommitFilesState extends State<GitCommitFiles> {
               DropdownMenuItem(
                 value: widget.commit.parents[i],
                 child: Text(
-                  'Parent ${i + 1} · ${widget.commit.parents[i].abbreviated}',
+                  gitString(
+                    context,
+                    GitMessages.parentArg0Arg1,
+                    values: {
+                      'arg0': i + 1,
+                      'arg1': widget.commit.parents[i].abbreviated,
+                    },
+                  ),
                 ),
               ),
           ],
@@ -587,11 +650,11 @@ final class _CommitFilesState extends State<GitCommitFiles> {
         GitFailurePanel(error: error!, onRefresh: () => unawaited(load())),
       if (files == null && error == null)
         LinearProgressIndicator(
-          semanticsLabel: gitString(context, 'Loading changed files'),
+          semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
         ),
       Expanded(
         child: files?.isEmpty == true
-            ? const Center(child: GitLabel('No changed files'))
+            ? const Center(child: GitLabel(GitMessages.noChangedFiles))
             : ListView.builder(
                 itemCount: files?.length ?? 0,
                 itemBuilder: (context, i) {
@@ -602,7 +665,7 @@ final class _CommitFilesState extends State<GitCommitFiles> {
                     title: Text(file.path.display),
                     onTap: () => widget.session.host.present<void>(
                       context,
-                      '${parent?.abbreviated ?? 'empty tree'} → ${widget.commit.oid.abbreviated}',
+                      '${parent?.abbreviated ?? GitMessages.emptyTree} → ${widget.commit.oid.abbreviated}',
                       GitDiffView(
                         session: widget.session,
                         comparison: GitComparison(
@@ -655,7 +718,7 @@ final class _FetchState extends GitDialogState<GitFetchView> {
       states(),
       DropdownButtonFormField<String>(
         decoration: InputDecoration(
-          labelText: gitString(context, 'Remote to fetch'),
+          labelText: gitString(context, GitMessages.remoteToFetch),
         ),
         isExpanded: true,
         items: [
@@ -670,11 +733,12 @@ final class _FetchState extends GitDialogState<GitFetchView> {
       CheckboxListTile(
         dense: true,
         value: prune,
-        title: const GitLabel('Prune deleted remote-tracking branches'),
+        title: const GitLabel(GitMessages.pruneDeletedRemoteTrackingBranches),
         onChanged: (v) => setState(() => prune = v!),
       ),
       const GitLabel(
-        'Fetch updates remote-tracking information without replacing working files.',
+        GitMessages
+            .fetchUpdatesRemoteTrackingInformationWithoutReplacingWorkingFiles,
       ),
       FilledButton(
         onPressed: loading || remote == null
@@ -692,7 +756,7 @@ final class _FetchState extends GitDialogState<GitFetchView> {
                 if (mounted && result?.completed == true)
                   gitCompleteSurface(context);
               },
-        child: const GitLabel('Fetch'),
+        child: const GitLabel(GitMessages.fetch),
       ),
     ],
   );
@@ -790,7 +854,15 @@ final class _PullState extends GitDialogState<GitPullView> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(
-        'Destination: ${reviewed.branch ?? 'detached HEAD'} · ${reviewed.head?.abbreviated}',
+        gitString(
+          context,
+          GitMessages.destinationArg0Arg1,
+          values: {
+            'arg0':
+                reviewed.branch ?? gitString(context, GitMessages.detachedHEAD),
+            'arg1': reviewed.head?.abbreviated,
+          },
+        ),
       ),
       states(),
       DropdownButtonFormField<String>(
@@ -798,7 +870,7 @@ final class _PullState extends GitDialogState<GitPullView> {
         initialValue: remote,
         isExpanded: true,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Source remote'),
+          labelText: gitString(context, GitMessages.sourceRemote),
         ),
         items: [
           for (final value in (data?['remotes'] as List? ?? []).cast<Json>())
@@ -817,7 +889,7 @@ final class _PullState extends GitDialogState<GitPullView> {
         enabled: !loading && !initializing,
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
-          labelText: gitString(context, 'Source branch'),
+          labelText: gitString(context, GitMessages.sourceBranch),
         ),
       ),
       SizedBox(height: session.host.spacing),
@@ -825,16 +897,19 @@ final class _PullState extends GitDialogState<GitPullView> {
         key: ValueKey(strategy),
         initialValue: strategy,
         decoration: InputDecoration(
-          labelText: gitString(context, 'Reviewed strategy'),
+          labelText: gitString(context, GitMessages.reviewedStrategy),
         ),
         items: [
           for (final value in PullStrategy.values)
             DropdownMenuItem(
               value: value,
               child: Text(switch (value) {
-                PullStrategy.fastForwardOnly => 'Fast-forward only',
-                PullStrategy.merge => 'Merge',
-                PullStrategy.rebase => 'Rebase',
+                PullStrategy.fastForwardOnly => gitString(
+                  context,
+                  GitMessages.fastForwardOnly,
+                ),
+                PullStrategy.merge => gitString(context, GitMessages.merge),
+                PullStrategy.rebase => gitString(context, GitMessages.rebase),
               }),
             ),
         ],
@@ -846,36 +921,53 @@ final class _PullState extends GitDialogState<GitPullView> {
               }),
       ),
       Text(switch (strategy) {
-        PullStrategy.fastForwardOnly =>
-          'Stop if the destination cannot fast-forward; never merge or rebase.',
+        PullStrategy.fastForwardOnly => gitString(
+          context,
+          GitMessages.stopIfTheDestinationCannotFastForwardNeverMergeOr,
+        ),
         PullStrategy.merge =>
           noFastForward
-              ? 'Merge with a merge commit, including when fast-forward is possible.'
-              : 'Merge; allow fast-forward when possible.',
+              ? gitString(
+                  context,
+                  GitMessages.mergeWithAMergeCommitIncludingWhenFastForwardIs,
+                )
+              : gitString(
+                  context,
+                  GitMessages.mergeAllowFastForwardWhenPossible,
+                ),
         PullStrategy.rebase =>
           preserveMerges
-              ? 'Rebase local history while preserving local merge commits.'
-              : 'Rebase local commits as a linear history.',
+              ? gitString(
+                  context,
+                  GitMessages
+                      .rebaseLocalHistoryWhilePreservingLocalMergeCommits,
+                )
+              : gitString(
+                  context,
+                  GitMessages.rebaseLocalCommitsAsALinearHistory,
+                ),
       }),
       if (interactivePreference) ...[
         const GitLabel(
-          'Git is configured for interactive rebase. Select a pull strategy explicitly here, or fetch and open Rebase… to review a plan.',
+          GitMessages.gitIsConfiguredForInteractiveRebaseSelectAPullStrategy,
         ),
         TextButton(
           onPressed: () => setState(() => interactivePreference = false),
-          child: const GitLabel('Use reviewed ordinary rebase for this pull'),
+          child: const GitLabel(
+            GitMessages.useReviewedOrdinaryRebaseForThisPull,
+          ),
         ),
       ],
       if (strategy != PullStrategy.fastForwardOnly)
         ExpansionTile(
-          title: const GitLabel('Options'),
+          title: const GitLabel(GitMessages.options),
           children: [
             if (strategy == PullStrategy.merge)
               CheckboxListTile(
                 dense: true,
                 value: noFastForward,
                 title: const GitLabel(
-                  'Always create a merge commit (no fast-forward)',
+                  GitMessages.alwaysCreateAMergeCommitNoFastForward,
                 ),
                 onChanged: loading || initializing
                     ? null
@@ -885,7 +977,7 @@ final class _PullState extends GitDialogState<GitPullView> {
               CheckboxListTile(
                 dense: true,
                 value: preserveMerges,
-                title: const GitLabel('Preserve local merge commits'),
+                title: const GitLabel(GitMessages.preserveLocalMergeCommits),
                 onChanged: loading || initializing
                     ? null
                     : (value) => setState(() => preserveMerges = value!),
@@ -896,12 +988,13 @@ final class _PullState extends GitDialogState<GitPullView> {
         Wrap(
           children: [
             const GitLabel(
-              'Local changes may prevent pull. Review/commit them or explicitly create a stash.',
+              GitMessages
+                  .localChangesMayPreventPullReviewCommitThemOrExplicitly,
             ),
             TextButton(
               onPressed: () async {
                 await GitWorkflowUi(context, session).present(
-                  'Stashes',
+                  GitMessages.stashes,
                   GitStashesView(session: session),
                   expanded: true,
                 );
@@ -917,7 +1010,7 @@ final class _PullState extends GitDialogState<GitPullView> {
                   );
                 }
               },
-              child: const GitLabel('Create or review stash…'),
+              child: const GitLabel(GitMessages.createOrReviewStash),
             ),
           ],
         ),
@@ -952,7 +1045,7 @@ final class _PullState extends GitDialogState<GitPullView> {
                         result.phase == GitOperationPhase.stopped))
                   gitCompleteSurface(context);
               },
-        child: const GitLabel('Pull with selected strategy'),
+        child: const GitLabel(GitMessages.pullWithSelectedStrategy),
       ),
     ],
   );

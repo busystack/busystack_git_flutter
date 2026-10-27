@@ -1,3 +1,4 @@
+import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -89,7 +90,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                   TextButton.icon(
                     onPressed: widget.onReturn,
                     icon: const GitIcon(GitGlyph.back),
-                    label: const GitLabel('Return to Files'),
+                    label: const GitLabel(GitMessages.returnToFiles),
                   ),
                 Expanded(
                   child: Tooltip(
@@ -122,13 +123,19 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                               ),
                             ],
                           )
-                        : const GitLabel('Git'),
+                        : const GitLabel(GitMessages.git),
                   ),
                 ),
                 SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment(value: false, label: GitLabel('Commit')),
-                    ButtonSegment(value: true, label: GitLabel('Log')),
+                  segments: [
+                    ButtonSegment(
+                      value: false,
+                      label: GitLabel(gitString(context, GitMessages.commit)),
+                    ),
+                    ButtonSegment(
+                      value: true,
+                      label: GitLabel(gitString(context, GitMessages.log)),
+                    ),
                   ],
                   selected: {_log},
                   onSelectionChanged: (s) => setState(() {
@@ -188,7 +195,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                                             ),
                                             icon: const GitIcon(GitGlyph.back),
                                             label: const GitLabel(
-                                              'Back to Commit',
+                                              GitMessages.backToCommit,
                                             ),
                                           ),
                                         ),
@@ -264,7 +271,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
   );
 
   Widget _reviewView() => _comparison == null
-      ? const Center(child: GitLabel('Select a change to review'))
+      ? const Center(child: GitLabel(GitMessages.selectAChangeToReview))
       : GitDiffView(
           key: _diffKey,
           session: widget.session,
@@ -278,15 +285,17 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
     if (snapshot == null) {
       return gitString(
         context,
-        session.loading ? 'Loading branch…' : 'Branch unavailable',
+        session.loading
+            ? GitMessages.loadingBranch
+            : GitMessages.branchUnavailable,
       );
     }
     return snapshot.branch ??
         (snapshot.head == null
-            ? gitString(context, 'Unborn HEAD')
+            ? gitString(context, GitMessages.unbornHEAD)
             : gitString(
                 context,
-                'Detached HEAD · {revision}',
+                GitMessages.detachedHEADRevision,
                 values: {'revision': snapshot.head!.abbreviated},
               ));
   }
