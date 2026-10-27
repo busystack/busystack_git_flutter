@@ -585,38 +585,46 @@ final class _CommitFilesState extends State<GitCommitFiles> {
         ),
       if (error != null)
         GitFailurePanel(error: error!, onRefresh: () => unawaited(load())),
-      if (files == null && error == null) const LinearProgressIndicator(),
-      Expanded(
-        child: ListView.builder(
-          itemCount: files?.length ?? 0,
-          itemBuilder: (context, i) {
-            final file = files![i];
-            return ListTile(
-              dense: true,
-              leading: Text(file.index),
-              title: Text(file.path.display),
-              onTap: () => widget.session.host.present<void>(
-                context,
-                '${parent?.abbreviated ?? 'empty tree'} → ${widget.commit.oid.abbreviated}',
-                GitDiffView(
-                  session: widget.session,
-                  comparison: GitComparison(
-                    file.path,
-                    parent == null
-                        ? const ContentVersion.absent()
-                        : ContentVersion(ContentKind.commit, revision: parent),
-                    ContentVersion(
-                      ContentKind.commit,
-                      revision: widget.commit.oid,
-                    ),
-                    leftPath: file.originalPath,
-                  ),
-                ),
-                expanded: true,
-              ),
-            );
-          },
+      if (files == null && error == null)
+        LinearProgressIndicator(
+          semanticsLabel: gitString(context, 'Loading changed files'),
         ),
+      Expanded(
+        child: files?.isEmpty == true
+            ? const Center(child: GitLabel('No changed files'))
+            : ListView.builder(
+                itemCount: files?.length ?? 0,
+                itemBuilder: (context, i) {
+                  final file = files![i];
+                  return ListTile(
+                    dense: true,
+                    leading: Text(file.index),
+                    title: Text(file.path.display),
+                    onTap: () => widget.session.host.present<void>(
+                      context,
+                      '${parent?.abbreviated ?? 'empty tree'} → ${widget.commit.oid.abbreviated}',
+                      GitDiffView(
+                        session: widget.session,
+                        comparison: GitComparison(
+                          file.path,
+                          parent == null
+                              ? const ContentVersion.absent()
+                              : ContentVersion(
+                                  ContentKind.commit,
+                                  revision: parent,
+                                ),
+                          ContentVersion(
+                            ContentKind.commit,
+                            revision: widget.commit.oid,
+                          ),
+                          leftPath: file.originalPath,
+                        ),
+                      ),
+                      expanded: true,
+                    ),
+                  );
+                },
+              ),
       ),
     ],
   );
