@@ -6,6 +6,75 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
 void main() {
+  testWidgets(
+    'progress wrapping keeps the commit editor and actions stationary',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = _ProgressClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 350,
+              child: GitCommitView(
+                session: session,
+                onReview: (_) {},
+                onLog: () {},
+                onBranches: () {},
+                onPush: () {},
+                onMore: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'draft stays here');
+      final state = session.snapshot!;
+      final operation = session.mutate(
+        CommitIndex(
+          'request',
+          expectedHead: state.head,
+          expectedIndex: state.indexToken,
+        ),
+      );
+      await tester.pump();
+      client.progress!(
+        const GitProgress(GitOperationPhase.running, text: 'Connecting'),
+      );
+      await tester.pump();
+      final editor = tester.getRect(find.byType(TextField));
+      final action = tester.getRect(find.text('Commit staged (1)'));
+      for (final text in [
+        'Receiving a long remote progress message that wraps onto multiple lines',
+        'Receiving objects\nResolving deltas',
+        'Connected',
+      ]) {
+        client.progress!(GitProgress(GitOperationPhase.running, text: text));
+        await tester.pump();
+        expect(tester.getRect(find.byType(TextField)), editor);
+        expect(tester.getRect(find.text('Commit staged (1)')), action);
+        expect(find.text('draft stays here'), findsOneWidget);
+        expect(find.text('Cancel').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      client.completion.complete(
+        GitOutcome(phase: GitOperationPhase.completed, snapshot: snapshot()),
+      );
+      await operation;
+      await tester.pumpAndSettle();
+      session.dispose();
+    },
+  );
   testWidgets('failed processes expose exit status even without stderr', (
     tester,
   ) async {
@@ -201,4 +270,19 @@ void main() {
       session.dispose();
     },
   );
+}
+
+class _ProgressClient extends FixtureClient {
+  final completion = Completer<GitOutcome>();
+  void Function(GitProgress)? progress;
+  @override
+  Future<GitOutcome> mutate(
+    RepositoryId repository,
+    GitMutation request, {
+    GitCancellation? cancellation,
+    void Function(GitProgress)? onProgress,
+  }) {
+    progress = onProgress;
+    return completion.future;
+  }
 }

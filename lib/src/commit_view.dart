@@ -532,26 +532,32 @@ final class _GitCommitViewState extends State<GitCommitView> {
           if (session.running)
             Padding(
               padding: EdgeInsets.all(host.spacing),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  Expanded(
-                    child: Text(
-                      session.progress?.text.isNotEmpty == true
-                          ? session.progress!.text
-                          : 'Git operation in progress',
-                      maxLines: 2,
+              child: SizedBox(
+                // Transport progress alternates between short and wrapped
+                // text. Keep the message editor and its IME/caret stationary.
+                height: host.rowHeight(context) * 2,
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: session.cancel,
-                    child: const GitLabel('Cancel'),
-                  ),
-                ],
+                    Expanded(
+                      child: Text(
+                        session.progress?.text.isNotEmpty == true
+                            ? session.progress!.text
+                            : 'Git operation in progress',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: session.cancel,
+                      child: const GitLabel('Cancel'),
+                    ),
+                  ],
+                ),
               ),
             ),
           if (includeActions) _actions(stagedCount),

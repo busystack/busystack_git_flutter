@@ -56,6 +56,9 @@ Hosts can provide `GitCommitView.reviewContext` to identify their current
 document/review even before a rebuild. A completed staging operation preserves
 later navigation and selection rather than reopening its earlier review.
 
+Network progress keeps a fixed height derived from the host font, so wrapping
+diagnostics do not move the commit editor, caret or primary actions.
+
 Commit selection is the real Git index. Clicking a file reviews it; explicit
 file/hunk/line actions stage it. Index editing labels the editable index result;
 conflict editing labels the editable working result. Failed operations preserve
