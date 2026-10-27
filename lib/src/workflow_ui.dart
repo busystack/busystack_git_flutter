@@ -300,12 +300,25 @@ Future<bool> gitConfirm(
   String title,
   String detail, {
   String action = 'Continue',
-}) async =>
-    await session.host.present<bool>(
-      context,
-      title,
-      Builder(
-        builder: (dialogContext) => Column(
+}) async {
+  var decisionSubmitted = false;
+  final result = await session.host.present<bool>(
+    context,
+    title,
+    Builder(
+      builder: (dialogContext) {
+        final route = ModalRoute.of(dialogContext);
+        void decide(bool result) {
+          if (decisionSubmitted ||
+              !dialogContext.mounted ||
+              route?.isCurrent != true) {
+            return;
+          }
+          decisionSubmitted = true;
+          Navigator.of(dialogContext).pop(result);
+        }
+
+        return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -315,21 +328,24 @@ Future<bool> gitConfirm(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  onPressed: () => decide(false),
                   child: const GitLabel('Cancel'),
                 ),
                 FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                  onPressed: () => decide(true),
                   child: Text(action),
                 ),
               ],
             ),
           ],
-        ),
-      ),
-      expanded: false,
-    ) ==
-    true;
+        );
+      },
+    ),
+    expanded: false,
+  );
+  decisionSubmitted = true;
+  return result == true;
+}
 
 /// Common query/error lifecycle for focused Git dialogs. Each instance remains
 /// bound to its original session and repository throughout asynchronous work.
