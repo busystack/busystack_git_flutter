@@ -1270,57 +1270,49 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           !identical(regions[activeRegion], region) ||
           reviewed?.token != session.snapshot?.token)
         return;
-      acceptRegion(useLeft, region, index);
+      acceptRegion(useLeft, index);
     };
   }
 
-  void acceptRegion(bool useLeft, _MergeRegion region, int index) {
-    // Matching is against the current exact draft, never an old offset. The
-    // caller additionally binds the action to its source and draft generation.
-    final block = matchingResultRegion(result.text, region);
-    var offset = block == null ? -1 : result.text.indexOf(block);
-    var length = block?.length ?? 0;
-    var replacement = useLeft ? region.left : region.right;
-    if (offset < 0) {
-      // A new callback may be invoked before debounced maps are ready. Like
-      // the exact single-region match above, permit only one unambiguous
-      // current block from exact reviewed source spans; never borrow old
-      // draft offsets or guess between repeated source/result copies.
-      final parsed = _remainingResultRegions(result.text);
-      final matches = <(_ResultConflict, _MergeRegion)>[];
-      for (final actual in parsed) {
-        final groups = _sourceGroups(
-          actual,
-          regions,
-          left!.text!,
-          right!.text!,
-        );
-        if (groups.length != 1 ||
-            parsed
-                    .where(
-                      (r) => r.left == actual.left && r.right == actual.right,
-                    )
-                    .length !=
-                1)
-          continue;
-        final group = groups.single;
-        if (group.first <= index && index <= group.last)
-          matches.add((actual, group.region));
-      }
-      if (matches.length == 1) {
-        final (actual, source) = matches.single;
-        offset = actual.start;
-        length = actual.end - actual.start;
-        replacement = useLeft ? source.left : source.right;
-      }
+  void acceptRegion(bool useLeft, int index) {
+    // A fresh callback can run before debounced correspondence is available.
+    // Match only exact current blocks and reject source spans claimed by any
+    // other current block, including a copied member of a grouped conflict.
+    // An individually unique marker string does not establish source ownership.
+    final candidates = [
+      for (final actual in _remainingResultRegions(result.text))
+        (
+          actual: actual,
+          groups: _sourceGroups(actual, regions, left!.text!, right!.text!),
+        ),
+    ];
+    final matches = <(_ResultConflict, _MergeRegion)>[];
+    for (final candidate in candidates) {
+      if (candidate.groups.length != 1) continue;
+      final group = candidate.groups.single;
+      if (index < group.first || index > group.last) continue;
+      if (candidates.any(
+        (other) =>
+            !identical(other.actual, candidate.actual) &&
+            other.groups.any(
+              (claim) => claim.first <= group.last && group.first <= claim.last,
+            ),
+      ))
+        continue;
+      matches.add((candidate.actual, group.region));
     }
-    if (offset < 0) {
+    if (matches.length != 1) {
       session.host.notify(
         GitMessages.theResultWasEditedKeepTheManualResultOrSelect,
       );
       return;
     }
-    _replaceResult(offset, offset + length, replacement);
+    final (actual, source) = matches.single;
+    _replaceResult(
+      actual.start,
+      actual.end,
+      useLeft ? source.left : source.right,
+    );
     setState(() {
       reviewedRegions.add(index);
       saved = false;
@@ -1476,53 +1468,10 @@ final class _MergeRegion {
     this.previewRight, {
     this.leftOffset,
     this.rightOffset,
-    String? leftMarkerBody,
-    String? rightMarkerBody,
-  }) : leftMarkerBody = leftMarkerBody ?? left,
-       rightMarkerBody = rightMarkerBody ?? right;
+  });
   final String block, left, right;
-  final String leftMarkerBody, rightMarkerBody;
   final int previewLeft, previewRight;
   final int? leftOffset, rightOffset;
-}
-
-// Index stages establish conflict state. Marker parsing here only locates a
-// unique, unchanged region in an already-authoritative conflict, so ordinary
-// marker-like prose never decides whether a path is resolved.
-String? matchingResultRegion(String result, _MergeRegion region) {
-  if (result.contains(region.block) &&
-      result.indexOf(region.block) == result.lastIndexOf(region.block))
-    return region.block;
-  final lines = exactLines(result), candidates = <String>[];
-  for (var start = 0; start < lines.length; start++) {
-    final match = RegExp(r'^(<{7,})(?: |\r?$)').firstMatch(lines[start]);
-    if (match == null) continue;
-    final size = match[1]!.length,
-        left = StringBuffer(),
-        right = StringBuffer();
-    var i = start + 1;
-    while (i < lines.length &&
-        !lines[i].startsWith('|' * size) &&
-        lines[i].trimRight() != '=' * size) {
-      left.write(lines[i++]);
-    }
-    if (i < lines.length && lines[i].startsWith('|' * size)) {
-      while (i < lines.length && lines[i].trimRight() != '=' * size) {
-        i++;
-      }
-    }
-    if (i == lines.length) continue;
-    i++;
-    while (i < lines.length &&
-        !RegExp('^${'>' * size}(?: |\r?\$)').hasMatch(lines[i])) {
-      right.write(lines[i++]);
-    }
-    if (i < lines.length &&
-        left.toString() == region.leftMarkerBody &&
-        right.toString() == region.rightMarkerBody)
-      candidates.add(lines.sublist(start, i + 1).join());
-  }
-  return candidates.length == 1 ? candidates.single : null;
 }
 
 List<_MergeRegion> mergeRegions(String text, String marker) {
@@ -1634,24 +1583,26 @@ List<_MergeRegion> _alignedRegions(
         regions[i].previewRight,
         leftOffset: leftAnchors[i],
         rightOffset: rightAnchors[i],
-        leftMarkerBody: regions[i].left,
-        rightMarkerBody: regions[i].right,
       ),
   ];
 }
 
 // A Git marker delimiter needs a line break even when a source ends without
 // one. Keep that representation separate from the exact bytes being accepted.
-// Remove only the single synthetic LF proven by this source's EOF identity.
+// Remove only one synthetic delimiter proven by this source's EOF identity.
+// Git can use either CRLF or LF; an existing trailing CR remains source data.
+const _markerDelimiters = ['\r\n', '\n'];
+
 String _sourceRegionText(String source, int? start, String markerBody) {
-  if (start != null &&
-      start >= 0 &&
-      !source.endsWith('\n') &&
-      markerBody.endsWith('\n') &&
-      start + markerBody.length - 1 == source.length &&
-      source.substring(start) ==
-          markerBody.substring(0, markerBody.length - 1)) {
-    return markerBody.substring(0, markerBody.length - 1);
+  if (start != null && start >= 0 && !source.endsWith('\n')) {
+    for (final delimiter in _markerDelimiters) {
+      if (markerBody.endsWith(delimiter) &&
+          start + markerBody.length - delimiter.length == source.length &&
+          source.substring(start) ==
+              markerBody.substring(0, markerBody.length - delimiter.length)) {
+        return source.substring(start);
+      }
+    }
   }
   return markerBody;
 }
@@ -1659,20 +1610,23 @@ String _sourceRegionText(String source, int? start, String markerBody) {
 int? _sourceRegionOffset(String source, int? proposed, String markerBody) {
   // A line diff represents a missing final LF as removal plus insertion, so
   // its insertion anchor may be source EOF. Recover only the exact suffix
-  // ending there, with one proven marker delimiter LF removed.
-  if (proposed == source.length &&
-      !source.endsWith('\n') &&
-      markerBody.endsWith('\n')) {
-    final raw = markerBody.substring(0, markerBody.length - 1),
-        start = source.length - markerBody.length + 1;
-    if (start >= 0 && source.substring(start) == raw) return start;
+  // ending there, with one proven marker delimiter removed.
+  if (proposed == source.length && !source.endsWith('\n')) {
+    for (final delimiter in _markerDelimiters) {
+      if (!markerBody.endsWith(delimiter)) continue;
+      final raw = markerBody.substring(0, markerBody.length - delimiter.length),
+          start = source.length - markerBody.length + delimiter.length;
+      if (start >= 0 && source.substring(start) == raw) return start;
+    }
   }
   return proposed;
 }
 
 bool _sameMarkerBody(String source, int end, String raw, String markerBody) =>
     raw == markerBody ||
-    end == source.length && !source.endsWith('\n') && markerBody == '$raw\n';
+    end == source.length &&
+        !source.endsWith('\n') &&
+        _markerDelimiters.any((delimiter) => markerBody == '$raw$delimiter');
 
 Future<_ConflictDisplay> _backgroundConflictDisplay(
   String left,
@@ -1987,8 +1941,6 @@ List<({int first, int last, _MergeRegion region})> _sourceGroups(
           sources[first].previewRight,
           leftOffset: a,
           rightOffset: b,
-          leftMarkerBody: actual.left,
-          rightMarkerBody: actual.right,
         ),
       ));
     }

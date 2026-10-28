@@ -29,9 +29,17 @@ Future<void> _ready(WidgetTester tester, bool Function() ready) async {
 }
 
 void main() {
-  for (final atEofWithoutLf in [false, true]) {
+  for (final format in [
+    (atEofWithoutLf: false, lineEnding: '\n', trailingCr: false),
+    (atEofWithoutLf: true, lineEnding: '\n', trailingCr: false),
+    (atEofWithoutLf: false, lineEnding: '\r\n', trailingCr: false),
+    (atEofWithoutLf: true, lineEnding: '\r\n', trailingCr: false),
+    (atEofWithoutLf: true, lineEnding: '\r\n', trailingCr: true),
+  ]) {
+    final atEofWithoutLf = format.atEofWithoutLf,
+        crlf = format.lineEnding == '\r\n';
     testWidgets(
-      'real Git grouped markers retain manual result and exact bytes EOF_without_LF=$atEofWithoutLf',
+      'real Git grouped markers retain manual result and exact bytes EOF_without_LF=$atEofWithoutLf CRLF=$crlf trailing_CR=${format.trailingCr}',
       (tester) async {
         expect(_git, isNotEmpty);
         expect(_helper, isNotEmpty);
@@ -40,9 +48,12 @@ void main() {
         late BackgroundGitClient client;
         late GitSession session;
         const path = 'conflict-日本語.md';
-        final base = atEofWithoutLf
-            ? '# Introduction\nbase region\n# Between regions\nbase second region'
-            : '# Introduction\nbase region\n# Between regions\nbase second region\n# Conclusion\nunchanged one\nunchanged two\nunchanged three\nbase tail\n';
+        final base =
+            (atEofWithoutLf
+                    ? '# Introduction\nbase region\n# Between regions\nbase second region'
+                    : '# Introduction\nbase region\n# Between regions\nbase second region\n# Conclusion\nunchanged one\nunchanged two\nunchanged three\nbase tail\n')
+                .replaceAll('\n', format.lineEnding) +
+            (format.trailingCr ? '\r' : '');
         final ours = base
             .replaceFirst('base region', 'current region')
             .replaceFirst('base second region', 'current second region');
@@ -248,6 +259,7 @@ void main() {
             'manual prefix\n${ours.replaceFirst('base tail', 'non-conflicting incoming tail')}';
         expect(utf8.encode(controller.text), utf8.encode(expected));
         expect(controller.text.endsWith('\n'), !atEofWithoutLf);
+        expect(controller.text.endsWith('\r'), format.trailingCr);
         await tester.tap(field);
         await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
         await tester.sendKeyEvent(LogicalKeyboardKey.keyA);

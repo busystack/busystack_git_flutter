@@ -299,32 +299,60 @@ void main() {
     expect(client.mutations, isEmpty);
   });
 
-  testWidgets('copied member block cannot share grouped source ownership', (
-    tester,
-  ) async {
-    final client = _GroupedClient();
-    await _mount(tester, client);
-    await _mapped(tester);
-    final result = _pane(tester, 1).controller!;
-    result.text += client.block('Left two', 'Right two');
-    final edited = result.text;
-    await _until(
-      tester,
-      () =>
-          tester
-              .widget<GitRevisionPanes>(find.byType(GitRevisionPanes))
-              .mapOffset!(0, 1, 0) !=
-          null,
+  for (final activeSource in [0, 1]) {
+    testWidgets(
+      'copied member block cannot share grouped source ownership active=$activeSource',
+      (tester) async {
+        final client = activeSource == 0 ? _GroupedClient() : _MixedClient();
+        await _mount(tester, client);
+        await _mapped(tester);
+        final result = _pane(tester, 1).controller!;
+        if (activeSource == 1) {
+          await tester.tap(find.byTooltip('Next conflict region'));
+          await tester.pump();
+          await tester.tap(find.byTooltip('Next conflict region'));
+          await tester.pump();
+        }
+        result.value = TextEditingValue(
+          text:
+              '${_GroupedClient().working}${client.block('Left two', 'Right two')}',
+          selection: const TextSelection(baseOffset: 1, extentOffset: 5),
+        );
+        final edited = result.value;
+        await tester.pump(); // Fresh callback, before the edit debounce runs.
+        final beforeGlobal = tester
+            .widget<TextButton>(
+              find.widgetWithText(TextButton, 'Accept left region'),
+            )
+            .onPressed!;
+        beforeGlobal();
+        expect(result.value, edited);
+        await _until(
+          tester,
+          () =>
+              tester
+                  .widget<GitRevisionPanes>(find.byType(GitRevisionPanes))
+                  .mapOffset!(0, 1, 0) !=
+              null,
+        );
+        expect(_pane(tester, 0).regionActions, isEmpty);
+        expect(_pane(tester, 2).regionActions, isEmpty);
+        expect(
+          find.text('Result regions with conflict markers: 2'),
+          findsOneWidget,
+        );
+        final afterGlobal = tester
+            .widget<TextButton>(
+              find.widgetWithText(TextButton, 'Accept left region'),
+            )
+            .onPressed;
+        expect(afterGlobal, isNull);
+        beforeGlobal(); // A mounted callback cannot revive after publication.
+        expect(result.value, edited);
+        expect(client.mutations, isEmpty);
+      },
     );
-    expect(_pane(tester, 0).regionActions, isEmpty);
-    expect(_pane(tester, 2).regionActions, isEmpty);
-    expect(
-      find.text('Result regions with conflict markers: 2'),
-      findsOneWidget,
-    );
-    expect(result.text, edited);
-    expect(client.mutations, isEmpty);
-  });
+  }
 
   testWidgets(
     'local conflict controls align with source and preserve saved manual content',
