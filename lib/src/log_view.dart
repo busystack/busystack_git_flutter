@@ -1693,7 +1693,11 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Future<void> _menu(GitCommit commit, {Offset? position}) async {
     if (widget.onChooseCommit != null) return;
-    final action = await widget.session.host.menu(
+    final session = widget.session;
+    final generation = _generation;
+    final historyRevision = _historyRevision;
+    final onCommitAction = widget.onCommitAction;
+    final action = await session.host.menu(
       context,
       commit.subject,
       [
@@ -1715,7 +1719,7 @@ final class _GitLogViewState extends State<GitLogView> {
                   GitMessages.compareRevisions,
                   GitMessages.openSnapshot,
                 }.contains(action) ||
-                !widget.session.running && widget.session.canWriteMetadata,
+                !session.running && session.canWriteMetadata,
             sectionStart: const {
               GitMessages.cherryPickOperation,
               GitMessages.revertCommit,
@@ -1731,30 +1735,41 @@ final class _GitLogViewState extends State<GitLogView> {
       position: position,
       localizeTitle: false,
     );
+    if (!mounted ||
+        !widget.active ||
+        widget.session != session ||
+        generation != _generation ||
+        historyRevision != _historyRevision)
+      return;
     if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: commit.oid.value));
       return;
     }
-    if (action != null && mounted) {
-      if (widget.onCommitAction != null) {
-        widget.onCommitAction!(commit, action);
+    if (action != null) {
+      if (onCommitAction != null) {
+        onCommitAction(commit, action);
       } else {
-        await GitWorkflowUi(
-          context,
-          widget.session,
-        ).commitAction(commit, action);
+        await GitWorkflowUi(context, session).commitAction(commit, action);
       }
     }
   }
 
   Future<void> _goto() async {
+    final session = widget.session;
+    final generation = _generation;
     final value = await gitTextInput(
       context,
-      widget.session,
+      session,
       GitMessages.goToCommitReference2,
       explanation: GitMessages.enterACommitIDOrReferenceToRevealInLog,
     );
-    if (value == null || value.isEmpty || !mounted) return;
+    if (value == null ||
+        value.isEmpty ||
+        !mounted ||
+        !widget.active ||
+        widget.session != session ||
+        generation != _generation)
+      return;
     await _navigate(value);
   }
 
