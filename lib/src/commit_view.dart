@@ -62,6 +62,11 @@ final class _GitCommitViewState extends State<GitCommitView> {
   void initState() {
     super.initState();
     _message.text = session.draft;
+    final recovering = session.viewState['commitAmendDraftTarget'];
+    if (recovering is String &&
+        RegExp(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$').hasMatch(recovering)) {
+      unawaited(_recoverAmend(GitOid(recovering)));
+    }
     session.addListener(_changed);
     _message.addListener(_compositionChanged);
     session.commitAction = _commit;
@@ -114,12 +119,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
   void _storeMessage(String value) {
     _messageRevision++;
     if (_amend && _amendTarget != null) {
-      final target = _amendTarget!;
-      unawaited(
-        host.drafts
-            .write(_amendDraftKey(target), value)
-            .catchError((Object error) => session.reportFailure(error)),
-      );
+      session.setMessageDraft(_amendDraftKey(_amendTarget!), value);
+      _rememberAmend(_amendTarget!);
     } else {
       session.setDraft(value);
     }
@@ -146,8 +147,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
       _message.text = '';
     });
     try {
-      final saved = await host.drafts.read(_amendDraftKey(target));
-      String? message = saved?.isNotEmpty == true ? saved : null;
+      final saved = await session.readMessageDraft(_amendDraftKey(target));
+      String? message = saved.text.isNotEmpty ? saved.text : null;
       if (message == null) {
         final page = await session.client.history(
           session.repository,
@@ -167,9 +168,52 @@ final class _GitCommitViewState extends State<GitCommitView> {
           revision != _messageRevision ||
           _message.text.isNotEmpty)
         return;
-      setState(() => _message.text = message!);
+      final String loadedMessage = message;
+      session.setMessageDraft(_amendDraftKey(target), loadedMessage);
+      _rememberAmend(target);
+      setState(() => _message.text = loadedMessage);
     } on Object catch (error) {
       if (mounted && generation == _amendGeneration && _amend)
+        session.reportFailure(error);
+    }
+  }
+
+  List<GitOid> get _retainedAmends => [
+    for (final target in switch (session.viewState['commitAmendDraftTargets']) {
+      final List targets => targets,
+      _ => const [],
+    })
+      if (target is String &&
+          RegExp(r'^(?:[0-9a-f]{40}|[0-9a-f]{64})$').hasMatch(target))
+        GitOid(target),
+  ];
+
+  void _rememberAmend(GitOid target) {
+    final targets = _retainedAmends.map((oid) => oid.value).toSet();
+    if (targets.add(target.value)) {
+      session.setViewState('commitAmendDraftTargets', targets.toList());
+    }
+    if (session.viewState['commitAmendDraftTarget'] != target.value) {
+      session.setViewState('commitAmendDraftTarget', target.value);
+    }
+  }
+
+  Future<void> _recoverAmend(GitOid target) async {
+    final generation = ++_amendGeneration, revision = _messageRevision;
+    try {
+      final saved = await session.readMessageDraft(_amendDraftKey(target));
+      if (!mounted ||
+          generation != _amendGeneration ||
+          revision != _messageRevision ||
+          saved.text.isEmpty)
+        return;
+      setState(() {
+        _amend = true;
+        _amendTarget = target;
+        _message.text = saved.text;
+      });
+    } on Object catch (error) {
+      if (mounted && generation == _amendGeneration)
         session.reportFailure(error);
     }
   }
@@ -321,8 +365,16 @@ final class _GitCommitViewState extends State<GitCommitView> {
                 theme.bodyMedium,
               )
             : 0) +
+        (_amend && _amendTarget != session.snapshot?.head
+            ? textHeight(_staleAmendMessage(context), theme.bodyMedium)
+            : 0) +
         (session.draftFailure == null ? 0 : row * 3);
   }
+
+  String _staleAmendMessage(BuildContext context) =>
+      '${gitString(context, GitMessages.theRequestedRevisionIsUnavailable)} '
+      'HEAD ${_amendTarget?.abbreviated ?? ''} → '
+      '${session.snapshot?.head?.abbreviated ?? ''}';
 
   int get stagedCount =>
       session.snapshot?.changes.where((e) => e.staged).length ?? 0;
@@ -450,7 +502,10 @@ final class _GitCommitViewState extends State<GitCommitView> {
           ),
           if (session.loading) const LinearProgressIndicator(),
           if (session.failure case final error?)
-            Flexible(
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: host.rowHeight(context) * 4,
+              ),
               child: SingleChildScrollView(
                 child: GitFailurePanel(
                   error: error,
@@ -567,6 +622,16 @@ final class _GitCommitViewState extends State<GitCommitView> {
                               radio: true,
                             ),
                             const GitMenuEntry.separator(),
+                            for (final target in _retainedAmends)
+                              GitMenuEntry(
+                                'recoverAmend:${target.value}',
+                                host.message(
+                                  GitMessages.amendRevision,
+                                  values: {'revision': target.abbreviated},
+                                ),
+                                localize: false,
+                                enabled: !session.running,
+                              ),
                             GitMenuEntry(
                               'recent',
                               GitMessages.recentCommitMessages,
@@ -596,9 +661,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       ),
                     if (_amend && _amendTarget != snapshot?.head)
                       Text(
-                        '${gitString(context, GitMessages.theRequestedRevisionIsUnavailable)} '
-                        'HEAD ${_amendTarget?.abbreviated ?? ''} → '
-                        '${snapshot?.head?.abbreviated ?? ''}',
+                        _staleAmendMessage(context),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
                         ),
@@ -710,6 +773,12 @@ final class _GitCommitViewState extends State<GitCommitView> {
   );
 
   void _options(String option) {
+    if (option.startsWith('recoverAmend:')) {
+      unawaited(
+        _recoverAmend(GitOid(option.substring('recoverAmend:'.length))),
+      );
+      return;
+    }
     switch (option) {
       case 'signoff':
         setState(() => _signOff = !_signOff);
@@ -731,6 +800,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
   }
 
   Future<void> _template() async {
+    final generation = _amendGeneration, revision = _messageRevision;
     try {
       final client = session.client;
       if (client is! GitWorkflowClient) return;
@@ -738,13 +808,14 @@ final class _GitCommitViewState extends State<GitCommitView> {
         session.repository,
         const GitInspection(GitInspectionKind.commitOptions),
       );
-      if (!mounted) return;
+      if (!_ownsMessageRequest(generation, revision)) return;
       final template = options['template'] as String?;
       if (template == null) {
         host.notify(GitMessages.noReadableCommitTemplateIsConfigured);
         return;
       }
       if (_message.text.isNotEmpty && !await _confirmReplace()) return;
+      if (!_ownsMessageRequest(generation, revision)) return;
       _message.text = template;
       _storeMessage(template);
     } on Object catch (error) {
@@ -762,18 +833,24 @@ final class _GitCommitViewState extends State<GitCommitView> {
   }
 
   Future<void> _draft() async {
+    final generation = _amendGeneration, revision = _messageRevision;
     final before = _message.text;
     final value = await host.draftMessage?.call(session.repository);
-    if (!mounted || value == null || _message.text != before) return;
+    if (!_ownsMessageRequest(generation, revision) ||
+        value == null ||
+        _message.text != before)
+      return;
     if (before.isNotEmpty && !await _confirmReplace()) return;
+    if (!_ownsMessageRequest(generation, revision)) return;
     _message.text = value;
     _storeMessage(value);
   }
 
   Future<void> _recent() async {
+    final generation = _amendGeneration, revision = _messageRevision;
     try {
       final page = await session.client.history(session.repository, limit: 20);
-      if (!mounted) return;
+      if (!_ownsMessageRequest(generation, revision)) return;
       final value = await host.present<String>(
         context,
         GitMessages.recentMessages,
@@ -791,14 +868,18 @@ final class _GitCommitViewState extends State<GitCommitView> {
         ),
         expanded: false,
       );
-      if (!mounted || value == null) return;
+      if (!_ownsMessageRequest(generation, revision) || value == null) return;
       if (_message.text.isNotEmpty && !await _confirmReplace()) return;
+      if (!_ownsMessageRequest(generation, revision)) return;
       _message.text = value;
       _storeMessage(value);
     } on Object catch (error) {
       session.reportFailure(error);
     }
   }
+
+  bool _ownsMessageRequest(int generation, int revision) =>
+      mounted && generation == _amendGeneration && revision == _messageRevision;
 
   Future<bool> _confirmReplace() async =>
       await host.present<bool>(
@@ -824,10 +905,14 @@ final class _GitCommitViewState extends State<GitCommitView> {
     final snapshot = session.snapshot;
     if (snapshot == null) return;
     final message = _message.text,
-        revision = session.draftRevision,
-        messageRevision = _messageRevision,
+        amendGeneration = _amendGeneration,
         amending = _amend,
         amendTarget = _amendTarget;
+    final submitted = session.messageDraft(
+      amending && amendTarget != null
+          ? _amendDraftKey(amendTarget)
+          : session.repository.presentationKey,
+    );
     final result = await session.mutate(
       CommitIndex(
         message,
@@ -838,32 +923,42 @@ final class _GitCommitViewState extends State<GitCommitView> {
         sign: _sign,
       ),
     );
-    if (!mounted || result == null) return;
-    if (result.error?.code == GitErrorCode.authorIdentity) {
+    if (result == null) return;
+    if (mounted && result.error?.code == GitErrorCode.authorIdentity) {
       await _identity();
       return;
     }
     if (result.createdCommit != null &&
         result.completed &&
         result.error == null) {
-      if (amending) {
-        if (amendTarget != null) {
-          unawaited(
-            host.drafts
-                .write(_amendDraftKey(amendTarget), '')
-                .catchError((Object error) => session.reportFailure(error)),
-          );
+      // Settle storage even if the originating view was closed. The version
+      // belongs to its own slot, so later edits and the normal draft survive.
+      final cleared = session.clearMessageDraft(submitted);
+      if (amending && cleared && amendTarget != null) {
+        session.setViewState('commitAmendDraftTargets', [
+          for (final target in _retainedAmends)
+            if (target != amendTarget) target.value,
+        ]);
+        if (session.viewState['commitAmendDraftTarget'] == amendTarget.value) {
+          session.setViewState('commitAmendDraftTarget', '');
         }
-        if (_messageRevision != messageRevision || _message.text != message) {
-          session.setDraft(_message.text);
+      }
+      if (!mounted) return;
+      if (amending &&
+          _amend &&
+          _amendTarget == amendTarget &&
+          _amendGeneration == amendGeneration) {
+        if (cleared) {
+          _amendGeneration++;
+          _amendTarget = null;
+          _amend = false;
+          _message.text = session.draft;
         }
-        _amendGeneration++;
-        _amendTarget = null;
-        _message.text = session.draft;
-      } else if (_message.text == message &&
-          session.draftRevision == revision) {
+        // Otherwise retain the newer amend draft with its original owner.
+        // Its stale-target warning disables another amend until current HEAD
+        // is explicitly reviewed; never retarget the draft to the new commit.
+      } else if (!amending && !_amend && cleared) {
         _message.clear();
-        session.setDraft('');
       }
       host.notify(
         gitString(
@@ -872,9 +967,9 @@ final class _GitCommitViewState extends State<GitCommitView> {
           values: {'arg0': result.createdCommit!.abbreviated},
         ),
       );
-      setState(() => _amend = false);
+      setState(() {});
       if (push) widget.onPush();
-    } else if (result.createdCommit != null) {
+    } else if (mounted && result.createdCommit != null) {
       host.notify(
         gitString(
           context,
