@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'host.dart';
+import 'session.dart';
+import 'messages.dart';
+import 'workflow_ui.dart' show gitConfirm;
 
 /// One registry per host window. Guard requests also protect disposal that does
 /// not involve a Navigator, such as switching workspaces or closing the window.
@@ -41,11 +45,15 @@ class GitDraftGuard extends StatefulWidget {
     super.key,
     required this.host,
     required this.canDismiss,
+    this.isDismissible,
     required this.confirmDiscard,
     required this.child,
   });
   final GitHost host;
   final bool canDismiss;
+
+  /// Read current draft state for host requests that arrive before a rebuild.
+  final bool Function()? isDismissible;
   final Future<bool> Function() confirmDiscard;
   final Widget child;
 
@@ -78,7 +86,9 @@ class _GitDraftGuardState extends State<GitDraftGuard> {
 
   Future<bool> _mayDismiss() {
     if (!mounted) return Future.value(true);
-    if (widget.canDismiss) return Future.value(true);
+    if (widget.isDismissible?.call() ?? widget.canDismiss) {
+      return Future.value(true);
+    }
     return _pending ??= widget
         .confirmDiscard()
         .then((approved) {
@@ -109,4 +119,45 @@ class _GitDraftGuardState extends State<GitDraftGuard> {
     },
     child: widget.child,
   );
+}
+
+/// A host window keeps this guard alive when Commit is hidden or unmounted.
+/// The live owner list also invalidates consent if another worktree attaches.
+Future<bool> gitMayDismissMessageDrafts(
+  BuildContext context,
+  Iterable<GitSession> Function() liveSessions,
+) async {
+  Map<(GitDraftStore, String), GitSession> owners() => {
+    for (final session in liveSessions())
+      (session.host.drafts, session.repository.presentationKey): session,
+  };
+  var current = owners();
+  for (final session in current.values) {
+    await session.flushMessageDrafts();
+  }
+  if (!context.mounted) return false;
+  current = owners();
+  final dirty = current.values.where(
+    (session) => session.hasUnpersistedMessageDrafts,
+  );
+  if (dirty.isEmpty) return true;
+  final reviewed = {
+    for (final entry in current.entries)
+      entry.key: entry.value.messageDraftRevisions,
+  };
+  final session = dirty.first;
+  final approved = await gitConfirm(
+    context,
+    session,
+    GitMessages.discardUnsavedCommitMessages,
+    session.host.message(GitMessages.messagesCouldNotBeSavedStayInThisWindow),
+    action: GitMessages.discardCommitMessages,
+  );
+  if (!approved || !context.mounted) return false;
+  final latest = owners();
+  return latest.length == reviewed.length &&
+      latest.entries.every(
+        (entry) =>
+            mapEquals(reviewed[entry.key], entry.value.messageDraftRevisions),
+      );
 }

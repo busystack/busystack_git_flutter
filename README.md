@@ -187,3 +187,21 @@ Revision documents and literal repository/path labels keep their physical source
 direction under RTL chrome. The surrounding controls and role labels retain the
 host locale. Actual saved conflict-marker blocks determine local acceptance;
 adjacent preview suggestions cannot overwrite a larger Git-created result block.
+
+Persistent Commit messages use `FileGitDraftStore` over each host's existing
+application-owned draft files. Normal and immutable-HEAD amend slots have
+persistent revision tokens. A successful commit consumes only the exact version
+it submitted; a late write or clear cannot replace another window's newer text.
+Conflicting text stays in the message editor until the user reviews the saved
+message and explicitly chooses which version to keep. Recovering nonempty amend
+slots reads those existing files, so stale view preferences cannot hide a draft.
+This adds no message/history database and does not alter Git transactions.
+
+Hosts with persistent sessions register one window-level
+`gitMayDismissMessageDrafts` guard over their live sessions and set
+`protectMessageDrafts: false` on embedded Commit/workspace views. That guard stays
+available when Commit is hidden or Log is selected. Other embeddings retain the
+local guard by default. Hosts drain session queues before checking dismissal and
+`GitFlushableDraftStore.flush` before normal native teardown. Draft I/O runs in
+background isolates; Linux uses public libc `flock` on separate open descriptions
+because Dart's POSIX file locks are process-scoped. No upstream code is modified.

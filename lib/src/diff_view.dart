@@ -2329,6 +2329,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     return GitDraftGuard(
       host: widget.session.host,
       canDismiss: _allowClose || (!_dirty && !_saving),
+      isDismissible: () => _allowClose || (!_dirty && !_saving),
       confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
       child: CallbackShortcuts(
         bindings: {

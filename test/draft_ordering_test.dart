@@ -59,8 +59,8 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       final submittedInFirstTab = first.setMessageDraft('amend', 'older C');
       second.setMessageDraft('amend', 'newest D in another tab');
-      expect(first.clearMessageDraft(submittedInFirstTab), isFalse);
-      expect(first.clearMessageDraft(submitted), isFalse);
+      expect(await first.clearMessageDraft(submittedInFirstTab), isFalse);
+      expect(await first.clearMessageDraft(submitted), isFalse);
       expect(first.messageDraft('amend').text, 'newest D in another tab');
       expect(second.messageDraft('amend').text, 'newest D in another tab');
       await Future<void>.delayed(Duration.zero);
@@ -132,7 +132,7 @@ void main() {
       await Future<void>.delayed(Duration.zero);
       expect(store.writes, hasLength(2)); // Different slots are independent.
       target.setMessageDraft(amendKey, 'newer C');
-      expect(target.clearMessageDraft(submitted), isFalse);
+      expect(await target.clearMessageDraft(submitted), isFalse);
       await Future<void>.delayed(Duration.zero);
       expect(store.writes, hasLength(2)); // C cannot race ahead of B.
       store.writes.firstWhere((w) => w.key == amendKey).done.complete();
@@ -149,14 +149,15 @@ void main() {
       expect(store.values[repo.presentationKey], 'normal A');
 
       final current = target.messageDraft(amendKey);
-      expect(target.clearMessageDraft(current), isTrue);
-      target.setMessageDraft(amendKey, 'after clear D');
+      final clearing = target.clearMessageDraft(current);
       await Future<void>.delayed(Duration.zero);
       expect(store.writes.last.value, '');
+      target.setMessageDraft(amendKey, 'after clear D');
       store.writes.last.done.complete();
       await Future<void>.delayed(Duration.zero);
       expect(store.writes.last.value, 'after clear D');
       store.writes.last.done.complete();
+      expect(await clearing, isFalse); // New typing keeps ownership of D.
       await target.flushMessageDrafts();
       expect(store.values[amendKey], 'after clear D');
     },

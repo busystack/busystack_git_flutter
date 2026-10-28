@@ -13,6 +13,7 @@ import 'history_actions.dart';
 import 'native_table.dart';
 import 'operation_banner.dart';
 import 'text_undo.dart';
+import 'dismissal.dart';
 
 final class GitCommitView extends StatelessWidget {
   const GitCommitView({
@@ -27,12 +28,16 @@ final class GitCommitView extends StatelessWidget {
     this.notice,
     this.active = true,
     this.reviewContext,
+    this.protectMessageDrafts = true,
   });
   final GitSession session;
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
   final Widget? notice;
   final bool active;
+
+  /// Hosts with a persistent window-level message guard disable this local guard.
+  final bool protectMessageDrafts;
 
   /// Current host document/review identity. This guards late presentation
   /// updates; repository authorization remains the engine's responsibility.
@@ -238,8 +243,83 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   @override
   Widget build(BuildContext context) => GitHostScope(
     host: view.session.host,
-    child: Builder(builder: _build),
+    child: Builder(
+      builder: (context) => !view.protectMessageDrafts
+          ? _build(context)
+          : GitDraftGuard(
+              host: host,
+              canDismiss: !session.hasUnpersistedMessageDrafts,
+              isDismissible: () => !session.hasUnpersistedMessageDrafts,
+              confirmDiscard: () => _confirmMessageClose(context),
+              child: _build(context),
+            ),
+    ),
   );
+  Future<bool> _confirmMessageClose(BuildContext context) =>
+      gitMayDismissMessageDrafts(context, () => [session]);
+
+  String get _messageKey => _amend && _amendTarget != null
+      ? _amendDraftKey(_amendTarget!)
+      : session.repository.presentationKey;
+
+  Future<void> _reviewSavedMessage(BuildContext context) async {
+    final key = session.reviewableMessageDraft(_messageKey);
+    if (key == null) return;
+    final review = await session.reviewMessageDraft(key);
+    if (!mounted || review == null) return;
+    final target = RegExp(
+      r':amend:([0-9a-f]{40}|[0-9a-f]{64})$',
+    ).firstMatch(key)?.group(1);
+    final choice = await host.present<bool>(
+      context,
+      gitString(context, GitMessages.reviewSavedMessage),
+      Builder(
+        builder: (dialogContext) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (target != null)
+              Text(
+                '${gitString(context, GitMessages.amendLastCommit)} '
+                '${GitOid(target).abbreviated}',
+              ),
+            GitLabel(GitMessages.commitMessage),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: SingleChildScrollView(
+                child: SelectableText(review.local.text),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const GitLabel(GitMessages.savedMessage),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: SingleChildScrollView(
+                child: SelectableText(review.saved.text ?? ''),
+              ),
+            ),
+            Wrap(
+              spacing: host.spacing,
+              children: [
+                TextButton(
+                  onPressed: () => gitCompleteSurface(dialogContext, false),
+                  child: const GitLabel(GitMessages.keepThisMessage),
+                ),
+                TextButton(
+                  onPressed: () => gitCompleteSurface(dialogContext, true),
+                  child: const GitLabel(GitMessages.useSavedMessage),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null) {
+      await session.resolveMessageDraft(review, useSaved: choice);
+    }
+  }
+
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
       if (bounds.maxWidth < 1 || bounds.maxHeight < 1) return const SizedBox();
@@ -385,8 +465,27 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
         (_amend && _amendTarget != session.snapshot?.head
             ? textHeight(_staleAmendMessage(context), theme.bodyMedium)
             : 0) +
-        (session.draftFailure == null ? 0 : row * 3);
+        (session.draftFailure == null
+            ? 0
+            : textHeight(_draftFailureMessage(context), theme.bodyMedium)) +
+        (session.reviewableMessageDraft(_messageKey) == null
+            ? 0
+            : (textHeight(
+                        GitMessages.reviewSavedMessage,
+                        theme.labelLarge,
+                        inset: 32,
+                      ) +
+                      24)
+                  .clamp(row * 2, double.infinity));
   }
+
+  String _draftFailureMessage(BuildContext context) => gitString(
+    context,
+    session.draftFailure!.code == GitErrorCode.staleReview
+        ? GitMessages.commitDraftChangedInAnotherWindow
+        : GitMessages.draftRetainedInMemorySavingItFailedArg0,
+    values: {'arg0': session.draftFailure!.diagnostic},
+  );
 
   String _staleAmendMessage(BuildContext context) =>
       '${gitString(context, GitMessages.theRequestedRevisionIsUnavailable)} '
@@ -685,13 +784,17 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                       ),
                     if (session.draftFailure != null)
                       Text(
-                        gitString(
-                          context,
-                          GitMessages.draftRetainedInMemorySavingItFailedArg0,
-                          values: {'arg0': session.draftFailure!.diagnostic},
-                        ),
+                        _draftFailureMessage(context),
                         style: TextStyle(
                           color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
+                    if (session.reviewableMessageDraft(_messageKey) != null)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton(
+                          onPressed: () => _reviewSavedMessage(context),
+                          child: const GitLabel(GitMessages.reviewSavedMessage),
                         ),
                       ),
                     Expanded(
@@ -950,7 +1053,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
         result.error == null) {
       // Settle storage even if the originating view was closed. The version
       // belongs to its own slot, so later edits and the normal draft survive.
-      final cleared = session.clearMessageDraft(submitted);
+      final cleared = await session.clearMessageDraft(submitted);
       if (amending && cleared && amendTarget != null) {
         session.setViewState('commitAmendDraftTargets', [
           for (final target in _retainedAmends)

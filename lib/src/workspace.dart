@@ -1,4 +1,5 @@
 import 'messages.dart';
+import 'dismissal.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -19,8 +20,10 @@ final class GitWorkspace extends StatefulWidget {
     this.onPush,
     this.onMore,
     this.onCommitAction,
+    this.protectMessageDrafts = true,
   });
   final GitSession session;
+  final bool protectMessageDrafts;
   final VoidCallback? onReturn, onBranches, onPush, onMore;
   final void Function(GitCommit, String)? onCommitAction;
   @override
@@ -68,7 +71,22 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
   @override
   Widget build(BuildContext context) => GitHostScope(
     host: widget.session.host,
-    child: Builder(builder: _build),
+    child: Builder(
+      builder: (context) => !widget.protectMessageDrafts
+          ? _build(context)
+          : ListenableBuilder(
+              listenable: widget.session,
+              builder: (context, _) => GitDraftGuard(
+                host: widget.session.host,
+                canDismiss: !widget.session.hasUnpersistedMessageDrafts,
+                isDismissible: () =>
+                    !widget.session.hasUnpersistedMessageDrafts,
+                confirmDiscard: () =>
+                    gitMayDismissMessageDrafts(context, () => [widget.session]),
+                child: _build(context),
+              ),
+            ),
+    ),
   );
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
@@ -268,6 +286,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
     final session = widget.session;
     final generation = _reviewGeneration;
     return GitCommitView(
+      protectMessageDrafts: false,
       key: _commitKey,
       active: !_log && active,
       reviewContext: () => (_log, _compactReview, _comparison),

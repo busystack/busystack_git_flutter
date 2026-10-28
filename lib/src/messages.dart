@@ -711,6 +711,17 @@ abstract final class GitMessages {
   static const retry = "Retry";
   static const gitMessage = "Git message";
   static const cancelPrompt = "Cancel prompt";
+  static const reviewSavedMessage = "Review saved message";
+  static const savedMessage = "Saved message";
+  static const keepThisMessage = "Keep this message";
+  static const useSavedMessage = "Use saved message";
+  static const commitDraftChangedInAnotherWindow =
+      "This message changed in another window. Review the saved message before replacing it.";
+  static const discardUnsavedCommitMessages =
+      "Discard unsaved commit messages?";
+  static const messagesCouldNotBeSavedStayInThisWindow =
+      "Messages that could not be saved are still in this window. Discarding leaves the saved versions unchanged.";
+  static const discardCommitMessages = "Discard messages";
   static const useMessageAndContinue = "Use message and continue";
   static const respondPrivately = "Respond privately";
   static const viewPreferencesCouldNotBeSavedArg0 =
@@ -1766,5 +1777,13 @@ abstract final class GitMessages {
     ignoreRightRegion,
     newerConflictDraftRetained,
     noFileHistoryForThisPathAndRevision,
+    reviewSavedMessage,
+    savedMessage,
+    keepThisMessage,
+    useSavedMessage,
+    commitDraftChangedInAnotherWindow,
+    discardUnsavedCommitMessages,
+    messagesCouldNotBeSavedStayInThisWindow,
+    discardCommitMessages,
   ];
 }

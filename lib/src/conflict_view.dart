@@ -780,6 +780,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     return GitDraftGuard(
       host: session.host,
       canDismiss: !_draftDirty && !_busy,
+      isDismissible: () => !_draftDirty && !_busy,
       confirmDiscard: _confirmDiscard,
       child: CallbackShortcuts(
         bindings: {

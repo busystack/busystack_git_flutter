@@ -778,5 +778,13 @@
   "ignoreLeftRegion": "Ignore left suggestion",
   "ignoreRightRegion": "Ignore right suggestion",
   "newerConflictDraftRetained": "The submitted result was saved. Your newer result draft is still unsaved.",
-  "noFileHistoryForThisPathAndRevision": "No file history is available for this path and revision."
+  "noFileHistoryForThisPathAndRevision": "No file history is available for this path and revision.",
+  "reviewSavedMessage": "Review saved message",
+  "savedMessage": "Saved message",
+  "keepThisMessage": "Keep this message",
+  "useSavedMessage": "Use saved message",
+  "commitDraftChangedInAnotherWindow": "This message changed in another window. Review the saved message before replacing it.",
+  "discardUnsavedCommitMessages": "Discard unsaved commit messages?",
+  "messagesCouldNotBeSavedStayInThisWindow": "Messages that could not be saved are still in this window. Discarding leaves the saved versions unchanged.",
+  "discardCommitMessages": "Discard messages"
 }

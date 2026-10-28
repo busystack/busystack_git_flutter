@@ -58,6 +58,45 @@ abstract interface class GitDraftStore {
   Future<void> write(String worktreeKey, String message);
 }
 
+/// The exact persistent draft revision observed by one review surface.
+final class GitStoredDraft {
+  const GitStoredDraft({required this.text, required this.version});
+
+  /// Only a path that has never been written has this identity. Clearing a
+  /// stored draft writes a new versioned tombstone instead of deleting it.
+  static const absentVersion = 'absent';
+  final String? text;
+  final String version;
+}
+
+final class GitDraftWriteResult {
+  const GitDraftWriteResult({required this.written, required this.current});
+  final bool written;
+  final GitStoredDraft current;
+}
+
+abstract interface class GitVersionedDraftStore implements GitDraftStore {
+  Future<GitStoredDraft> readVersioned(String key);
+  Future<GitDraftWriteResult> compareAndWrite(
+    String key, {
+    required String expectedVersion,
+    required String? text,
+  });
+}
+
+/// Implemented by persistent stores whose I/O must finish before host teardown.
+abstract interface class GitFlushableDraftStore {
+  Future<void> flush();
+}
+
+final class GitDraftConflict implements Exception {
+  const GitDraftConflict(this.key, this.current);
+  final String key;
+  final GitStoredDraft current;
+  @override
+  String toString() => 'The stored Git draft changed: $key';
+}
+
 final class MemoryGitDraftStore implements GitDraftStore {
   final _drafts = <String, String>{};
   @override

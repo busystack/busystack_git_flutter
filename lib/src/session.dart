@@ -8,16 +8,32 @@ import 'host.dart';
 /// An immutable version of one message slot. An amend slot belongs to its
 /// reviewed HEAD, independently of the normal commit message.
 final class GitMessageDraft {
-  const GitMessageDraft._(this.key, this.text, this.revision, this._owner);
+  const GitMessageDraft._(
+    this.key,
+    this.text,
+    this.revision,
+    this._owner,
+    this._persisted,
+  );
   final String key, text;
   final int revision;
   final Object _owner;
+  final Future<GitStoredDraft?> _persisted;
+}
+
+/// A comparison is immutable consent for one local and one saved message.
+final class GitMessageDraftReview {
+  const GitMessageDraftReview(this.local, this.saved);
+  final GitMessageDraft local;
+  final GitStoredDraft saved;
 }
 
 final class _MessageDraftSlot {
   String? text;
-  int revision = 0, readGeneration = 0;
+  int revision = 0, readGeneration = 0, persistedRevision = 0;
   Future<void> pending = Future<void>.value();
+  Future<GitStoredDraft?> persisted = Future<GitStoredDraft?>.value();
+  GitStoredDraft? stored, conflict;
 }
 
 // A host can attach several tabs to the same worktree. Ownership and durable
@@ -26,6 +42,7 @@ final _draftStores = Expando<_MessageDraftState>('Git message draft ownership');
 
 final class _MessageDraftState extends ChangeNotifier {
   final slots = <String, _MessageDraftSlot>{};
+  final errors = <String, GitException>{};
   final views = <String, Map<String, Object>>{};
   final viewWrites = <String, Future<void>>{};
   void changed() => notifyListeners();
@@ -47,7 +64,13 @@ final class GitSession extends ChangeNotifier {
   GitSnapshot? snapshot;
   GitException? failure;
   GitException? _operationFailure;
-  GitException? draftFailure;
+  bool _ownsMessageKey(String key) =>
+      key == repository.presentationKey ||
+      key.startsWith('${repository.presentationKey}:amend:');
+  GitException? get draftFailure => _draftState.errors.entries
+      .where((entry) => _ownsMessageKey(entry.key))
+      .map((entry) => entry.value)
+      .firstOrNull;
   GitProgress? progress;
   GitOutcome? outcome;
   Future<void> Function(bool push)? commitAction;
@@ -150,7 +173,7 @@ final class GitSession extends ChangeNotifier {
       await readMessageDraft(repository.presentationKey);
     } on Object catch (error) {
       if (_disposed) return;
-      draftFailure = GitException(
+      _draftState.errors[repository.presentationKey] = GitException(
         GitErrorCode.commandFailed,
         diagnostic: host.message(
           GitMessages.commitDraftStorageArg0,
@@ -161,7 +184,26 @@ final class GitSession extends ChangeNotifier {
     if (_disposed) return;
     try {
       final values = await host.readViewState?.call(repository.presentationKey);
-      if (values != null && !_disposed) viewState = {...values, ...viewState};
+      if (values != null && !_disposed) {
+        final retained = <String>{
+          if (values['commitAmendDraftTargets'] case final List saved)
+            ...saved.whereType<String>(),
+          if (viewState['commitAmendDraftTargets'] case final List local)
+            for (final target in local.whereType<String>())
+              if (_messageDrafts['${repository.presentationKey}:amend:$target']
+                      ?.text
+                      ?.isNotEmpty ==
+                  true)
+                target,
+        };
+        viewState = {
+          ...values,
+          ...viewState,
+          if (retained.isNotEmpty ||
+              values.containsKey('commitAmendDraftTargets'))
+            'commitAmendDraftTargets': retained.toList(),
+        };
+      }
     } on Object catch (error) {
       if (!_disposed)
         failure = GitException(
@@ -199,17 +241,24 @@ final class GitSession extends ChangeNotifier {
   }
 
   /// Reads are generation-bound too: a slow load cannot replace a newer edit.
-  /// Pending writes are ordered per slot, including writes from an old view.
+  /// Durable versions also bind independent windows, not only these local slots.
   Future<GitMessageDraft> readMessageDraft(String key) async {
     final slot = _messageSlot(key);
     if (slot.text != null) return messageDraft(key);
     final revision = slot.revision, generation = ++slot.readGeneration;
     await slot.pending;
-    final saved = await host.drafts.read(key);
+    final store = host.drafts;
+    final saved = store is GitVersionedDraftStore
+        ? await store.readVersioned(key)
+        : null;
+    final text = saved?.text ?? (saved == null ? await store.read(key) : null);
     if (slot.revision == revision &&
         generation == slot.readGeneration &&
         slot.text == null) {
-      slot.text = saved ?? '';
+      slot.text = text ?? '';
+      slot.stored = saved;
+      slot.persisted = Future.value(saved);
+      slot.persistedRevision = revision;
       _draftState.changed();
     }
     return messageDraft(key);
@@ -217,59 +266,241 @@ final class GitSession extends ChangeNotifier {
 
   GitMessageDraft messageDraft(String key) {
     final slot = _messageSlot(key);
-    return GitMessageDraft._(key, slot.text ?? '', slot.revision, slot);
+    return GitMessageDraft._(
+      key,
+      slot.text ?? '',
+      slot.revision,
+      slot,
+      slot.persisted,
+    );
+  }
+
+  bool _matchesDraft(GitMessageDraft value) {
+    final current = _messageSlot(value.key);
+    return identical(current, value._owner) &&
+        current.revision == value.revision &&
+        current.text == value.text;
+  }
+
+  void _draftSaveFailed(String key, int revision, Object error) {
+    final slot = _messageSlot(key);
+    if (slot.revision != revision) return;
+    _draftState.errors[key] = GitException(
+      error is GitDraftConflict
+          ? GitErrorCode.staleReview
+          : GitErrorCode.commandFailed,
+      diagnostic: error is GitDraftConflict
+          ? host.message(GitMessages.commitDraftChangedInAnotherWindow)
+          : host.message(
+              GitMessages.commitDraftWasRetainedInMemoryButCouldNotBe,
+              values: {'arg0': sanitizeGitDiagnostic('$error')},
+            ),
+    );
+    _draftState.changed();
   }
 
   GitMessageDraft setMessageDraft(String key, String value) {
     final slot = _messageSlot(key);
     slot.text = value;
     final revision = ++slot.revision;
-    // Do not launch a second store operation until the previous one completes.
-    // Checking generations only after concurrent writes cannot protect durable
-    // storage from an older write completing last.
-    slot.pending = slot.pending
-        .then((_) => host.drafts.write(key, value))
-        .then(
-          (_) {
-            if (!_disposed &&
-                revision == slot.revision &&
-                draftFailure != null) {
-              draftFailure = null;
-              notifyListeners();
-            }
-          },
-          onError: (Object error) {
-            if (!_disposed && revision == slot.revision) {
-              draftFailure = GitException(
-                GitErrorCode.commandFailed,
-                diagnostic: host.message(
-                  GitMessages.commitDraftWasRetainedInMemoryButCouldNotBe,
-                  values: {'arg0': sanitizeGitDiagnostic('$error')},
-                ),
-              );
-              notifyListeners();
-            }
-          },
-        );
+    final persisted = Completer<GitStoredDraft?>();
+    slot.persisted = persisted.future;
+    slot.pending = slot.pending.then((_) async {
+      try {
+        final store = host.drafts;
+        GitStoredDraft? written;
+        if (store is GitVersionedDraftStore) {
+          final result = await store.compareAndWrite(
+            key,
+            expectedVersion:
+                slot.stored?.version ?? GitStoredDraft.absentVersion,
+            text: value,
+          );
+          if (!result.written) {
+            slot.conflict = result.current;
+            throw GitDraftConflict(key, result.current);
+          }
+          slot.stored = written = result.current;
+          slot.conflict = null;
+        } else {
+          await store.write(key, value);
+        }
+        slot.persistedRevision = revision;
+        if (slot.revision == revision) _draftState.errors.remove(key);
+        persisted.complete(written);
+        _draftState.changed();
+      } on Object catch (error) {
+        persisted.complete(null);
+        _draftSaveFailed(key, revision, error);
+      }
+    });
     final version = messageDraft(key);
     _draftState.changed();
     return version;
   }
 
-  /// A mutation may consume only the exact version that it submitted.
-  bool clearMessageDraft(GitMessageDraft submitted) {
-    final current = messageDraft(submitted.key);
-    if (!identical(current._owner, submitted._owner) ||
-        current.revision != submitted.revision ||
-        current.text != submitted.text) {
-      return false;
-    }
-    setMessageDraft(submitted.key, '');
-    return true;
+  /// Consume only the submitted local revision AND its exact durable version.
+  /// A surviving message from another window stays in its original slot.
+  Future<bool> clearMessageDraft(GitMessageDraft submitted) {
+    final slot = _messageSlot(submitted.key);
+    if (!_matchesDraft(submitted)) return Future.value(false);
+    final complete = Completer<bool>();
+    slot.pending = slot.pending.then((_) async {
+      if (!_matchesDraft(submitted)) {
+        complete.complete(false);
+        return;
+      }
+      try {
+        final store = host.drafts;
+        if (store is GitVersionedDraftStore) {
+          final written = await submitted._persisted;
+          final result = written == null
+              ? GitDraftWriteResult(
+                  written: false,
+                  current: await store.readVersioned(submitted.key),
+                )
+              : await store.compareAndWrite(
+                  submitted.key,
+                  expectedVersion: written.version,
+                  text: '',
+                );
+          if (!result.written) {
+            // The submitted message has committed. If local typing has not
+            // advanced, expose the surviving saved message without retargeting
+            // an amend. A newer local edit remains untouched and recoverable.
+            if (_matchesDraft(submitted)) {
+              slot.text = result.current.text ?? '';
+              slot.stored = result.current;
+              slot.persisted = Future.value(result.current);
+              slot.persistedRevision = ++slot.revision;
+              slot.conflict = null;
+              _draftSaveFailed(
+                submitted.key,
+                slot.revision,
+                GitDraftConflict(submitted.key, result.current),
+              );
+            }
+            complete.complete(false);
+            return;
+          }
+          slot.stored = result.current;
+          if (_matchesDraft(submitted)) {
+            slot.persisted = Future.value(result.current);
+          }
+        } else {
+          await store.write(submitted.key, '');
+        }
+        if (_matchesDraft(submitted)) {
+          slot.text = '';
+          slot.persistedRevision = ++slot.revision;
+          slot.conflict = null;
+          _draftState.errors.remove(submitted.key);
+          _draftState.changed();
+          complete.complete(true);
+        } else {
+          complete.complete(false);
+        }
+      } on Object catch (error) {
+        _draftSaveFailed(submitted.key, submitted.revision, error);
+        complete.complete(false);
+      }
+    });
+    return complete.future;
   }
 
-  Future<void> flushMessageDrafts() =>
-      Future.wait(_messageDrafts.values.map((slot) => slot.pending));
+  bool get hasUnpersistedMessageDrafts => _messageDrafts.entries.any(
+    (entry) =>
+        _ownsMessageKey(entry.key) &&
+        entry.value.text != null &&
+        entry.value.persistedRevision < entry.value.revision,
+  );
+  Map<String, int> get messageDraftRevisions => {
+    for (final entry in _messageDrafts.entries)
+      if (_ownsMessageKey(entry.key)) entry.key: entry.value.revision,
+  };
+  String? reviewableMessageDraft(String preferred) {
+    if (host.drafts is! GitVersionedDraftStore) return null;
+    if (_ownsMessageKey(preferred) &&
+        _draftState.errors.containsKey(preferred)) {
+      return preferred;
+    }
+    return _draftState.errors.keys.where(_ownsMessageKey).firstOrNull;
+  }
+
+  Future<GitMessageDraftReview?> reviewMessageDraft(String key) async {
+    final store = host.drafts;
+    if (store is! GitVersionedDraftStore) return null;
+    await _messageSlot(key).pending;
+    final local = messageDraft(key);
+    final saved = await store.readVersioned(key);
+    return _matchesDraft(local) ? GitMessageDraftReview(local, saved) : null;
+  }
+
+  /// Both choices are bound to the reviewed local and saved versions. Keeping
+  /// this window's message is an explicit conditional replacement, never retry.
+  Future<bool> resolveMessageDraft(
+    GitMessageDraftReview review, {
+    required bool useSaved,
+  }) {
+    final store = host.drafts;
+    if (store is! GitVersionedDraftStore || !_matchesDraft(review.local)) {
+      return Future.value(false);
+    }
+    final slot = _messageSlot(review.local.key);
+    final complete = Completer<bool>();
+    slot.pending = slot.pending.then((_) async {
+      if (!_matchesDraft(review.local)) {
+        complete.complete(false);
+        return;
+      }
+      try {
+        final result = useSaved
+            ? GitDraftWriteResult(
+                written: false,
+                current: await store.readVersioned(review.local.key),
+              )
+            : await store.compareAndWrite(
+                review.local.key,
+                expectedVersion: review.saved.version,
+                text: review.local.text,
+              );
+        if ((useSaved && result.current.version != review.saved.version) ||
+            (!useSaved && !result.written)) {
+          slot.conflict = result.current;
+          _draftSaveFailed(
+            review.local.key,
+            review.local.revision,
+            GitDraftConflict(review.local.key, result.current),
+          );
+          complete.complete(false);
+          return;
+        }
+        slot.stored = result.current;
+        slot.conflict = null;
+        if (_matchesDraft(review.local)) {
+          if (useSaved) slot.text = result.current.text ?? '';
+          slot.persistedRevision = ++slot.revision;
+          slot.persisted = Future.value(result.current);
+          _draftState.errors.remove(review.local.key);
+          _draftState.changed();
+        }
+        complete.complete(true);
+      } on Object catch (error) {
+        _draftSaveFailed(review.local.key, review.local.revision, error);
+        complete.complete(false);
+      }
+    });
+    return complete.future;
+  }
+
+  Future<void> flushMessageDrafts() async {
+    while (true) {
+      final pending = [for (final slot in _messageDrafts.values) slot.pending];
+      await Future.wait(pending);
+      final current = [for (final slot in _messageDrafts.values) slot.pending];
+      if (listEquals(pending, current)) return;
+    }
+  }
 
   void setDraft(String value) {
     setMessageDraft(repository.presentationKey, value);
