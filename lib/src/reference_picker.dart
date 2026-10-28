@@ -71,21 +71,46 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
     setState(() {
       _loading = true;
       _error = null;
+      _refs = [];
     });
     try {
       final refs = await widget.session.client.references(
         widget.session.repository,
       );
-      if (mounted && generation == _generation) setState(() => _refs = refs);
-    } on GitException catch (error) {
-      if (mounted && generation == _generation) setState(() => _error = error);
+      if (mounted && generation == _generation)
+        setState(() => _refs = refs.where(_suitable).toList());
+    } on Object catch (error) {
+      if (mounted && generation == _generation)
+        setState(() => _error = _failure(error));
     } finally {
       if (mounted && generation == _generation)
         setState(() => _loading = false);
     }
   }
 
+  bool _suitable(GitReference reference) =>
+      const {'commit', 'tag'}.contains(reference.type) &&
+      (reference.name.startsWith('refs/heads/') ||
+          reference.name.startsWith('refs/tags/') ||
+          reference.name.startsWith('refs/remotes/') &&
+              !reference.name.endsWith('/HEAD'));
+  GitException _failure(Object error) => error is GitException
+      ? error
+      : GitException(
+          GitErrorCode.disconnected,
+          diagnostic: sanitizeGitDiagnostic('$error'),
+        );
+
   Future<void> _choose(GitReference reference) async {
+    if (_loading ||
+        _log ||
+        _submitted ||
+        !mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        !_refs.any(
+          (value) => value.name == reference.name && value.oid == reference.oid,
+        ))
+      return;
     final generation = ++_generation;
     _cancellation?.cancel();
     final cancellation = _cancellation = GitCancellation();
@@ -113,6 +138,10 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
       }
       if (page.commits.isEmpty)
         throw const GitException(GitErrorCode.missingContent);
+      if (reference.type == 'commit' &&
+          page.commits.first.oid != reference.oid) {
+        throw const GitException(GitErrorCode.staleReview);
+      }
       _complete(
         GitRevisionTarget(
           page.commits.first.oid,
@@ -121,8 +150,9 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
           referenceTip: reference.oid,
         ),
       );
-    } on GitException catch (error) {
-      if (mounted && generation == _generation) setState(() => _error = error);
+    } on Object catch (error) {
+      if (mounted && generation == _generation)
+        setState(() => _error = _failure(error));
     } finally {
       if (mounted && generation == _generation)
         setState(() => _loading = false);

@@ -10,9 +10,14 @@ final class _PolicyClient extends FixtureClient implements GitWorkflowClient {
   final String rebase;
   final String? ff;
   final inspections = <GitInspection>[];
+  bool fetched = false;
   @override
   Future<List<GitReference>> references(RepositoryId repository) async => [
-    for (final name in ['review/main', 'feature'])
+    for (final name in [
+      'review/main',
+      'feature',
+      if (fetched) 'fetched/source',
+    ])
       GitReference(
         name: 'refs/remotes/team/upstream/$name',
         oid: GitOid('a' * 40),
@@ -80,6 +85,22 @@ final class _PolicyClient extends FixtureClient implements GitWorkflowClient {
   }
 
   @override
+  Future<GitOutcome> mutate(
+    RepositoryId repository,
+    GitMutation request, {
+    GitCancellation? cancellation,
+    void Function(GitProgress)? onProgress,
+  }) async {
+    mutations.add(request);
+    if (pending != null) return pending!.future;
+    if (request is FetchRemote) fetched = true;
+    return GitOutcome(
+      phase: GitOperationPhase.completed,
+      snapshot: await status(repository),
+    );
+  }
+
+  @override
   Future<GitCreationOutcome> create(
     GitCreation request, {
     GitCancellation? cancellation,
@@ -117,6 +138,146 @@ Future<void> _show(WidgetTester tester, Widget child) async {
 }
 
 void main() {
+  testWidgets(
+    'queued Pull submit cannot act after its reviewed source changes',
+    (tester) async {
+      final client = _PolicyClient('false');
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      addTearDown(session.dispose);
+      await session.start();
+      await _show(tester, GitPullView(session: session));
+      final oldSubmit = tester
+          .widget<FilledButton>(
+            find.widgetWithText(FilledButton, 'Pull with selected strategy'),
+          )
+          .onPressed!;
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is DropdownButtonFormField<String> &&
+                  w.decoration.labelText == 'Source branch',
+            ),
+          )
+          .onChanged!('feature');
+      await tester.pump();
+      oldSubmit();
+      await tester.pumpAndSettle();
+      expect(client.mutations, isEmpty);
+      await tester.tap(find.text('Pull with selected strategy'));
+      await tester.pumpAndSettle();
+      expect((client.mutations.single as PullRemote).branch, 'feature');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'source remote with a shorter name cannot borrow another remotes cached branches',
+    (tester) async {
+      final client = _PolicyClient('false');
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      addTearDown(session.dispose);
+      await session.start();
+      await _show(tester, GitPullView(session: session));
+      tester
+          .widget<DropdownButtonFormField<String>>(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is DropdownButtonFormField<String> &&
+                  w.decoration.labelText == 'Source remote',
+            ),
+          )
+          .onChanged!('team');
+      await tester.pump();
+      final source = tester.widget<DropdownButtonFormField<String>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is DropdownButtonFormField<String> &&
+              w.decoration.labelText == 'Source branch',
+        ),
+      );
+      expect(source.initialValue, isNull);
+      expect(source.onChanged, isNull);
+      expect(client.mutations, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'Pull identifies cached branches and explicitly fetches without losing source or strategy',
+    (tester) async {
+      final client = _PolicyClient('merges');
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      addTearDown(session.dispose);
+      await session.start();
+      await _show(tester, GitPullView(session: session));
+      expect(find.text('Cached tracking'), findsOneWidget);
+      expect(client.mutations, isEmpty);
+      await tester.tap(find.widgetWithText(TextButton, 'Fetch'));
+      await tester.pumpAndSettle();
+      final remote = tester.widget<DropdownButtonFormField<String>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is DropdownButtonFormField<String> &&
+              w.decoration.labelText == 'Remote to fetch',
+        ),
+      );
+      expect(remote.initialValue, 'team/upstream');
+      await tester.tap(find.widgetWithText(FilledButton, 'Fetch'));
+      await tester.pumpAndSettle();
+      expect(client.mutations.single, isA<FetchRemote>());
+      expect(find.byType(GitFetchView), findsNothing);
+      final source = tester.widget<DropdownButtonFormField<String>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is DropdownButtonFormField<String> &&
+              w.decoration.labelText == 'Source branch',
+        ),
+      );
+      expect(source.initialValue, 'review/main');
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) =>
+              w is DropdownButtonFormField<String> &&
+              w.decoration.labelText == 'Source branch',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('fetched/source'), findsOneWidget);
+      await tester.tap(find.text('fetched/source'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<DropdownButtonFormField<PullStrategy>>(
+              find.byType(DropdownButtonFormField<PullStrategy>),
+            )
+            .initialValue,
+        PullStrategy.rebase,
+      );
+      await tester.tap(find.text('Pull with selected strategy'));
+      await tester.pumpAndSettle();
+      expect(client.mutations, hasLength(2));
+      final pull = client.mutations.last as PullRemote;
+      expect(pull.remote, 'team/upstream');
+      expect(pull.branch, 'fetched/source');
+      expect(pull.strategy, PullStrategy.rebase);
+      expect(pull.preserveMerges, isTrue);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets(
     'uncertain push retains a reconciliation warning until destinations are reviewed',
     (tester) async {

@@ -9,6 +9,23 @@ import 'session.dart';
 import 'workflow_ui.dart';
 import 'organization_views.dart';
 
+// Remote names may themselves contain '/'. Attribute cached tracking refs to
+// the longest configured remote prefix before offering operation candidates.
+String? _trackedBranchName(
+  GitReference reference,
+  String remote,
+  Iterable<String> remotes,
+) {
+  final owners =
+      remotes
+          .where((name) => reference.name.startsWith('refs/remotes/$name/'))
+          .toList()
+        ..sort((a, b) => b.length.compareTo(a.length));
+  if (owners.firstOrNull != remote) return null;
+  final name = reference.name.substring('refs/remotes/$remote/'.length);
+  return name == 'HEAD' ? null : name;
+}
+
 final class GitDeleteRemoteView extends StatefulWidget {
   const GitDeleteRemoteView({
     super.key,
@@ -137,6 +154,9 @@ final class _PushState extends GitDialogState<GitPushView> {
   final selectedTags = <String>{};
   String? remote;
   bool upstream = false, completed = false;
+  bool _initializing = true, _configured = false;
+  int _configurationGeneration = 0, _reviewGeneration = 0;
+  bool get _busy => loading || _initializing || session.running;
   GitCommit? selected;
   @override
   void initState() {
@@ -149,64 +169,95 @@ final class _PushState extends GitDialogState<GitPushView> {
 
   @override
   void dispose() {
+    _configurationGeneration++;
+    _reviewGeneration++;
     destination.dispose();
     branchName.dispose();
     super.dispose();
   }
 
   Future<void> initialize() async {
-    await load(const GitInspection(GitInspectionKind.remotes));
-    if (!mounted || error != null) return;
-    final refs = await query(
-      () => session.client.references(session.repository),
-    );
-    final options = await query(
-      () => workflows.inspect(
-        session.repository,
-        const GitInspection(GitInspectionKind.commitOptions),
-      ),
-    );
-    if (!mounted || refs == null || options == null) return;
+    final current = ++_configurationGeneration;
+    _reviewGeneration++;
     setState(() {
-      remotes = (data?['remotes'] as List? ?? []).cast<Json>();
-      final configured = options['pushRemote'] as String?;
-      final previousRemote = remote;
-      remote =
-          previousRemote != null &&
-              remotes.any((entry) => entry['name'] == previousRemote)
-          ? previousRemote
-          : configured == null
-          ? (remotes.length == 1 ? remotes.single['name'] as String : null)
-          : remotes.any((e) => e['name'] == configured)
-          ? configured
-          : null;
-      final tracking = options['upstreamBranch'] as String?;
-      if (previousRemote == null &&
-          remote == options['upstreamRemote'] &&
-          tracking?.startsWith('refs/heads/') == true)
-        destination.text = tracking!;
-      tags = refs.where((e) => e.name.startsWith('refs/tags/')).toList();
-      remoteBranches = refs
-          .where((e) => e.name.startsWith('refs/remotes/'))
-          .toList();
-      final choices = _existingDestinations();
-      destinationChoice = choices.contains(destination.text)
-          ? destination.text
-          : '__new__';
-      if (destinationChoice == '__new__' &&
-          destination.text.startsWith('refs/heads/'))
-        branchName.text = destination.text.substring('refs/heads/'.length);
+      _initializing = true;
       data = null;
-      upstream = reviewed.upstream == null && reviewed.branch != null;
+      selected = null;
     });
-    if (remote != null) await preview();
+    try {
+      await load(const GitInspection(GitInspectionKind.remotes));
+      if (!mounted || current != _configurationGeneration || error != null)
+        return;
+      final configuredRemotes = (data?['remotes'] as List? ?? []).cast<Json>();
+      final refs = await query(
+        () => session.client.references(session.repository),
+      );
+      final options = await query(
+        () => workflows.inspect(
+          session.repository,
+          const GitInspection(GitInspectionKind.commitOptions),
+        ),
+      );
+      if (!mounted ||
+          current != _configurationGeneration ||
+          refs == null ||
+          options == null)
+        return;
+      setState(() {
+        remotes = configuredRemotes;
+        final configured = options['pushRemote'] as String?;
+        final previousRemote = remote;
+        remote =
+            previousRemote != null &&
+                remotes.any((entry) => entry['name'] == previousRemote)
+            ? previousRemote
+            : configured == null
+            ? (remotes.length == 1 ? remotes.single['name'] as String : null)
+            : remotes.any((entry) => entry['name'] == configured)
+            ? configured
+            : null;
+        final tracking = options['upstreamBranch'] as String?;
+        if (!_configured &&
+            remote == options['upstreamRemote'] &&
+            tracking?.startsWith('refs/heads/') == true) {
+          destination.text = tracking!;
+        }
+        tags = refs
+            .where((entry) => entry.name.startsWith('refs/tags/'))
+            .toList();
+        remoteBranches = refs
+            .where((entry) => entry.name.startsWith('refs/remotes/'))
+            .toList();
+        destinationChoice = _existingDestinations().contains(destination.text)
+            ? destination.text
+            : '__new__';
+        if (destinationChoice == '__new__' &&
+            destination.text.startsWith('refs/heads/')) {
+          branchName.text = destination.text.substring('refs/heads/'.length);
+        }
+        if (!_configured)
+          upstream = reviewed.upstream == null && reviewed.branch != null;
+        _configured = true;
+        data = null;
+      });
+    } finally {
+      if (mounted && current == _configurationGeneration)
+        setState(() => _initializing = false);
+    }
+    if (mounted &&
+        current == _configurationGeneration &&
+        remote != null &&
+        error == null)
+      await preview();
   }
 
   void invalidate() {
+    _reviewGeneration++;
     generation++;
     cancellation?.cancel();
     setState(() {
       data = null;
+      error = null;
       selected = null;
       completed = false;
       loading = false;
@@ -216,43 +267,78 @@ final class _PushState extends GitDialogState<GitPushView> {
   List<String> _existingDestinations() {
     final selectedRemote = remote;
     if (selectedRemote == null) return const [];
-    final prefix = 'refs/remotes/$selectedRemote/';
+    final names = remotes.map((entry) => entry['name'] as String);
     return [
       for (final ref in remoteBranches)
-        if (ref.name.startsWith(prefix) &&
-            ref.name.substring(prefix.length) != 'HEAD')
-          'refs/heads/${ref.name.substring(prefix.length)}',
+        if (_trackedBranchName(ref, selectedRemote, names)
+            case final String branch)
+          'refs/heads/$branch',
     ]..sort();
   }
 
+  bool _currentReview(
+    int current,
+    String? source,
+    String target,
+    List<String> tags,
+  ) =>
+      mounted &&
+      current == _reviewGeneration &&
+      source == remote &&
+      target == destination.text &&
+      tags.length == selectedTags.length &&
+      tags.every(selectedTags.contains);
+
   Future<void> preview() async {
+    if (!mounted || _initializing || session.running) return;
+    final current = ++_reviewGeneration;
     final source = remote,
         target = destination.text,
         tagsToReview = selectedTags.toList();
-    final snapshot = await query(() => session.readStatus());
-    if (!mounted ||
-        snapshot == null ||
-        source != remote ||
-        target != destination.text ||
-        tagsToReview.length != selectedTags.length ||
-        !tagsToReview.every(selectedTags.contains))
-      return;
-    reviewed = snapshot;
-    await load(
-      GitInspection(
-        GitInspectionKind.pushReview,
-        remote: source,
-        destination: target,
-        revision: reviewed.head,
-        tags: tagsToReview,
-      ),
-    );
-    final outgoing = (data?['outgoing'] as List? ?? []).cast<Json>();
-    final commits = [
-      for (final entry in outgoing) ...(entry['commits'] as List).cast<Json>(),
-    ];
-    if (mounted && commits.isNotEmpty)
-      setState(() => selected = GitCommit.fromJson(commits.first));
+    generation++;
+    cancellation?.cancel();
+    setState(() {
+      data = null;
+      selected = null;
+      error = null;
+      loading = true;
+      completed = false;
+    });
+    try {
+      final snapshot = await session.readStatus();
+      if (!_currentReview(current, source, target, tagsToReview)) return;
+      reviewed = snapshot;
+      await load(
+        GitInspection(
+          GitInspectionKind.pushReview,
+          remote: source,
+          destination: target,
+          revision: snapshot.head,
+          tags: tagsToReview,
+        ),
+      );
+      if (!_currentReview(current, source, target, tagsToReview)) return;
+      final outgoing = (data?['outgoing'] as List? ?? []).cast<Json>();
+      final commits = [
+        for (final entry in outgoing)
+          ...(entry['commits'] as List).cast<Json>(),
+      ];
+      if (commits.isNotEmpty)
+        setState(() => selected = GitCommit.fromJson(commits.first));
+    } on Object catch (failure) {
+      if (_currentReview(current, source, target, tagsToReview))
+        setState(
+          () => error = failure is GitException
+              ? failure
+              : GitException(
+                  GitErrorCode.disconnected,
+                  diagnostic: sanitizeGitDiagnostic('$failure'),
+                ),
+        );
+    } finally {
+      if (mounted && current == _reviewGeneration)
+        setState(() => loading = false);
+    }
   }
 
   @override
@@ -286,9 +372,10 @@ final class _PushState extends GitDialogState<GitPushView> {
                       child: Text(entry['name'] as String),
                     ),
                 ],
-                onChanged: loading
+                onChanged: _busy
                     ? null
                     : (value) {
+                        if (!mounted || _busy) return;
                         remote = value;
                         destinationChoice =
                             _existingDestinations().contains(destination.text)
@@ -321,10 +408,10 @@ final class _PushState extends GitDialogState<GitPushView> {
                     child: GitLabel(GitMessages.newRemoteBranch),
                   ),
                 ],
-                onChanged: loading
+                onChanged: _busy
                     ? null
                     : (value) {
-                        if (value == null) return;
+                        if (_busy || value == null) return;
                         destinationChoice = value;
                         destination.text = value == '__new__'
                             ? 'refs/heads/${branchName.text}'
@@ -341,16 +428,19 @@ final class _PushState extends GitDialogState<GitPushView> {
                   decoration: InputDecoration(
                     labelText: gitString(context, GitMessages.newRemoteBranch),
                   ),
+                  enabled: !_busy,
                   onChanged: (value) {
+                    if (!mounted || _busy) return;
                     destination.text = 'refs/heads/$value';
                     invalidate();
                   },
                 ),
               ),
             TextButton(
-              onPressed: loading
+              onPressed: _busy
                   ? null
                   : () async {
+                      if (!mounted || _busy) return;
                       await session.host.present<void>(
                         context,
                         GitMessages.manageRemotes,
@@ -362,7 +452,7 @@ final class _PushState extends GitDialogState<GitPushView> {
               child: const GitLabel(GitMessages.manageRemotes),
             ),
             OutlinedButton(
-              onPressed: loading || remote == null || reviewed.head == null
+              onPressed: _busy || remote == null || reviewed.head == null
                   ? null
                   : () => unawaited(preview()),
               child: const GitLabel(GitMessages.reviewDestinations),
@@ -398,7 +488,7 @@ final class _PushState extends GitDialogState<GitPushView> {
             ),
             actions: [
               TextButton(
-                onPressed: loading
+                onPressed: _busy
                     ? null
                     : () async {
                         final result = await apply(
@@ -463,7 +553,7 @@ final class _PushState extends GitDialogState<GitPushView> {
         ),
         if (data?['hasMore'] == true)
           TextButton(
-            onPressed: loading ? null : () => unawaited(nextPage()),
+            onPressed: _busy ? null : () => unawaited(nextPage()),
             child: const GitLabel(GitMessages.loadMoreOutgoingCommits),
           ),
         Wrap(
@@ -480,14 +570,16 @@ final class _PushState extends GitDialogState<GitPushView> {
                   title: const GitLabel(
                     GitMessages.setThisDestinationAsUpstream,
                   ),
-                  onChanged: loading
+                  onChanged: _busy
                       ? null
                       : (v) => setState(() => upstream = v!),
                 ),
               ),
             GitMenuButton(
               host: session.host,
+              enabled: !_busy,
               onSelected: (tag) {
+                if (!mounted || _busy) return;
                 if (!selectedTags.add(tag)) selectedTags.remove(tag);
                 invalidate();
               },
@@ -558,7 +650,7 @@ final class _PushState extends GitDialogState<GitPushView> {
   }
 
   bool get eligible =>
-      !loading &&
+      !_busy &&
       !completed &&
       data?['token'] != null &&
       data?['needsFetch'] != true;
@@ -599,7 +691,12 @@ final class _PushState extends GitDialogState<GitPushView> {
   }
 
   Future<void> push(bool force) async {
-    final plan = data!;
+    if (!mounted || !eligible) return;
+    final plan = data!, snapshot = reviewed;
+    final current = _reviewGeneration,
+        source = remote,
+        target = destination.text;
+    final reviewedTags = selectedTags.toList(), reviewedUpstream = upstream;
     if (force &&
         !await gitConfirm(
           context,
@@ -617,14 +714,19 @@ final class _PushState extends GitDialogState<GitPushView> {
           action: GitMessages.forceWithLease,
         ))
       return;
+    if (!eligible ||
+        !_currentReview(current, source, target, reviewedTags) ||
+        data?['token'] != plan['token'] ||
+        upstream != reviewedUpstream)
+      return;
     final result = await apply(
       PushReviewed(
         plan['token'] as String,
         forceWithLease: force,
-        setUpstream: upstream,
-        tags: selectedTags.toList(),
-        expectedHead: reviewed.head,
-        expectedIndex: reviewed.indexToken,
+        setUpstream: reviewedUpstream,
+        tags: reviewedTags,
+        expectedHead: snapshot.head,
+        expectedIndex: snapshot.indexToken,
       ),
     );
     if (!mounted) return;
@@ -663,9 +765,13 @@ final class GitCommitFiles extends StatefulWidget {
 
 final class _CommitFilesState extends State<GitCommitFiles> {
   List<GitChange>? files;
+  GitChange? selected;
   GitException? error;
   GitOid? parent;
+  bool expanded = false;
   int generation = 0;
+  final _filesScroll = ScrollController(), _detailsScroll = ScrollController();
+  final _previewKey = GlobalKey();
   @override
   void initState() {
     super.initState();
@@ -676,114 +782,259 @@ final class _CommitFilesState extends State<GitCommitFiles> {
   @override
   void didUpdateWidget(GitCommitFiles old) {
     super.didUpdateWidget(old);
-    if (old.commit.oid != widget.commit.oid) {
+    if (old.commit.oid != widget.commit.oid || old.session != widget.session) {
       parent = widget.commit.parents.firstOrNull;
       unawaited(load());
     }
   }
 
+  @override
+  void dispose() {
+    generation++;
+    _filesScroll.dispose();
+    _detailsScroll.dispose();
+    super.dispose();
+  }
+
+  bool _owns(
+    int current,
+    GitSession session,
+    GitOid revision,
+    GitOid? chosenParent,
+  ) =>
+      mounted &&
+      current == generation &&
+      session == widget.session &&
+      revision == widget.commit.oid &&
+      chosenParent == parent;
+
   Future<void> load() async {
-    final current = ++generation;
+    final current = ++generation,
+        session = widget.session,
+        revision = widget.commit.oid,
+        chosenParent = parent;
     setState(() {
       files = null;
+      selected = null;
       error = null;
     });
     try {
-      final values = await widget.session.client.changedFiles(
-        widget.session.repository,
-        widget.commit.oid,
-        parent: parent,
+      final values = await session.client.changedFiles(
+        session.repository,
+        revision,
+        parent: chosenParent,
       );
-      if (mounted && current == generation) setState(() => files = values);
-    } on GitException catch (failure) {
-      if (mounted && current == generation) setState(() => error = failure);
+      if (_owns(current, session, revision, chosenParent))
+        setState(() {
+          files = List.unmodifiable(values);
+          selected = files!.firstOrNull;
+        });
+    } on Object catch (failure) {
+      if (_owns(current, session, revision, chosenParent))
+        setState(
+          () => error = failure is GitException
+              ? failure
+              : GitException(
+                  GitErrorCode.disconnected,
+                  diagnostic: sanitizeGitDiagnostic('$failure'),
+                ),
+        );
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Padding(
-        padding: EdgeInsets.all(widget.session.host.spacing),
-        child: GitSelectableText(
-          '${widget.commit.message}\n${widget.commit.author} · ${widget.commit.date.toLocal()}',
-        ),
-      ),
-      if (widget.commit.parents.length > 1)
-        DropdownButton<GitOid>(
-          value: parent,
-          items: [
-            for (var i = 0; i < widget.commit.parents.length; i++)
-              DropdownMenuItem(
-                value: widget.commit.parents[i],
+  Widget _fileList(
+    int current,
+    GitSession session,
+    GitCommit commit,
+    GitOid? chosenParent,
+  ) => ListView.builder(
+    key: PageStorageKey((session, commit.oid, chosenParent, 'outgoing-files')),
+    controller: _filesScroll,
+    itemCount: files?.length ?? 0,
+    itemBuilder: (context, index) {
+      final file = files![index];
+      return ListTile(
+        dense: true,
+        selected: selected == file,
+        leading: Text(file.index),
+        title: Text(file.path.display),
+        subtitle: file.originalPath == null
+            ? null
+            : Text(file.originalPath!.display),
+        onTap: () {
+          if (_owns(current, session, commit.oid, chosenParent) &&
+              files!.contains(file)) {
+            setState(() => selected = file);
+          }
+        },
+      );
+    },
+  );
+
+  Widget _preview(
+    int current,
+    GitSession session,
+    GitCommit commit,
+    GitOid? chosenParent,
+  ) {
+    final file = selected!, ordered = files!, index = ordered.indexOf(file);
+    void navigate(int next) {
+      if (_owns(current, session, commit.oid, chosenParent) &&
+          identical(files, ordered) &&
+          next >= 0 &&
+          next < ordered.length) {
+        setState(() => selected = ordered[next]);
+      }
+    }
+
+    return KeyedSubtree(
+      key: _previewKey,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              GitIconButton(
+                tooltip: gitString(
+                  context,
+                  expanded
+                      ? GitMessages.collapse
+                      : GitMessages.reviewDifference,
+                ),
+                onPressed: () {
+                  if (_owns(current, session, commit.oid, chosenParent))
+                    setState(() => expanded = !expanded);
+                },
+                icon: GitIcon(expanded ? GitGlyph.back : GitGlyph.expand),
+              ),
+              Expanded(
                 child: Text(
-                  gitString(
-                    context,
-                    GitMessages.parentArg0Arg1,
-                    values: {
-                      'arg0': i + 1,
-                      'arg1': widget.commit.parents[i].abbreviated,
-                    },
-                  ),
+                  '${file.originalPath == null ? file.path.display : '${file.originalPath!.display} → ${file.path.display}'} · '
+                  '${chosenParent?.abbreviated ?? gitString(context, GitMessages.emptyTree)} → ${commit.oid.abbreviated}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-          ],
-          onChanged: (value) {
-            parent = value;
-            unawaited(load());
-          },
-        ),
-      if (error != null)
-        GitFailurePanel(error: error!, onRefresh: () => unawaited(load())),
-      if (files == null && error == null)
-        LinearProgressIndicator(
-          semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
-        ),
-      Expanded(
-        child: files?.isEmpty == true
-            ? const Center(child: GitLabel(GitMessages.noChangedFiles))
-            : ListView.builder(
-                itemCount: files?.length ?? 0,
-                itemBuilder: (context, i) {
-                  final file = files![i];
-                  return ListTile(
-                    dense: true,
-                    leading: Text(file.index),
-                    title: Text(file.path.display),
-                    onTap: () => widget.session.host.present<void>(
-                      context,
-                      '${parent?.abbreviated ?? GitMessages.emptyTree} → ${widget.commit.oid.abbreviated}',
-                      GitDiffView(
-                        session: widget.session,
-                        comparison: GitComparison(
-                          file.path,
-                          parent == null
-                              ? const ContentVersion.absent()
-                              : ContentVersion(
-                                  ContentKind.commit,
-                                  revision: parent,
-                                ),
-                          ContentVersion(
-                            ContentKind.commit,
-                            revision: widget.commit.oid,
-                          ),
-                          leftPath: file.originalPath,
-                        ),
+            ],
+          ),
+          Expanded(
+            child: GitDiffView(
+              key: ValueKey((
+                session,
+                commit.oid,
+                chosenParent,
+                file.path.key,
+                file.originalPath?.key,
+              )),
+              session: session,
+              preview: !expanded,
+              comparison: GitComparison(
+                file.path,
+                chosenParent == null
+                    ? const ContentVersion.absent()
+                    : ContentVersion(
+                        ContentKind.commit,
+                        revision: chosenParent,
                       ),
-                      expanded: true,
-                    ),
-                  );
-                },
+                ContentVersion(ContentKind.commit, revision: commit.oid),
+                leftPath: file.originalPath,
               ),
+              onPreviousFile: index <= 0 ? null : () => navigate(index - 1),
+              onNextFile: index < 0 || index + 1 >= ordered.length
+                  ? null
+                  : () => navigate(index + 1),
+            ),
+          ),
+        ],
       ),
-    ],
-  );
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = generation,
+        session = widget.session,
+        commit = widget.commit,
+        chosenParent = parent;
+    final review = selected == null
+        ? null
+        : _preview(current, session, commit, chosenParent);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!expanded)
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: session.host.rowHeight(context) * 4,
+            ),
+            child: SingleChildScrollView(
+              controller: _detailsScroll,
+              padding: EdgeInsets.all(session.host.spacing),
+              child: GitSelectableText(
+                '${commit.message}\n${commit.author} · ${commit.date.toLocal()}',
+              ),
+            ),
+          ),
+        if (commit.parents.length > 1)
+          DropdownButton<GitOid>(
+            value: chosenParent,
+            items: [
+              for (var i = 0; i < commit.parents.length; i++)
+                DropdownMenuItem(
+                  value: commit.parents[i],
+                  child: Text(
+                    gitString(
+                      context,
+                      GitMessages.parentArg0Arg1,
+                      values: {
+                        'arg0': i + 1,
+                        'arg1': commit.parents[i].abbreviated,
+                      },
+                    ),
+                  ),
+                ),
+            ],
+            onChanged: (value) {
+              if (_owns(current, session, commit.oid, chosenParent) &&
+                  value != null &&
+                  commit.parents.contains(value)) {
+                parent = value;
+                unawaited(load());
+              }
+            },
+          ),
+        if (error != null)
+          GitFailurePanel(error: error!, onRefresh: () => unawaited(load())),
+        if (files == null && error == null)
+          LinearProgressIndicator(
+            semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
+          ),
+        Expanded(
+          child: files?.isEmpty == true
+              ? const Center(child: GitLabel(GitMessages.noChangedFiles))
+              : review == null
+              ? const SizedBox()
+              : expanded
+              ? review
+              : GitSplitter(
+                  axis: Axis.vertical,
+                  initial: .32,
+                  minimum: session.host.rowHeight(context) * 2,
+                  value: session.split('outgoingFilesPreviewSplit', .32),
+                  onChanged: (value) =>
+                      session.setViewState('outgoingFilesPreviewSplit', value),
+                  first: _fileList(current, session, commit, chosenParent),
+                  second: review,
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 final class GitFetchView extends StatefulWidget {
-  const GitFetchView({super.key, required this.session});
+  const GitFetchView({super.key, required this.session, this.initialRemote});
   final GitSession session;
+  final String? initialRemote;
   @override
   State<GitFetchView> createState() => _FetchState();
 }
@@ -796,7 +1047,17 @@ final class _FetchState extends GitDialogState<GitFetchView> {
   @override
   void initState() {
     super.initState();
-    unawaited(load(const GitInspection(GitInspectionKind.remotes)));
+    unawaited(initialize());
+  }
+
+  Future<void> initialize() async {
+    await load(const GitInspection(GitInspectionKind.remotes));
+    if (!mounted || error != null) return;
+    final names = (data?['remotes'] as List? ?? []).cast<Json>().map(
+      (entry) => entry['name'] as String,
+    );
+    if (names.contains(widget.initialRemote))
+      setState(() => remote = widget.initialRemote);
   }
 
   @override
@@ -805,6 +1066,8 @@ final class _FetchState extends GitDialogState<GitFetchView> {
     children: [
       states(),
       DropdownButtonFormField<String>(
+        key: ValueKey(remote),
+        initialValue: remote,
         decoration: InputDecoration(
           labelText: gitString(context, GitMessages.remoteToFetch),
         ),
@@ -867,6 +1130,7 @@ final class _PullState extends GitDialogState<GitPullView> {
   String? configuredBranch;
   String? configuredRemote;
   PullStrategy strategy = PullStrategy.fastForwardOnly;
+  int _selectionGeneration = 0;
   bool initializing = true,
       preserveMerges = false,
       noFastForward = false,
@@ -896,6 +1160,7 @@ final class _PullState extends GitDialogState<GitPullView> {
     );
     if (!mounted || references == null) return;
     setState(() {
+      _selectionGeneration++;
       remoteBranches = references
           .where((ref) => ref.name.startsWith('refs/remotes/'))
           .toList();
@@ -955,239 +1220,317 @@ final class _PullState extends GitDialogState<GitPullView> {
   List<String> _sourceBranches() {
     final selectedRemote = remote;
     if (selectedRemote == null) return const [];
-    final prefix = 'refs/remotes/$selectedRemote/';
-    final names = <String>{
+    final remotes = (data?['remotes'] as List? ?? []).cast<Json>().map(
+      (entry) => entry['name'] as String,
+    );
+    return <String>{
       for (final ref in remoteBranches)
-        if (ref.name.startsWith(prefix) &&
-            ref.name.substring(prefix.length) != 'HEAD')
-          ref.name.substring(prefix.length),
+        if (_trackedBranchName(ref, selectedRemote, remotes)
+            case final String branch)
+          branch,
       if (configuredBranch != null && selectedRemote == configuredRemote)
         configuredBranch!,
     }.toList()..sort();
-    return names;
   }
 
-  bool get _cachedSource {
-    final selectedRemote = remote;
-    if (selectedRemote == null || branch.text.isEmpty) return false;
-    return !remoteBranches.any(
-      (ref) => ref.name == 'refs/remotes/$selectedRemote/${branch.text}',
+  Future<void> _fetchSources() async {
+    if (loading || initializing || session.running) return;
+    final before = reviewed;
+    await session.host.present<void>(
+      context,
+      GitMessages.fetch,
+      GitFetchView(session: session, initialRemote: remote),
+      expanded: false,
     );
+    if (!mounted) return;
+    final current = session.snapshot;
+    if (current == null ||
+        current.head != before.head ||
+        current.indexToken != before.indexToken ||
+        current.branch != before.branch) {
+      setState(() => error = const GitException(GitErrorCode.staleReview));
+      return;
+    }
+    setState(() => initializing = true);
+    final values = await query(
+      () => session.client.references(session.repository),
+    );
+    if (!mounted) return;
+    setState(() {
+      initializing = false;
+      if (values == null) return;
+      _selectionGeneration++;
+      reviewed = current;
+      remoteBranches = values
+          .where((ref) => ref.name.startsWith('refs/remotes/'))
+          .toList();
+      if (!_sourceBranches().contains(branch.text)) branch.text = '';
+    });
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(
-        gitString(
-          context,
-          GitMessages.destinationArg0Arg1,
-          values: {
-            'arg0':
-                reviewed.branch ?? gitString(context, GitMessages.detachedHEAD),
-            'arg1': reviewed.head?.abbreviated,
-          },
-        ),
-      ),
-      states(),
-      DropdownButtonFormField<String>(
-        key: ValueKey(remote),
-        initialValue: remote,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: gitString(context, GitMessages.sourceRemote),
-        ),
-        items: [
-          for (final value in (data?['remotes'] as List? ?? []).cast<Json>())
-            DropdownMenuItem(
-              value: value['name'] as String,
-              child: Text(value['name'] as String),
-            ),
-        ],
-        onChanged: loading || initializing
-            ? null
-            : (value) => setState(() {
-                remote = value;
-                if (!_sourceBranches().contains(branch.text))
-                  branch.text = _sourceBranches().firstOrNull ?? '';
-              }),
-      ),
-      if (_cachedSource) const GitLabel(GitMessages.cachedTracking),
-      SizedBox(height: session.host.spacing),
-      DropdownButtonFormField<String>(
-        key: ValueKey('$remote:${branch.text}'),
-        initialValue: _sourceBranches().contains(branch.text)
-            ? branch.text
-            : null,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: gitString(context, GitMessages.sourceBranch),
-        ),
-        items: [
-          for (final name in _sourceBranches())
-            DropdownMenuItem(value: name, child: Text(name)),
-        ],
-        onChanged: loading || initializing || _sourceBranches().isEmpty
-            ? null
-            : (value) => setState(() => branch.text = value ?? ''),
-      ),
-      SizedBox(height: session.host.spacing),
-      DropdownButtonFormField<PullStrategy>(
-        key: ValueKey(strategy),
-        initialValue: strategy,
-        decoration: InputDecoration(
-          labelText: gitString(context, GitMessages.reviewedStrategy),
-        ),
-        items: [
-          for (final value in PullStrategy.values)
-            DropdownMenuItem(
-              value: value,
-              child: Text(switch (value) {
-                PullStrategy.fastForwardOnly => gitString(
-                  context,
-                  GitMessages.fastForwardOnly,
-                ),
-                PullStrategy.merge => gitString(context, GitMessages.merge),
-                PullStrategy.rebase => gitString(context, GitMessages.rebase),
-              }),
-            ),
-        ],
-        onChanged: loading || initializing
-            ? null
-            : (value) => setState(() {
-                strategy = value!;
-                interactivePreference = false;
-              }),
-      ),
-      Text(switch (strategy) {
-        PullStrategy.fastForwardOnly => gitString(
-          context,
-          GitMessages.stopIfTheDestinationCannotFastForwardNeverMergeOr,
-        ),
-        PullStrategy.merge =>
-          noFastForward
-              ? gitString(
-                  context,
-                  GitMessages.mergeWithAMergeCommitIncludingWhenFastForwardIs,
-                )
-              : gitString(
-                  context,
-                  GitMessages.mergeAllowFastForwardWhenPossible,
-                ),
-        PullStrategy.rebase =>
-          preserveMerges
-              ? gitString(
-                  context,
-                  GitMessages
-                      .rebaseLocalHistoryWhilePreservingLocalMergeCommits,
-                )
-              : gitString(
-                  context,
-                  GitMessages.rebaseLocalCommitsAsALinearHistory,
-                ),
-      }),
-      if (interactivePreference) ...[
-        const GitLabel(
-          GitMessages.gitIsConfiguredForInteractiveRebaseSelectAPullStrategy,
-        ),
-        TextButton(
-          onPressed: () => setState(() => interactivePreference = false),
-          child: const GitLabel(
-            GitMessages.useReviewedOrdinaryRebaseForThisPull,
+  Widget build(BuildContext context) {
+    final current = _selectionGeneration,
+        snapshot = reviewed,
+        source = remote,
+        sourceBranch = branch.text,
+        selectedStrategy = strategy,
+        selectedPreserve = preserveMerges,
+        selectedNoFf = noFastForward;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          gitString(
+            context,
+            GitMessages.destinationArg0Arg1,
+            values: {
+              'arg0':
+                  reviewed.branch ??
+                  gitString(context, GitMessages.detachedHEAD),
+              'arg1': reviewed.head?.abbreviated,
+            },
           ),
         ),
-      ],
-      if (strategy != PullStrategy.fastForwardOnly)
-        ExpansionTile(
-          title: const GitLabel(GitMessages.options),
-          children: [
-            if (strategy == PullStrategy.merge)
-              CheckboxListTile(
-                dense: true,
-                value: noFastForward,
-                title: const GitLabel(
-                  GitMessages.alwaysCreateAMergeCommitNoFastForward,
-                ),
-                onChanged: loading || initializing
-                    ? null
-                    : (value) => setState(() => noFastForward = value!),
-              ),
-            if (strategy == PullStrategy.rebase)
-              CheckboxListTile(
-                dense: true,
-                value: preserveMerges,
-                title: const GitLabel(GitMessages.preserveLocalMergeCommits),
-                onChanged: loading || initializing
-                    ? null
-                    : (value) => setState(() => preserveMerges = value!),
+        states(),
+        DropdownButtonFormField<String>(
+          key: ValueKey(remote),
+          initialValue: remote,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: gitString(context, GitMessages.sourceRemote),
+          ),
+          items: [
+            for (final value in (data?['remotes'] as List? ?? []).cast<Json>())
+              DropdownMenuItem(
+                value: value['name'] as String,
+                child: Text(value['name'] as String),
               ),
           ],
+          onChanged: loading || initializing
+              ? null
+              : (value) => setState(() {
+                  _selectionGeneration++;
+                  remote = value;
+                  if (!_sourceBranches().contains(branch.text))
+                    branch.text = _sourceBranches().firstOrNull ?? '';
+                }),
         ),
-      if (reviewed.changes.isNotEmpty)
-        Wrap(
+        Row(
           children: [
-            const GitLabel(
-              GitMessages
-                  .localChangesMayPreventPullReviewCommitThemOrExplicitly,
-            ),
-            TextButton(
-              onPressed: () async {
-                await GitWorkflowUi(context, session).present(
-                  GitMessages.stashes,
-                  GitStashesView(session: session),
-                  expanded: true,
-                );
-                if (!mounted) return;
-                final current = session.snapshot;
-                if (current != null &&
-                    current.head == reviewed.head &&
-                    current.branch == reviewed.branch) {
-                  setState(() => reviewed = current);
-                } else {
-                  setState(
-                    () => error = const GitException(GitErrorCode.staleReview),
-                  );
-                }
-              },
-              child: const GitLabel(GitMessages.createOrReviewStash),
+            if (remote != null && branch.text.isNotEmpty)
+              const Expanded(child: GitLabel(GitMessages.cachedTracking)),
+            TextButton.icon(
+              onPressed: loading || initializing || session.running
+                  ? null
+                  : () => unawaited(_fetchSources()),
+              icon: const GitIcon(GitGlyph.refresh),
+              label: const GitLabel(GitMessages.fetch),
             ),
           ],
         ),
-      const SizedBox(height: 12),
-      FilledButton(
-        onPressed:
-            loading ||
-                initializing ||
-                interactivePreference ||
-                remote == null ||
-                reviewed.branch == null ||
-                branch.text.trim().isEmpty ||
-                error != null
-            ? null
-            : () async {
-                final result = await apply(
-                  PullRemote(
-                    remote!,
-                    branch.text,
-                    strategy,
-                    expectedHead: reviewed.head,
-                    expectedIndex: reviewed.indexToken,
-                    preserveMerges:
-                        strategy == PullStrategy.rebase && preserveMerges,
-                    noFastForward:
-                        strategy == PullStrategy.merge && noFastForward,
+        SizedBox(height: session.host.spacing),
+        DropdownButtonFormField<String>(
+          key: ValueKey('$remote:${branch.text}'),
+          initialValue: _sourceBranches().contains(branch.text)
+              ? branch.text
+              : null,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: gitString(context, GitMessages.sourceBranch),
+          ),
+          items: [
+            for (final name in _sourceBranches())
+              DropdownMenuItem(value: name, child: Text(name)),
+          ],
+          onChanged: loading || initializing || _sourceBranches().isEmpty
+              ? null
+              : (value) => setState(() {
+                  _selectionGeneration++;
+                  branch.text = value ?? '';
+                }),
+        ),
+        SizedBox(height: session.host.spacing),
+        DropdownButtonFormField<PullStrategy>(
+          key: ValueKey(strategy),
+          initialValue: strategy,
+          decoration: InputDecoration(
+            labelText: gitString(context, GitMessages.reviewedStrategy),
+          ),
+          items: [
+            for (final value in PullStrategy.values)
+              DropdownMenuItem(
+                value: value,
+                child: Text(switch (value) {
+                  PullStrategy.fastForwardOnly => gitString(
+                    context,
+                    GitMessages.fastForwardOnly,
                   ),
-                );
-                if (mounted &&
-                    result != null &&
-                    (result.completed ||
-                        result.phase == GitOperationPhase.stopped))
-                  gitCompleteSurface(context);
-              },
-        child: const GitLabel(GitMessages.pullWithSelectedStrategy),
-      ),
-    ],
-  );
+                  PullStrategy.merge => gitString(context, GitMessages.merge),
+                  PullStrategy.rebase => gitString(context, GitMessages.rebase),
+                }),
+              ),
+          ],
+          onChanged: loading || initializing
+              ? null
+              : (value) => setState(() {
+                  _selectionGeneration++;
+                  strategy = value!;
+                  interactivePreference = false;
+                }),
+        ),
+        Text(switch (strategy) {
+          PullStrategy.fastForwardOnly => gitString(
+            context,
+            GitMessages.stopIfTheDestinationCannotFastForwardNeverMergeOr,
+          ),
+          PullStrategy.merge =>
+            noFastForward
+                ? gitString(
+                    context,
+                    GitMessages.mergeWithAMergeCommitIncludingWhenFastForwardIs,
+                  )
+                : gitString(
+                    context,
+                    GitMessages.mergeAllowFastForwardWhenPossible,
+                  ),
+          PullStrategy.rebase =>
+            preserveMerges
+                ? gitString(
+                    context,
+                    GitMessages
+                        .rebaseLocalHistoryWhilePreservingLocalMergeCommits,
+                  )
+                : gitString(
+                    context,
+                    GitMessages.rebaseLocalCommitsAsALinearHistory,
+                  ),
+        }),
+        if (interactivePreference) ...[
+          const GitLabel(
+            GitMessages.gitIsConfiguredForInteractiveRebaseSelectAPullStrategy,
+          ),
+          TextButton(
+            onPressed: () => setState(() {
+              _selectionGeneration++;
+              interactivePreference = false;
+            }),
+            child: const GitLabel(
+              GitMessages.useReviewedOrdinaryRebaseForThisPull,
+            ),
+          ),
+        ],
+        if (strategy != PullStrategy.fastForwardOnly)
+          ExpansionTile(
+            title: const GitLabel(GitMessages.options),
+            children: [
+              if (strategy == PullStrategy.merge)
+                CheckboxListTile(
+                  dense: true,
+                  value: noFastForward,
+                  title: const GitLabel(
+                    GitMessages.alwaysCreateAMergeCommitNoFastForward,
+                  ),
+                  onChanged: loading || initializing
+                      ? null
+                      : (value) => setState(() {
+                          _selectionGeneration++;
+                          noFastForward = value!;
+                        }),
+                ),
+              if (strategy == PullStrategy.rebase)
+                CheckboxListTile(
+                  dense: true,
+                  value: preserveMerges,
+                  title: const GitLabel(GitMessages.preserveLocalMergeCommits),
+                  onChanged: loading || initializing
+                      ? null
+                      : (value) => setState(() {
+                          _selectionGeneration++;
+                          preserveMerges = value!;
+                        }),
+                ),
+            ],
+          ),
+        if (reviewed.changes.isNotEmpty)
+          Wrap(
+            children: [
+              const GitLabel(
+                GitMessages
+                    .localChangesMayPreventPullReviewCommitThemOrExplicitly,
+              ),
+              TextButton(
+                onPressed: () async {
+                  await GitWorkflowUi(context, session).present(
+                    GitMessages.stashes,
+                    GitStashesView(session: session),
+                    expanded: true,
+                  );
+                  if (!mounted) return;
+                  final current = session.snapshot;
+                  if (current != null &&
+                      current.head == reviewed.head &&
+                      current.branch == reviewed.branch) {
+                    setState(() {
+                      _selectionGeneration++;
+                      reviewed = current;
+                    });
+                  } else {
+                    setState(
+                      () =>
+                          error = const GitException(GitErrorCode.staleReview),
+                    );
+                  }
+                },
+                child: const GitLabel(GitMessages.createOrReviewStash),
+              ),
+            ],
+          ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed:
+              loading ||
+                  initializing ||
+                  interactivePreference ||
+                  remote == null ||
+                  reviewed.branch == null ||
+                  branch.text.trim().isEmpty ||
+                  error != null
+              ? null
+              : () async {
+                  if (!mounted ||
+                      current != _selectionGeneration ||
+                      loading ||
+                      initializing ||
+                      session.running ||
+                      error != null ||
+                      ModalRoute.of(context)?.isCurrent != true)
+                    return;
+                  final result = await apply(
+                    PullRemote(
+                      source!,
+                      sourceBranch,
+                      selectedStrategy,
+                      expectedHead: snapshot.head,
+                      expectedIndex: snapshot.indexToken,
+                      preserveMerges:
+                          selectedStrategy == PullStrategy.rebase &&
+                          selectedPreserve,
+                      noFastForward:
+                          selectedStrategy == PullStrategy.merge &&
+                          selectedNoFf,
+                    ),
+                  );
+                  if (mounted &&
+                      result != null &&
+                      (result.completed ||
+                          result.phase == GitOperationPhase.stopped))
+                    gitCompleteSurface(context);
+                },
+          child: const GitLabel(GitMessages.pullWithSelectedStrategy),
+        ),
+      ],
+    );
+  }
 }
