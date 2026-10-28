@@ -141,6 +141,12 @@ abstract final class GitMessages {
   static const collapseContext = "Collapse context";
   static const ignoreWhitespace = "Ignore whitespace";
   static const searchComparison = "Search comparison";
+  static const openCurrentFile = "Open current file";
+  static const previousSearchMatch = "Previous search match";
+  static const nextSearchMatch = "Next search match";
+  static const searchMatchPosition = "{current} of {count} matches";
+  static const searchResultsLimited =
+      "Showing the first {count} matches. Refine the search to review more.";
   static const search = "Search";
   static const closeSearch = "Close search";
   static const stagingActions = "Staging actions";
@@ -958,6 +964,7 @@ abstract final class GitMessages {
   static const modifyDeleteConflict = "Modified/deleted or renamed/deleted";
   static const conflictIdentity = "{path} · {kind}";
 
+  static const rebaseArg0OntoArg1 = "Rebase {arg0} onto {arg1}";
   static const all = <String>[
     mergeInProgress,
     rebaseInProgress,
@@ -1066,6 +1073,11 @@ abstract final class GitMessages {
     collapseContext,
     ignoreWhitespace,
     searchComparison,
+    openCurrentFile,
+    previousSearchMatch,
+    nextSearchMatch,
+    searchMatchPosition,
+    searchResultsLimited,
     search,
     closeSearch,
     stagingActions,
@@ -1721,5 +1733,6 @@ abstract final class GitMessages {
     restoreHistoryFilters,
     showAllAffectedFiles,
     graphLanes,
+    rebaseArg0OntoArg1,
   ];
 }

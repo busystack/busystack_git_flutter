@@ -11,6 +11,7 @@ import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'native_table.dart';
 import 'context_menu_keys.dart';
+import 'branch_views.dart';
 
 final class GitLogView extends StatefulWidget {
   const GitLogView({
@@ -784,34 +785,93 @@ final class _GitLogViewState extends State<GitLogView> {
                           ) &&
                           ref.shortName.toLowerCase().contains(filter),
                     ))
-                      ListTile(
-                        dense: true,
-                        leading: GitIcon(
-                          ref.current
-                              ? GitGlyph.check
-                              : group == GitMessages.tags
-                              ? GitGlyph.tag
-                              : GitGlyph.branch,
-                          size: 16,
-                        ),
-                        title: Text(
-                          ref.shortName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        selected: _reference == ref.name,
-                        onTap: () {
-                          _reference = ref.name;
-                          onChosen?.call();
-                          unawaited(_load());
-                        },
-                      ),
+                      _branchReference(ref, group, onChosen),
                   ],
                 ),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _branchReference(
+    GitReference ref,
+    String group,
+    VoidCallback? onChosen,
+  ) {
+    final session = widget.session, revision = _historyRevision;
+    bool current() =>
+        mounted &&
+        widget.session == session &&
+        revision == _historyRevision &&
+        _references.any((r) => r.name == ref.name && r.oid == ref.oid);
+    final actions = GitBranchActions(
+      context,
+      session,
+      reviewed: session.snapshot,
+      references: _references,
+      isCurrent: current,
+      apply: (request) async {
+        final outcome = await session.mutate(request);
+        final failure = outcome?.error ?? session.failure;
+        if (current() && failure != null) setState(() => _failure = failure);
+        return outcome;
+      },
+      refresh: () => mounted && widget.session == session
+          ? _load(preserveNavigation: true)
+          : Future<void>.value(),
+    );
+    Future<void> menu(Offset position) async {
+      if (!current() || widget.onChooseCommit != null) return;
+      final action = await session.host.menu(
+        context,
+        ref.shortName,
+        actions.entries(ref),
+        position: position,
+        localizeTitle: false,
+      );
+      if (action != null && current()) await actions.act(ref, action);
+    }
+
+    return GestureDetector(
+      onSecondaryTapUp: widget.onChooseCommit != null
+          ? null
+          : (details) => unawaited(menu(details.globalPosition)),
+      child: ListTile(
+        dense: true,
+        leading: GitIcon(
+          ref.current
+              ? GitGlyph.check
+              : group == GitMessages.tags
+              ? GitGlyph.tag
+              : GitGlyph.branch,
+          size: 16,
+        ),
+        title: Text(
+          ref.shortName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        selected: _reference == ref.name,
+        trailing: widget.onChooseCommit != null
+            ? null
+            : GitMenuButton(
+                host: session.host,
+                tooltip: gitString(
+                  context,
+                  GitMessages.actionsForArg0,
+                  values: {'arg0': ref.name},
+                ),
+                entries: actions.entries(ref),
+                onSelected: (action) => unawaited(actions.act(ref, action)),
+              ),
+        onTap: () {
+          _reference = ref.name;
+          onChosen?.call();
+          unawaited(_load());
+        },
+      ),
     );
   }
 

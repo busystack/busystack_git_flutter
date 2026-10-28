@@ -8,6 +8,7 @@ import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'network_views.dart';
 import 'reference_picker.dart';
+import 'rebase_view.dart';
 
 final class GitBranchesView extends StatefulWidget {
   const GitBranchesView({super.key, required this.session, this.onOpenFolder});
@@ -19,33 +20,50 @@ final class GitBranchesView extends StatefulWidget {
 
 final class _BranchesState extends GitDialogState<GitBranchesView> {
   @override
-  GitSession get session => widget.session;
+  GitSession get session => _session;
+  late final GitSession _session;
   List<GitReference> refs = [];
   GitSnapshot? reviewed;
   String search = '';
   @override
   void initState() {
+    _session = widget.session;
     super.initState();
     unawaited(refresh());
   }
 
+  @override
+  void didUpdateWidget(GitBranchesView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.session != _session) {
+      generation++;
+      refs = [];
+      reviewed = null;
+      loading = false;
+      error = const GitException(GitErrorCode.staleReview);
+    }
+  }
+
   Future<void> refresh() async {
+    if (!mounted || widget.session != _session) return;
+    final current = ++generation;
     setState(() {
       loading = true;
       error = null;
     });
     try {
       final values = await session.client.references(session.repository);
+      if (!mounted || current != generation) return;
       final state = await session.readStatus();
-      if (mounted)
+      if (mounted && current == generation)
         setState(() {
           refs = values;
           reviewed = state;
         });
     } on GitException catch (failure) {
-      if (mounted) setState(() => error = failure);
+      if (mounted && current == generation) setState(() => error = failure);
     } finally {
-      if (mounted) setState(() => loading = false);
+      if (mounted && current == generation) setState(() => loading = false);
     }
   }
 
@@ -146,86 +164,23 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                       reference.oid.abbreviated,
                     ].join(' · '),
                   ),
-                  trailing: GitMenuButton(
-                    host: session.host,
-                    enabled: !loading,
-                    disabledReason: GitMessages.refreshingBranchMetadata,
-                    onSelected: (action) => unawaited(act(reference, action)),
-                    entries: [
-                      if (prefix == 'refs/heads/' && !reference.current)
-                        GitMenuEntry(
-                          reference.worktreePath == null ? 'switch' : 'open',
-                          reference.worktreePath == null
-                              ? gitString(
-                                  context,
-                                  GitMessages.switchToArg0,
-                                  values: {'arg0': reference.shortName},
-                                )
-                              : GitMessages.openOccupiedWorktree,
-                          enabled: reference.worktreePath == null
-                              ? session.canWriteMetadata &&
-                                    session
-                                            .snapshot
-                                            ?.capabilities
-                                            .replaceWorkingFiles ==
-                                        true
-                              : widget.onOpenFolder != null ||
-                                    session.host.openFolder != null,
+                  trailing: Builder(
+                    builder: (_) {
+                      final actions = _actions;
+                      return GitMenuButton(
+                        host: session.host,
+                        enabled: !loading,
+                        disabledReason: GitMessages.refreshingBranchMetadata,
+                        onSelected: (action) =>
+                            unawaited(actions.act(reference, action)),
+                        entries: actions.entries(reference),
+                        tooltip: gitString(
+                          context,
+                          GitMessages.actionsForArg0,
+                          values: {'arg0': reference.name},
                         ),
-                      if (prefix == 'refs/remotes/')
-                        GitMenuEntry(
-                          'track',
-                          GitMessages.createLocalTrackingBranch,
-                          enabled:
-                              session.canWriteMetadata &&
-                              session
-                                      .snapshot
-                                      ?.capabilities
-                                      .replaceWorkingFiles ==
-                                  true,
-                        ),
-                      GitMenuEntry('compare', GitMessages.compareToCurrentHEAD),
-                      GitMenuEntry(
-                        'merge',
-                        GitMessages.mergeIntoCurrentBranch,
-                        enabled:
-                            session.canWriteMetadata &&
-                            session
-                                    .snapshot
-                                    ?.capabilities
-                                    .replaceWorkingFiles ==
-                                true,
-                      ),
-                      if (prefix == 'refs/heads/') ...[
-                        GitMenuEntry(
-                          'rename',
-                          GitMessages.rename,
-                          enabled: session.canWriteMetadata,
-                        ),
-                        GitMenuEntry(
-                          'upstream',
-                          GitMessages.changeUpstream,
-                          enabled: session.canWriteMetadata,
-                        ),
-                      ],
-                      const GitMenuEntry.separator(),
-                      if (prefix != 'refs/remotes/')
-                        GitMenuEntry(
-                          'delete',
-                          GitMessages.delete,
-                          enabled: session.canWriteMetadata,
-                        ),
-                      GitMenuEntry(
-                        'remoteDelete',
-                        GitMessages.deleteFromRemote,
-                        enabled: session.canWriteMetadata,
-                      ),
-                    ],
-                    tooltip: gitString(
-                      context,
-                      GitMessages.actionsForArg0,
-                      values: {'arg0': reference.name},
-                    ),
+                      );
+                    },
                   ),
                 ),
             ],
@@ -234,7 +189,162 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       ),
     ],
   );
-  Future<void> createBranch({GitReference? tracking}) async {
+  GitBranchActions get _actions {
+    final state = reviewed, references = refs;
+    return GitBranchActions(
+      context,
+      session,
+      reviewed: state,
+      references: references,
+      apply: apply,
+      refresh: refresh,
+      isCurrent: () =>
+          mounted &&
+          widget.session == _session &&
+          !loading &&
+          identical(reviewed, state) &&
+          identical(refs, references),
+      onOpenFolder: widget.onOpenFolder,
+    );
+  }
+
+  Future<void> createBranch({GitReference? tracking}) =>
+      _actions.createBranch(tracking: tracking);
+}
+
+/// Branch mutations and confirmations shared by Branches and Log context
+/// menus. All requests keep the reviewed HEAD/index/reference-tip identities.
+final class GitBranchActions {
+  GitBranchActions(
+    this.context,
+    this.session, {
+    required this.reviewed,
+    required List<GitReference> references,
+    required Future<GitOutcome?> Function(GitMutation) apply,
+    required this.refresh,
+    required this.isCurrent,
+    this.onOpenFolder,
+  }) : refs = List.unmodifiable(references),
+       _apply = apply;
+  final BuildContext context;
+  final GitSession session;
+  final GitSnapshot? reviewed;
+  final List<GitReference> refs;
+  final Future<GitOutcome?> Function(GitMutation) _apply;
+  final Future<void> Function() refresh;
+  final bool Function() isCurrent;
+  final ValueChanged<String>? onOpenFolder;
+  GitException? error;
+  bool get mounted => context.mounted && isCurrent();
+  GitWorkflowClient get workflows => session.client as GitWorkflowClient;
+  Future<GitOutcome?> apply(GitMutation request) async {
+    if (!mounted) return null;
+    final result = await _apply(request);
+    error = result?.error ?? session.failure;
+    return result;
+  }
+
+  Future<R?> query<R>(Future<R> Function() action) async {
+    try {
+      return await action();
+    } on Object catch (error) {
+      final failure = error is GitException
+          ? error
+          : GitException(
+              GitErrorCode.commandFailed,
+              diagnostic: sanitizeGitDiagnostic('$error'),
+            );
+      if (mounted) session.host.notify(failure.diagnostic);
+      return null;
+    }
+  }
+
+  List<GitMenuEntry> entries(GitReference reference) {
+    final local = reference.name.startsWith('refs/heads/');
+    final remote = reference.name.startsWith('refs/remotes/');
+    final destination = reviewed?.branch ?? GitMessages.head;
+    final writable = !session.running && session.canWriteMetadata;
+    final canReplace =
+        writable &&
+        session.snapshot?.capabilities.replaceWorkingFiles == true &&
+        session.snapshot?.operation.kind == GitOperationKind.none;
+    return [
+      if (local && !reference.current)
+        GitMenuEntry(
+          reference.worktreePath == null ? 'switch' : 'open',
+          reference.worktreePath == null
+              ? gitString(
+                  context,
+                  GitMessages.switchToArg0,
+                  values: {'arg0': reference.shortName},
+                )
+              : GitMessages.openOccupiedWorktree,
+          enabled: reference.worktreePath == null
+              ? canReplace
+              : onOpenFolder != null || session.host.openFolder != null,
+        ),
+      GitMenuEntry(
+        'create',
+        GitMessages.createBranch2,
+        enabled: canReplace && reviewed?.head != null,
+      ),
+      if (remote)
+        GitMenuEntry(
+          'track',
+          GitMessages.createLocalTrackingBranch,
+          enabled: canReplace,
+        ),
+      GitMenuEntry(
+        'compare',
+        GitMessages.compareToCurrentHEAD,
+        enabled: reviewed?.head != null,
+      ),
+      if (!reference.current) ...[
+        GitMenuEntry(
+          'merge',
+          gitString(
+            context,
+            GitMessages.mergeArg0IntoArg1,
+            values: {'arg0': reference.shortName, 'arg1': destination},
+          ),
+          enabled: canReplace,
+        ),
+        GitMenuEntry(
+          'rebase',
+          gitString(
+            context,
+            GitMessages.rebaseArg0OntoArg1,
+            values: {'arg0': destination, 'arg1': reference.shortName},
+          ),
+          enabled: canReplace,
+        ),
+      ],
+      if (local) ...[
+        GitMenuEntry('rename', GitMessages.rename, enabled: writable),
+        GitMenuEntry('upstream', GitMessages.changeUpstream, enabled: writable),
+      ],
+      const GitMenuEntry.separator(),
+      if (!remote)
+        GitMenuEntry(
+          'delete',
+          GitMessages.delete,
+          enabled:
+              writable &&
+              (!local || !reference.current && reference.worktreePath == null),
+        ),
+      GitMenuEntry(
+        'remoteDelete',
+        GitMessages.deleteFromRemote,
+        enabled: writable,
+      ),
+    ];
+  }
+
+  Future<void> createBranch({
+    GitReference? tracking,
+    GitReference? start,
+  }) async {
+    if (!mounted) return;
     final state = reviewed;
     if (state?.head == null) return;
     final name = await gitTextInput(
@@ -246,7 +356,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
           ? gitString(
               context,
               GitMessages.createAtArg0TheNewBranchWillBeCheckedOut,
-              values: {'arg0': state!.head!.abbreviated},
+              values: {'arg0': (start?.oid ?? state!.head!).abbreviated},
             )
           : gitString(
               context,
@@ -259,23 +369,38 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       BranchMutation(
         BranchAction.create,
         name,
-        start: tracking?.oid ?? state!.head,
+        start: tracking?.oid ?? start?.oid ?? state!.head,
         upstream: tracking?.name,
         switchAfterCreate: true,
         expectedHead: state!.head,
         expectedIndex: state.indexToken,
       ),
     );
-    await refresh();
+    if (mounted) await refresh();
   }
 
   Future<void> act(GitReference reference, String action) async {
+    if (!mounted) return;
     final state = reviewed;
     if (state == null) return;
     final name = reference.shortName;
     if (action == 'track') return createBranch(tracking: reference);
+    if (action == 'create') return createBranch(start: reference);
+    if (action == 'rebase') {
+      await GitWorkflowUi(context, session).present(
+        gitString(
+          context,
+          GitMessages.rebaseArg0OntoArg1,
+          values: {'arg0': state.branch ?? GitMessages.head, 'arg1': name},
+        ),
+        GitRebaseView(session: session, source: reference),
+        expanded: true,
+      );
+      if (mounted) await refresh();
+      return;
+    }
     if (action == 'open') {
-      if (widget.onOpenFolder case final open?) {
+      if (onOpenFolder case final open?) {
         open(reference.worktreePath!);
       } else {
         await session.host.openFolder?.call(reference.worktreePath!);
@@ -326,7 +451,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
         ),
         expanded: false,
       );
-      await refresh();
+      if (mounted) await refresh();
       return;
     }
     if (action == 'merge') {
@@ -338,6 +463,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
         ),
         GitMergeView(session: session, source: reference),
       );
+      if (mounted) await refresh();
       return;
     }
     GitMutation? request;
@@ -454,7 +580,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
           );
         }
       }
-      if (error == null) await refresh();
+      if (error == null && mounted) await refresh();
     }
   }
 }

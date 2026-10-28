@@ -12,9 +12,15 @@ import 'diff_view.dart';
 import 'reference_picker.dart';
 
 final class GitRebaseView extends StatefulWidget {
-  const GitRebaseView({super.key, required this.session, this.boundary});
+  const GitRebaseView({
+    super.key,
+    required this.session,
+    this.boundary,
+    this.source,
+  });
   final GitSession session;
   final GitOid? boundary;
+  final GitReference? source;
   @override
   State<GitRebaseView> createState() => _RebaseState();
 }
@@ -39,8 +45,16 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
   void initState() {
     _session = widget.session;
     super.initState();
-    if (widget.boundary case final oid?)
+    if (widget.source case final source?) {
+      boundary = GitRevisionTarget(
+        source.oid,
+        source.shortName,
+        reference: source.name,
+        referenceTip: source.oid,
+      );
+    } else if (widget.boundary case final oid?) {
       boundary = GitRevisionTarget(oid, oid.abbreviated);
+    }
     _reviewedState = session.snapshot;
     unawaited(_chooseDefaultBoundary());
   }
@@ -107,9 +121,21 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
       setState(() => error = const GitException(GitErrorCode.staleReview));
       return;
     }
-    if (oldWidget.boundary != widget.boundary) {
-      final oid = widget.boundary;
-      boundary = oid == null ? null : GitRevisionTarget(oid, oid.abbreviated);
+    if (oldWidget.boundary != widget.boundary ||
+        (oldWidget.source?.name, oldWidget.source?.oid) !=
+            (widget.source?.name, widget.source?.oid)) {
+      _targetGeneration++;
+      final source = widget.source, oid = widget.boundary;
+      boundary = source != null
+          ? GitRevisionTarget(
+              source.oid,
+              source.shortName,
+              reference: source.name,
+              referenceTip: source.oid,
+            )
+          : oid == null
+          ? null
+          : GitRevisionTarget(oid, oid.abbreviated);
       invalidate();
     }
   }
