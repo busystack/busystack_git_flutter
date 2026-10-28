@@ -136,37 +136,46 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                     label: const GitLabel(GitMessages.returnToFiles),
                   ),
                 Expanded(
-                  child: Tooltip(
-                    message: widget.session.repository.root,
-                    child: _log || compact && _compactReview
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.session.repository.root,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                              TextButton.icon(
-                                onPressed:
-                                    widget.onBranches ??
-                                    () => unawaited(
-                                      GitWorkflowUi(
-                                        context,
-                                        widget.session,
-                                      ).branches(),
+                  child: Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Tooltip(
+                      message: widget.session.repository.root,
+                      child: Directionality(
+                        textDirection: Directionality.of(context),
+                        child: _log || compact && _compactReview
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.session.repository.root,
+                                    textDirection: TextDirection.ltr,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                  TextButton.icon(
+                                    onPressed:
+                                        widget.onBranches ??
+                                        () => unawaited(
+                                          GitWorkflowUi(
+                                            context,
+                                            widget.session,
+                                          ).branches(),
+                                        ),
+                                    icon: const GitIcon(GitGlyph.branch),
+                                    label: Text(
+                                      _branchLabel(context),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                icon: const GitIcon(GitGlyph.branch),
-                                label: Text(
-                                  _branchLabel(context),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          )
-                        : const GitLabel(GitMessages.git),
+                                  ),
+                                ],
+                              )
+                            : const GitLabel(GitMessages.git),
+                      ),
+                    ),
                   ),
                 ),
                 SegmentedButton<bool>(

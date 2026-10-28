@@ -561,13 +561,16 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     ),
                   ],
                 ),
-                Tooltip(
-                  message: session.repository.root,
-                  child: Text(
-                    session.repository.root,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Tooltip(
+                    message: session.repository.root,
+                    child: Text(
+                      session.repository.root,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ),
                 ),
                 Tooltip(

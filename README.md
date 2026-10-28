@@ -185,8 +185,11 @@ reviewed history tip until explicit refresh. Controlled Git remains unchanged.
 
 Revision documents and literal repository/path labels keep their physical source
 direction under RTL chrome. The surrounding controls and role labels retain the
-host locale. Actual saved conflict-marker blocks determine local acceptance;
-adjacent preview suggestions cannot overwrite a larger Git-created result block.
+host locale. Commit and workspace repository headers and their expanded tooltips
+also preserve literal slash order; rendered glyph bounds cover narrow/wide
+layouts with enlarged text. Actual saved conflict-marker blocks determine local
+acceptance; adjacent preview suggestions cannot overwrite a larger Git-created
+result block.
 
 Persistent Commit messages use `FileGitDraftStore` over each host's existing
 application-owned draft files. Normal and immutable-HEAD amend slots have
