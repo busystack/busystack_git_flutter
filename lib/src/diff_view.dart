@@ -23,11 +23,13 @@ final class GitDiffView extends StatefulWidget {
     super.key,
     required this.session,
     required this.comparison,
+    this.preview = false,
     this.onPreviousFile,
     this.onNextFile,
   });
   final GitSession session;
   final GitComparison comparison;
+  final bool preview;
   final VoidCallback? onPreviousFile, onNextFile;
   @override
   State<GitDiffView> createState() => _GitDiffViewState();
@@ -272,265 +274,289 @@ final class _GitDiffViewState extends State<GitDiffView> {
                 ),
               ],
             ),
-          Padding(
-            padding: EdgeInsets.all(host.spacing),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: SelectableText(comparison.path.display)),
-                    GitIconButton(
-                      tooltip: gitString(
-                        context,
-                        GitMessages.refreshComparison,
-                      ),
-                      onPressed: () => unawaited(_load(refreshStatus: true)),
-                      icon: const GitIcon(GitGlyph.refresh),
-                    ),
-                  ],
-                ),
-                Wrap(
-                  spacing: host.spacing,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (widget.onPreviousFile != null ||
-                        widget.onNextFile != null) ...[
+          if (!widget.preview)
+            Padding(
+              padding: EdgeInsets.all(host.spacing),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: SelectableText(comparison.path.display)),
                       GitIconButton(
                         tooltip: gitString(
                           context,
-                          GitMessages.previousChangedFile,
+                          GitMessages.refreshComparison,
                         ),
-                        onPressed: widget.onPreviousFile,
-                        icon: const GitIcon(GitGlyph.previous),
-                      ),
-                      GitIconButton(
-                        tooltip: gitString(
-                          context,
-                          GitMessages.nextChangedFile,
-                        ),
-                        onPressed: widget.onNextFile,
-                        icon: const GitIcon(GitGlyph.next),
+                        onPressed: () => unawaited(_load(refreshStatus: true)),
+                        icon: const GitIcon(GitGlyph.refresh),
                       ),
                     ],
-                    GitIconButton(
-                      tooltip: gitString(
-                        context,
-                        GitMessages.previousDifference,
-                      ),
-                      onPressed: () => _jump(-1),
-                      icon: const GitIcon(GitGlyph.up, size: 18),
-                    ),
-                    GitIconButton(
-                      tooltip: gitString(context, GitMessages.nextDifference),
-                      onPressed: () => _jump(1),
-                      icon: const GitIcon(GitGlyph.down, size: 18),
-                    ),
-                    if (compact)
-                      GitMenuButton(
-                        host: host,
-                        tooltip: gitString(context, GitMessages.comparisonMode),
-                        entries: [
-                          GitMenuEntry(
-                            'side',
-                            GitMessages.sideBySide,
-                            checked: !_unified,
-                            radio: true,
-                          ),
-                          GitMenuEntry(
-                            'unified',
-                            GitMessages.unified,
-                            checked: _unified,
-                            radio: true,
-                          ),
-                        ],
-                        onSelected: (value) => _display(
-                          'diffUnified',
-                          value == 'unified',
-                          () => _unified = value == 'unified',
-                        ),
-                        child: GitLabel(
-                          _unified
-                              ? GitMessages.unified
-                              : GitMessages.sideBySide,
-                        ),
-                      )
-                    else
-                      SegmentedButton<bool>(
-                        segments: [
-                          ButtonSegment(
-                            value: false,
-                            label: GitLabel(
-                              gitString(context, GitMessages.sideBySide),
-                            ),
-                          ),
-                          ButtonSegment(
-                            value: true,
-                            label: GitLabel(
-                              gitString(context, GitMessages.unified),
-                            ),
-                          ),
-                        ],
-                        selected: {_unified},
-                        onSelectionChanged: (s) => _display(
-                          'diffUnified',
-                          s.single,
-                          () => _unified = s.single,
-                        ),
-                      ),
-                    GitMenuButton(
-                      host: host,
-                      tooltip: gitString(
-                        context,
-                        GitMessages.diffDisplayOptions,
-                      ),
-                      entries: [
-                        GitMenuEntry('wrap', GitMessages.wrap, checked: _wrap),
-                        GitMenuEntry(
-                          'words',
-                          GitMessages.words,
-                          checked: _words,
-                        ),
-                        GitMenuEntry(
-                          'collapse',
-                          GitMessages.collapseContext,
-                          checked: _collapse,
-                        ),
-                        GitMenuEntry(
-                          'whitespace',
-                          GitMessages.ignoreWhitespace,
-                          checked: _ignoreWhitespace,
-                        ),
-                      ],
-                      onSelected: (option) {
-                        switch (option) {
-                          case 'wrap':
-                            _display('diffWrap', !_wrap, () => _wrap = !_wrap);
-                          case 'words':
-                            _display(
-                              'diffWords',
-                              !_words,
-                              () => _words = !_words,
-                            );
-                          case 'collapse':
-                            _display(
-                              'diffCollapse',
-                              !_collapse,
-                              () => _collapse = !_collapse,
-                            );
-                          case 'whitespace':
-                            _display(
-                              'diffIgnoreWhitespace',
-                              !_ignoreWhitespace,
-                              () => _ignoreWhitespace = !_ignoreWhitespace,
-                            );
-                        }
-                      },
-                    ),
-                    GitIconButton(
-                      tooltip: gitString(context, GitMessages.searchComparison),
-                      onPressed: _openSearch,
-                      icon: const GitIcon(GitGlyph.search),
-                    ),
-                  ],
-                ),
-                if (_searchVisible)
-                  GitTextUndo(
-                    controller: _search,
-                    child: TextField(
-                      controller: _search,
-                      focusNode: _searchFocus,
-                      decoration: InputDecoration(
-                        labelText: gitString(context, GitMessages.search),
-                        isDense: true,
-                        suffixIcon: GitIconButton(
-                          tooltip: gitString(context, GitMessages.closeSearch),
-                          onPressed: () => setState(() {
-                            _search.clear();
-                            _searchVisible = false;
-                          }),
-                          icon: const GitIcon(GitGlyph.close),
-                        ),
-                      ),
-                      onChanged: (_) => setState(() {}),
-                    ),
                   ),
-                if (_canStage && compact)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: GitMenuButton(
-                      host: host,
-                      tooltip: gitString(context, GitMessages.stagingActions),
-                      child: const GitLabel(GitMessages.stagingActions2),
-                      entries: [
-                        GitMenuEntry(
-                          'lines',
-                          _unstage
-                              ? GitMessages.unstageSelectedChangedLines
-                              : GitMessages.stageSelectedChangedLines,
-                          enabled: _selected.isNotEmpty,
-                        ),
-                        const GitMenuEntry(
-                          'index',
-                          GitMessages.editHEADIndexWorkingTree,
-                        ),
-                        GitMenuEntry(
-                          'file',
-                          _unstage
-                              ? GitMessages.unstageWholeFile
-                              : GitMessages.stageWholeFile,
-                        ),
-                      ],
-                      onSelected: (value) {
-                        switch (value) {
-                          case 'lines':
-                            unawaited(_applySelection());
-                          case 'index':
-                            unawaited(_indexEditor());
-                          case 'file':
-                            unawaited(_wholeFile());
-                        }
-                      },
-                    ),
-                  )
-                else if (_canStage)
                   Wrap(
                     spacing: host.spacing,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      FilledButton(
-                        onPressed: _selected.isEmpty
-                            ? null
-                            : () => unawaited(_applySelection()),
-                        child: Text(
-                          _unstage
-                              ? gitString(
-                                  context,
-                                  GitMessages.unstageSelectedChangedLines,
-                                )
-                              : gitString(
-                                  context,
-                                  GitMessages.stageSelectedChangedLines,
-                                ),
+                      if (widget.onPreviousFile != null ||
+                          widget.onNextFile != null) ...[
+                        GitIconButton(
+                          tooltip: gitString(
+                            context,
+                            GitMessages.previousChangedFile,
+                          ),
+                          onPressed: widget.onPreviousFile,
+                          icon: const GitIcon(GitGlyph.previous),
                         ),
+                        GitIconButton(
+                          tooltip: gitString(
+                            context,
+                            GitMessages.nextChangedFile,
+                          ),
+                          onPressed: widget.onNextFile,
+                          icon: const GitIcon(GitGlyph.next),
+                        ),
+                      ],
+                      GitIconButton(
+                        tooltip: gitString(
+                          context,
+                          GitMessages.previousDifference,
+                        ),
+                        onPressed: () => _jump(-1),
+                        icon: const GitIcon(GitGlyph.up, size: 18),
                       ),
-                      OutlinedButton(
-                        onPressed: () => unawaited(_indexEditor()),
-                        child: const GitLabel(
-                          GitMessages.editHEADIndexWorkingTree,
-                        ),
+                      GitIconButton(
+                        tooltip: gitString(context, GitMessages.nextDifference),
+                        onPressed: () => _jump(1),
+                        icon: const GitIcon(GitGlyph.down, size: 18),
                       ),
-                      TextButton(
-                        onPressed: () => unawaited(_wholeFile()),
-                        child: Text(
-                          _unstage
-                              ? gitString(context, GitMessages.unstageWholeFile)
-                              : gitString(context, GitMessages.stageWholeFile),
+                      if (compact)
+                        GitMenuButton(
+                          host: host,
+                          tooltip: gitString(
+                            context,
+                            GitMessages.comparisonMode,
+                          ),
+                          entries: [
+                            GitMenuEntry(
+                              'side',
+                              GitMessages.sideBySide,
+                              checked: !_unified,
+                              radio: true,
+                            ),
+                            GitMenuEntry(
+                              'unified',
+                              GitMessages.unified,
+                              checked: _unified,
+                              radio: true,
+                            ),
+                          ],
+                          onSelected: (value) => _display(
+                            'diffUnified',
+                            value == 'unified',
+                            () => _unified = value == 'unified',
+                          ),
+                          child: GitLabel(
+                            _unified
+                                ? GitMessages.unified
+                                : GitMessages.sideBySide,
+                          ),
+                        )
+                      else
+                        SegmentedButton<bool>(
+                          segments: [
+                            ButtonSegment(
+                              value: false,
+                              label: GitLabel(
+                                gitString(context, GitMessages.sideBySide),
+                              ),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: GitLabel(
+                                gitString(context, GitMessages.unified),
+                              ),
+                            ),
+                          ],
+                          selected: {_unified},
+                          onSelectionChanged: (s) => _display(
+                            'diffUnified',
+                            s.single,
+                            () => _unified = s.single,
+                          ),
                         ),
+                      GitMenuButton(
+                        host: host,
+                        tooltip: gitString(
+                          context,
+                          GitMessages.diffDisplayOptions,
+                        ),
+                        entries: [
+                          GitMenuEntry(
+                            'wrap',
+                            GitMessages.wrap,
+                            checked: _wrap,
+                          ),
+                          GitMenuEntry(
+                            'words',
+                            GitMessages.words,
+                            checked: _words,
+                          ),
+                          GitMenuEntry(
+                            'collapse',
+                            GitMessages.collapseContext,
+                            checked: _collapse,
+                          ),
+                          GitMenuEntry(
+                            'whitespace',
+                            GitMessages.ignoreWhitespace,
+                            checked: _ignoreWhitespace,
+                          ),
+                        ],
+                        onSelected: (option) {
+                          switch (option) {
+                            case 'wrap':
+                              _display(
+                                'diffWrap',
+                                !_wrap,
+                                () => _wrap = !_wrap,
+                              );
+                            case 'words':
+                              _display(
+                                'diffWords',
+                                !_words,
+                                () => _words = !_words,
+                              );
+                            case 'collapse':
+                              _display(
+                                'diffCollapse',
+                                !_collapse,
+                                () => _collapse = !_collapse,
+                              );
+                            case 'whitespace':
+                              _display(
+                                'diffIgnoreWhitespace',
+                                !_ignoreWhitespace,
+                                () => _ignoreWhitespace = !_ignoreWhitespace,
+                              );
+                          }
+                        },
+                      ),
+                      GitIconButton(
+                        tooltip: gitString(
+                          context,
+                          GitMessages.searchComparison,
+                        ),
+                        onPressed: _openSearch,
+                        icon: const GitIcon(GitGlyph.search),
                       ),
                     ],
                   ),
-              ],
+                  if (_searchVisible)
+                    GitTextUndo(
+                      controller: _search,
+                      child: TextField(
+                        controller: _search,
+                        focusNode: _searchFocus,
+                        decoration: InputDecoration(
+                          labelText: gitString(context, GitMessages.search),
+                          isDense: true,
+                          suffixIcon: GitIconButton(
+                            tooltip: gitString(
+                              context,
+                              GitMessages.closeSearch,
+                            ),
+                            onPressed: () => setState(() {
+                              _search.clear();
+                              _searchVisible = false;
+                            }),
+                            icon: const GitIcon(GitGlyph.close),
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  if (_canStage && compact)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: GitMenuButton(
+                        host: host,
+                        tooltip: gitString(context, GitMessages.stagingActions),
+                        child: const GitLabel(GitMessages.stagingActions2),
+                        entries: [
+                          GitMenuEntry(
+                            'lines',
+                            _unstage
+                                ? GitMessages.unstageSelectedChangedLines
+                                : GitMessages.stageSelectedChangedLines,
+                            enabled: _selected.isNotEmpty,
+                          ),
+                          const GitMenuEntry(
+                            'index',
+                            GitMessages.editHEADIndexWorkingTree,
+                          ),
+                          GitMenuEntry(
+                            'file',
+                            _unstage
+                                ? GitMessages.unstageWholeFile
+                                : GitMessages.stageWholeFile,
+                          ),
+                        ],
+                        onSelected: (value) {
+                          switch (value) {
+                            case 'lines':
+                              unawaited(_applySelection());
+                            case 'index':
+                              unawaited(_indexEditor());
+                            case 'file':
+                              unawaited(_wholeFile());
+                          }
+                        },
+                      ),
+                    )
+                  else if (_canStage)
+                    Wrap(
+                      spacing: host.spacing,
+                      children: [
+                        FilledButton(
+                          onPressed: _selected.isEmpty
+                              ? null
+                              : () => unawaited(_applySelection()),
+                          child: Text(
+                            _unstage
+                                ? gitString(
+                                    context,
+                                    GitMessages.unstageSelectedChangedLines,
+                                  )
+                                : gitString(
+                                    context,
+                                    GitMessages.stageSelectedChangedLines,
+                                  ),
+                          ),
+                        ),
+                        OutlinedButton(
+                          onPressed: () => unawaited(_indexEditor()),
+                          child: const GitLabel(
+                            GitMessages.editHEADIndexWorkingTree,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => unawaited(_wholeFile()),
+                          child: Text(
+                            _unstage
+                                ? gitString(
+                                    context,
+                                    GitMessages.unstageWholeFile,
+                                  )
+                                : gitString(
+                                    context,
+                                    GitMessages.stageWholeFile,
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
-          ),
           Row(
             children: [
               Expanded(child: _label(_left!)),
@@ -551,7 +577,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
             ),
           const Divider(height: 1),
           Expanded(child: _diff == null ? _nonText() : _reviewRows(context)),
-          if (_diff != null || !_stagingComparison)
+          if (!widget.preview && (_diff != null || !_stagingComparison))
             Padding(
               padding: EdgeInsets.all(host.spacing),
               child: Text(

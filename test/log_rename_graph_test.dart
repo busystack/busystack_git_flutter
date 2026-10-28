@@ -80,12 +80,24 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(Dialog), findsNothing);
     expect(find.byType(GitDiffView), findsOneWidget);
+    expect(
+      tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
+      isTrue,
+    );
     await tester.tap(find.byTooltip('Review difference'));
     await tester.pump();
+    expect(
+      tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
+      isFalse,
+    );
     expect(find.text('Log'), findsWidgets);
     await tester.tap(find.widgetWithText(TextButton, 'Log').last);
     await tester.pump();
     expect(find.byType(GitDiffView), findsOneWidget);
+    expect(
+      tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
+      isTrue,
+    );
     expect(
       client.calls.any(
         (call) =>

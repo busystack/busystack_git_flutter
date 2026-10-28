@@ -1418,6 +1418,7 @@ final class _GitLogViewState extends State<GitLogView> {
               '${_selected!.oid.value}:${_parent?.value}:${file.path.key}:${file.originalPath?.key}',
             ),
             session: widget.session,
+            preview: !expanded,
             comparison: GitComparison(
               file.path,
               _parent == null
