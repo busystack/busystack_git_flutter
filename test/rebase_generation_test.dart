@@ -344,6 +344,53 @@ void main() {
       GitErrorCode.staleReview,
     );
   });
+  for (final annotatedTag in [false, true]) {
+    testWidgets(
+      '${annotatedTag ? 'annotated tag' : 'branch'} target retains its reviewed object across delayed A to B to A movement',
+      (tester) async {
+        final reference = GitReference(
+          name: annotatedTag ? 'refs/tags/release' : 'refs/heads/topic',
+          oid: oid(8),
+          type: annotatedTag ? 'tag' : 'commit',
+        );
+        final peeledCommit = annotatedTag ? 5 : 8;
+        final client = RebaseClient()..refs = [reference];
+        await showRebase(tester, client);
+        await tester.tap(find.text('Same as upstream boundary'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(reference.shortName));
+        await tester.pump();
+        final pending = client.details.single;
+
+        // Resolve the delayed Git query while another client has moved the
+        // name. The name returns to its original object before the fresh refs
+        // query, so comparing the final tip alone cannot detect this race.
+        client.refs = [
+          GitReference(
+            name: reference.name,
+            oid: oid(12),
+            type: reference.type,
+          ),
+        ];
+        final resolvedCommit = pending.$1.reference == reference.name
+            ? 12
+            : pending.$1.reference == reference.oid.value
+            ? peeledCommit
+            : throw StateError('Unexpected revision ${pending.$1.reference}');
+        client.refs = [reference];
+        pending.$2.complete(page(resolvedCommit));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Prepare Git plan'));
+        await tester.pump();
+        expect(client.requests.single.otherRevision, oid(peeledCommit));
+        expect(find.byType(GitFailurePanel), findsNothing);
+        client.plans.single.complete({...plan(), 'steps': <Json>[]});
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'an action callback from an obsolete row cannot edit its replacement plan',
     (tester) async {

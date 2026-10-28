@@ -94,10 +94,11 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
       _error = null;
     });
     try {
-      // History peels annotated tags and rejects missing/non-commit targets.
+      // Resolve the reviewed object, not a name that can move and return while
+      // the request is running. History also peels annotated tag objects.
       final page = await widget.session.client.history(
         widget.session.repository,
-        filter: HistoryFilter(reference: reference.name),
+        filter: HistoryFilter(reference: reference.oid.value),
         limit: 1,
         cancellation: cancellation,
       );
