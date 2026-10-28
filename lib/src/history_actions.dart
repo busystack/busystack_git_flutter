@@ -580,50 +580,83 @@ final class GitFileHistoryView extends StatefulWidget {
 
 final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
   @override
-  GitSession get session => widget.session;
+  GitSession get session => _session;
+  late final GitSession _session;
+  int _reviewGeneration = 0;
   int offset = 0;
   GitOid? selectedRevision;
+  final _parents = <GitOid, GitOid>{};
+  @override
+  void didUpdateWidget(GitFileHistoryView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session ||
+        oldWidget.path != widget.path ||
+        oldWidget.revision != widget.revision) {
+      generation++;
+      _reviewGeneration++;
+      cancellation?.cancel();
+      data = null;
+      selectedRevision = null;
+      _parents.clear();
+      offset = 0;
+      if (widget.session != _session) {
+        loading = false;
+        error = const GitException(GitErrorCode.staleReview);
+      } else {
+        unawaited(refresh());
+      }
+    }
+  }
+
   @override
   void initState() {
+    _session = widget.session;
     super.initState();
     unawaited(refresh());
   }
 
-  Future<void> refresh() => load(
-    GitInspection(
-      GitInspectionKind.fileHistory,
-      path: widget.path,
-      revision: widget.revision,
-      offset: offset,
-    ),
-  );
-  GitComparison _parentComparison(Json row) {
+  Future<void> refresh() => widget.session != _session
+      ? Future<void>.value()
+      : load(
+          GitInspection(
+            GitInspectionKind.fileHistory,
+            path: widget.path,
+            revision: widget.revision,
+            offset: offset,
+          ),
+        );
+  Widget _comparison(Json row) {
     final commit = GitCommit.fromJson(row['commit'] as Json);
-    final path = RepoPath.fromJson(row['pathAtCommit']);
-    final parentPath = RepoPath.fromJson(row['pathInParent']);
-    final parent = commit.parents.firstOrNull;
-    return GitComparison(
-      path,
-      parent == null
-          ? const ContentVersion.absent()
-          : ContentVersion(ContentKind.commit, revision: parent),
-      ContentVersion(ContentKind.commit, revision: commit.oid),
-      leftPath: parentPath,
+    return _FileHistoryComparison(
+      key: ValueKey((
+        session.repository.key,
+        commit.oid,
+        RepoPath.fromJson(row['pathAtCommit']).key,
+      )),
+      session: session,
+      row: row,
+      parent: _parents[commit.oid],
+      onParent: (parent) => _parents[commit.oid] = parent,
     );
   }
 
   Future<void> _showParent(Json row) async {
-    final comparison = _parentComparison(row);
     await session.host.present<void>(
       context,
       gitString(context, GitMessages.compareToParent),
-      GitDiffView(session: session, comparison: comparison),
+      _comparison(row),
       expanded: true,
     );
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
+    final reviewGeneration = _reviewGeneration;
+    bool current() =>
+        mounted &&
+        reviewGeneration == _reviewGeneration &&
+        widget.session == _session;
     final entries = (data?['entries'] as List? ?? []).cast<Json>();
     final selected =
         entries
@@ -698,6 +731,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                               trailing: GitMenuButton(
                                 host: session.host,
                                 onSelected: (action) async {
+                                  if (!current()) return;
                                   if (action == 'open') {
                                     final value = await session.client.content(
                                       session.repository,
@@ -707,6 +741,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                                         revision: commit.oid,
                                       ),
                                     );
+                                    if (!current()) return;
                                     await session.host.openDocument(
                                       session.repository,
                                       path,
@@ -773,7 +808,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                                   ),
                                   GitMenuEntry(
                                     'files',
-                                    GitMessages.changedFiles,
+                                    GitMessages.showAllAffectedFiles,
                                   ),
                                 ],
                               ),
@@ -782,13 +817,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                         ),
                     ],
                   ),
-                  second: GitDiffView(
-                    key: ValueKey(
-                      GitCommit.fromJson(selected['commit'] as Json).oid.value,
-                    ),
-                    session: session,
-                    comparison: _parentComparison(selected),
-                  ),
+                  second: _comparison(selected),
                 ),
         ),
         Row(
@@ -812,6 +841,155 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
               child: const GitLabel(GitMessages.nextPage),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+// Owns one immutable historical file/revision. Parent-specific rename data
+// must be read for that exact parent, never borrowed from --follow metadata.
+final class _FileHistoryComparison extends StatefulWidget {
+  const _FileHistoryComparison({
+    super.key,
+    required this.session,
+    required this.row,
+    this.parent,
+    required this.onParent,
+  });
+  final GitSession session;
+  final Json row;
+  final GitOid? parent;
+  final ValueChanged<GitOid> onParent;
+  @override
+  State<_FileHistoryComparison> createState() => _FileHistoryComparisonState();
+}
+
+final class _FileHistoryComparisonState extends State<_FileHistoryComparison> {
+  late final GitSession _session = widget.session;
+  late final GitCommit _commit = GitCommit.fromJson(
+    widget.row['commit'] as Json,
+  );
+  late final RepoPath _path = RepoPath.fromJson(widget.row['pathAtCommit']);
+  late GitOid? _parent = widget.parent ?? _commit.parents.firstOrNull;
+  GitComparison? _comparison;
+  GitException? _error;
+  int _generation = 0;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _generation++;
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_FileHistoryComparison oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.parent != oldWidget.parent && widget.parent != _parent) {
+      _parent = widget.parent ?? _commit.parents.firstOrNull;
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load() async {
+    if (!mounted || widget.session != _session) return;
+    final generation = ++_generation, parent = _parent;
+    setState(() {
+      _comparison = null;
+      _error = null;
+      _loading = true;
+    });
+    try {
+      var previousPath = RepoPath.fromJson(widget.row['pathInParent']);
+      if (_commit.parents.length > 1) {
+        final files = await _session.client.changedFiles(
+          _session.repository,
+          _commit.oid,
+          parent: parent,
+        );
+        if (!mounted || generation != _generation) return;
+        final change = files.where((file) => file.path == _path).firstOrNull;
+        previousPath = change?.originalPath ?? _path;
+      }
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _loading = false;
+        _comparison = GitComparison(
+          _path,
+          parent == null
+              ? const ContentVersion.absent()
+              : ContentVersion(ContentKind.commit, revision: parent),
+          ContentVersion(ContentKind.commit, revision: _commit.oid),
+          leftPath: previousPath,
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _loading = false;
+        _error = error is GitException
+            ? error
+            : GitException(
+                GitErrorCode.disconnected,
+                diagnostic: sanitizeGitDiagnostic('$error'),
+              );
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final generation = _generation;
+    return Column(
+      children: [
+        if (_commit.parents.length > 1)
+          DropdownButton<GitOid>(
+            value: _parent,
+            isExpanded: true,
+            items: [
+              for (var i = 0; i < _commit.parents.length; i++)
+                DropdownMenuItem(
+                  value: _commit.parents[i],
+                  child: Text(
+                    gitString(
+                      context,
+                      GitMessages.compareParentArg0Arg1,
+                      values: {
+                        'arg0': i + 1,
+                        'arg1': _commit.parents[i].abbreviated,
+                      },
+                    ),
+                  ),
+                ),
+            ],
+            onChanged: (parent) {
+              if (!mounted ||
+                  generation != _generation ||
+                  parent == null ||
+                  parent == _parent)
+                return;
+              widget.onParent(parent);
+              _parent = parent;
+              unawaited(_load());
+            },
+          ),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? GitFailurePanel(error: _error!, onRefresh: _load)
+              : GitDiffView(
+                  key: ValueKey((_commit.oid, _parent, _comparison?.leftPath)),
+                  session: _session,
+                  comparison: _comparison!,
+                ),
         ),
       ],
     );

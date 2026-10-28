@@ -174,11 +174,11 @@ void main() {
       expect(find.text(client.distant.oid.value), findsNothing);
       expect(find.text(client.older.oid.value), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Only older'), findsOneWidget);
-      await tester.tap(find.text('Reset filters').last);
+      await tester.tap(find.text('Reveal revision without filters'));
       await tester.pumpAndSettle();
       expect(find.text(client.distant.oid.value), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Only older'), findsOneWidget);
-      tester.widget<InputChip>(find.byType(InputChip).last).onDeleted!();
+      await tester.tap(find.text('Restore history filters'));
       await tester.pumpAndSettle();
       expect(find.text(client.distant.oid.value), findsNothing);
       expect(find.text(client.older.oid.value), findsOneWidget);

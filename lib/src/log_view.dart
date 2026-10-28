@@ -45,6 +45,8 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _expandedDiff = false;
   final _selectedIds = <GitOid>{};
   final _tableScroll = ScrollController();
+  final _graphScroll = ScrollController();
+  double _graphOffset = 0;
   final _tableFocus = FocusNode(debugLabel: 'Git commits');
   final _contextMenuKeys = GitContextMenuKeys();
   int _selectionAnchor = 0;
@@ -69,6 +71,7 @@ final class _GitLogViewState extends State<GitLogView> {
     _path.text = widget.path?.utf8Path ?? '';
     _observedHead = widget.session.snapshot?.head;
     widget.session.addListener(_repositoryChanged);
+    _graphScroll.addListener(_graphScrolled);
     unawaited(_load());
   }
 
@@ -134,6 +137,14 @@ final class _GitLogViewState extends State<GitLogView> {
     }
   }
 
+  void _graphScrolled() {
+    // Responsive pane insertion can briefly reparent the old and new table
+    // in one frame. A controller.offset read requires exactly one position.
+    if (!mounted || _graphScroll.positions.length != 1) return;
+    final offset = _graphScroll.positions.single.pixels;
+    if (offset != _graphOffset) setState(() => _graphOffset = offset);
+  }
+
   @override
   void dispose() {
     _generation++;
@@ -142,6 +153,7 @@ final class _GitLogViewState extends State<GitLogView> {
     _referenceRefresh?.cancel();
     widget.session.removeListener(_repositoryChanged);
     _tableScroll.dispose();
+    _graphScroll.dispose();
     _contextMenuKeys.clear();
     _tableFocus.dispose();
     for (final c in [_message, _author, _path, _referenceSearch]) {
@@ -651,6 +663,11 @@ final class _GitLogViewState extends State<GitLogView> {
                     ),
                   ),
                 if (_navigationReference != null)
+                  TextButton(
+                    onPressed: () => unawaited(_load()),
+                    child: const GitLabel(GitMessages.restoreHistoryFilters),
+                  ),
+                if (_navigationReference != null)
                   InputChip(
                     label: Text(
                       gitString(
@@ -687,7 +704,7 @@ final class _GitLogViewState extends State<GitLogView> {
                   _navigationReference = target.value;
                   unawaited(_load(preserveNavigation: true, reveal: target));
                 },
-                child: const GitLabel(GitMessages.resetFilters),
+                child: const GitLabel(GitMessages.revealRevisionWithoutFilters),
               ),
             ),
           Expanded(child: main),
@@ -798,12 +815,52 @@ final class _GitLogViewState extends State<GitLogView> {
     );
   }
 
+  String _referenceLabel(GitReference ref) {
+    final kind = ref.name.startsWith('refs/tags/')
+        ? GitMessages.tags
+        : ref.name.startsWith('refs/remotes/')
+        ? GitMessages.remote
+        : GitMessages.local;
+    return '${gitString(context, kind)}: ${ref.shortName}';
+  }
+
+  Widget _commitSubject(GitCommit commit, List<GitReference> references) =>
+      Tooltip(
+        message: references.map(_referenceLabel).join(' · '),
+        child: Text.rich(
+          TextSpan(
+            children: [
+              for (final ref in references) ...[
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: GitIcon(
+                    ref.current
+                        ? GitGlyph.check
+                        : ref.name.startsWith('refs/tags/')
+                        ? GitGlyph.tag
+                        : GitGlyph.branch,
+                    size: 13,
+                  ),
+                ),
+                TextSpan(
+                  text: ' ${_referenceLabel(ref)}  ',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
+              ],
+              TextSpan(text: commit.subject),
+            ],
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+
   Widget _commitTable() {
     final graph = graphRows(_commits),
         rowHeight = widget.session.host.rowHeight(context);
     // A lane has the same horizontal coordinate in every row. Reserving the
     // widest graph column also keeps native table insets aligned with pixels.
-    final graphWidth = graph.fold<double>(40, (width, row) {
+    final graphContentWidth = graph.fold<double>(40, (width, row) {
       final needed = row.width * 14.0 + 14;
       return needed > width ? needed : width;
     });
@@ -813,6 +870,12 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     return LayoutBuilder(
       builder: (context, bounds) {
+        // The graph may have arbitrarily many real lanes. Pan its document
+        // column with one shared viewport while subjects stay visible.
+        final graphWidth = graphContentWidth.clamp(
+          40.0,
+          (bounds.maxWidth * .42).clamp(40.0, double.infinity),
+        );
         final spacing = widget.session.host.spacing;
         final subjectMinimum = _textWidth('MMMMMMMMMMMMMMMM') + 40;
         final authorWidth = _textWidth('MMMMMMMMMMMM') + spacing * 2;
@@ -871,7 +934,7 @@ final class _GitLogViewState extends State<GitLogView> {
             final commit = _commits[index];
             final refs = _references
                 .where((r) => r.oid == commit.oid)
-                .map((r) => r.shortName)
+                .map(_referenceLabel)
                 .join(', ');
             return GitNativeRow(
               id: commit.oid.value,
@@ -973,7 +1036,34 @@ final class _GitLogViewState extends State<GitLogView> {
                               explicitChildNodes: true,
                               child: Row(
                                 children: [
-                                  const SizedBox(width: 40),
+                                  SizedBox(
+                                    width: graphWidth,
+                                    height: rowHeight,
+                                    child: Semantics(
+                                      role: SemanticsRole.columnHeader,
+                                      container: true,
+                                      label: gitString(
+                                        context,
+                                        GitMessages.graphLanes,
+                                      ),
+                                      child: Scrollbar(
+                                        controller: _graphScroll,
+                                        thumbVisibility:
+                                            graphContentWidth > graphWidth,
+                                        child: SingleChildScrollView(
+                                          key: const ValueKey(
+                                            'git-graph-horizontal',
+                                          ),
+                                          controller: _graphScroll,
+                                          scrollDirection: Axis.horizontal,
+                                          child: SizedBox(
+                                            width: graphContentWidth,
+                                            height: rowHeight,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                   Expanded(
                                     child: Semantics(
                                       role: SemanticsRole.columnHeader,
@@ -1033,8 +1123,7 @@ final class _GitLogViewState extends State<GitLogView> {
                               commit = _commits[rowIndex - 1];
                           final refs = _references
                               .where((e) => e.oid == commit.oid)
-                              .map((e) => e.shortName)
-                              .join(', ');
+                              .toList();
                           final selected =
                               _selectedIds.contains(commit.oid) ||
                               _selectedIds.isEmpty &&
@@ -1064,12 +1153,18 @@ final class _GitLogViewState extends State<GitLogView> {
                                       child: SizedBox(
                                         width: graphWidth,
                                         height: rowHeight,
-                                        child: CustomPaint(
-                                          painter: _GraphPainter(
-                                            graph[index],
-                                            Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
+                                        child: ClipRect(
+                                          child: CustomPaint(
+                                            key: ValueKey(
+                                              'git-graph-${commit.oid.value}',
+                                            ),
+                                            painter: _GraphPainter(
+                                              graph[index],
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.primary,
+                                              offset: _graphOffset,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1085,11 +1180,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                             'arg0': commit.parents.length,
                                           },
                                         ),
-                                        child: Text(
-                                          '${refs.isEmpty ? '' : '[$refs]  '}${commit.subject}',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
+                                        child: _commitSubject(commit, refs),
                                       ),
                                     ),
                                     if (showAuthor)
@@ -1695,15 +1786,24 @@ final class _GitLogViewState extends State<GitLogView> {
 }
 
 final class GitGraphRow {
-  const GitGraphRow(this.lane, this.width, this.edges);
+  const GitGraphRow(
+    this.lane,
+    this.width,
+    this.edges, {
+    this.unloaded = const {},
+    this.boundary = false,
+  });
   final int lane, width;
   final List<(int, int, bool)> edges;
+  final Set<int> unloaded;
+  final bool boundary;
 }
 
 /// Lane continuity is computed from actual full parent identities, retaining
 /// pending parent lanes across page boundaries.
 List<GitGraphRow> graphRows(List<GitCommit> commits) {
   final lanes = <GitOid>[], rows = <GitGraphRow>[];
+  final loaded = commits.map((commit) => commit.oid).toSet();
   for (final commit in commits) {
     if (!lanes.contains(commit.oid)) lanes.add(commit.oid);
     final before = List<GitOid>.of(lanes), lane = lanes.indexOf(commit.oid);
@@ -1728,6 +1828,11 @@ List<GitGraphRow> graphRows(List<GitCommit> commits) {
         lane,
         before.length > lanes.length ? before.length : lanes.length,
         edges,
+        unloaded: {
+          for (final parent in commit.parents)
+            if (!loaded.contains(parent)) lanes.indexOf(parent),
+        },
+        boundary: commit.boundary,
       ),
     );
   }
@@ -1735,22 +1840,40 @@ List<GitGraphRow> graphRows(List<GitCommit> commits) {
 }
 
 final class _GraphPainter extends CustomPainter {
-  const _GraphPainter(this.row, this.color);
+  const _GraphPainter(this.row, this.color, {this.offset = 0});
   final GitGraphRow row;
   final Color color;
+  final double offset;
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
       ..color = color
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
-    double x(int lane) => lane * 14.0 + 10;
+    double x(int lane) => lane * 14.0 + 10 - offset;
     for (final edge in row.edges) {
       final path = Path()
         ..moveTo(x(edge.$1), edge.$3 ? size.height / 2 : 0)
         ..lineTo(x(edge.$1), size.height / 2)
+        ..cubicTo(
+          x(edge.$1),
+          size.height * .75,
+          x(edge.$2),
+          size.height * .75,
+          x(edge.$2),
+          size.height * .9,
+        )
         ..lineTo(x(edge.$2), size.height);
       canvas.drawPath(path, paint);
+      if (edge.$3 && row.unloaded.contains(edge.$2)) {
+        canvas.drawPath(
+          Path()
+            ..moveTo(x(edge.$2) - 3, size.height - 5)
+            ..lineTo(x(edge.$2), size.height - 1)
+            ..lineTo(x(edge.$2) + 3, size.height - 5),
+          paint,
+        );
+      }
     }
     canvas.drawLine(
       Offset(x(row.lane), 0),
@@ -1760,11 +1883,13 @@ final class _GraphPainter extends CustomPainter {
     canvas.drawCircle(
       Offset(x(row.lane), size.height / 2),
       3.5,
-      paint..style = PaintingStyle.fill,
+      paint..style = row.boundary ? PaintingStyle.stroke : PaintingStyle.fill,
     );
   }
 
   @override
   bool shouldRepaint(covariant _GraphPainter oldDelegate) =>
-      oldDelegate.row != row || oldDelegate.color != color;
+      oldDelegate.row != row ||
+      oldDelegate.color != color ||
+      oldDelegate.offset != offset;
 }
