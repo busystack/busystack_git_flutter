@@ -75,7 +75,21 @@ final class _GitLogViewState extends State<GitLogView> {
   @override
   void didUpdateWidget(GitLogView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active) _repositoryChanged();
+    if (oldWidget.session != widget.session || oldWidget.path != widget.path) {
+      oldWidget.session.removeListener(_repositoryChanged);
+      widget.session.addListener(_repositoryChanged);
+      _readCancellation?.cancel();
+      _referenceRefresh?.cancel();
+      _generation++;
+      _commits = [];
+      _references = [];
+      _clearReview();
+      _path.text = widget.path?.utf8Path ?? '';
+      _observedHead = widget.session.snapshot?.head;
+      unawaited(_load());
+    } else if (widget.active && !oldWidget.active) {
+      _repositoryChanged();
+    }
   }
 
   void _repositoryChanged() {
@@ -90,21 +104,23 @@ final class _GitLogViewState extends State<GitLogView> {
   Future<void> _checkReferences() async {
     if (_checkingReferences || !mounted || !widget.active) return;
     _checkingReferences = true;
+    final session = widget.session;
+    final generation = _generation;
     try {
-      final refs = await widget.session.client.references(
-        widget.session.repository,
-      );
+      final refs = await session.client.references(session.repository);
       String identity(List<GitReference> values) => values
           .map((r) => '${r.name}:${r.oid.value}:${r.upstream}')
           .join('\n');
       if (mounted &&
+          session == widget.session &&
+          generation == _generation &&
           (identity(refs) != identity(_references) ||
               _observedHead != widget.session.snapshot?.head)) {
         _observedHead = widget.session.snapshot?.head;
         await _load(preserveNavigation: true);
       }
     } on Object catch (error) {
-      if (mounted)
+      if (mounted && session == widget.session && generation == _generation)
         setState(
           () => _failure = error is GitException
               ? error
@@ -153,6 +169,20 @@ final class _GitLogViewState extends State<GitLogView> {
       _since != null ||
       _until != null;
 
+  // A review is one dependent selection: commit, parent, files and preview.
+  // Clear it atomically and retire requests/callbacks that still own its data.
+  void _clearReview() {
+    _selectionGeneration++;
+    _selected = null;
+    _parent = null;
+    _selectedIds.clear();
+    _files = [];
+    _selectedFile = null;
+    _expandedDiff = false;
+    _filesLoading = false;
+    _fileFailure = null;
+  }
+
   Future<void> _load({
     bool append = false,
     bool preserveNavigation = false,
@@ -160,6 +190,10 @@ final class _GitLogViewState extends State<GitLogView> {
   }) async {
     if (!append && !preserveNavigation) _navigationReference = null;
     final generation = ++_generation;
+    final session = widget.session;
+    // Retain the previous, accurately labelled review during loading, but no
+    // pending file response may publish into a replacement history request.
+    if (!append) _selectionGeneration++;
     setState(() {
       _loading = true;
       _failure = null;
@@ -169,8 +203,8 @@ final class _GitLogViewState extends State<GitLogView> {
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
     try {
-      final page = await widget.session.client.history(
-        widget.session.repository,
+      final page = await session.client.history(
+        session.repository,
         filter: _filter,
         offset: append ? _commits.length : 0,
         anchor: append ? _anchor : null,
@@ -178,7 +212,7 @@ final class _GitLogViewState extends State<GitLogView> {
       );
       final refs = append
           ? _references
-          : await widget.session.client.references(widget.session.repository);
+          : await session.client.references(session.repository);
       if (!mounted || generation != _generation) return;
       setState(() {
         // The read generation changes before loading, while the old rows stay
@@ -200,10 +234,7 @@ final class _GitLogViewState extends State<GitLogView> {
           .firstOrNull;
       if (reveal != null && retained == null) {
         setState(() {
-          _selectionGeneration++;
-          _selected = null;
-          _selectedIds.clear();
-          _files = [];
+          _clearReview();
           _navigationOutsideFilters = true;
           _failure = const GitException(
             GitErrorCode.invalidRequest,
@@ -214,13 +245,15 @@ final class _GitLogViewState extends State<GitLogView> {
       } else if (reveal != null) {
         await _reveal(retained!);
       } else if (retained != null || _commits.isNotEmpty) {
-        await _select(retained ?? _commits.first);
+        await _select(
+          retained ?? _commits.first,
+          parent: retained != null && retained.parents.contains(_parent)
+              ? _parent
+              : null,
+        );
       } else {
         setState(() {
-          _selectionGeneration++;
-          _selected = null;
-          _selectedIds.clear();
-          _files = [];
+          _clearReview();
         });
       }
     } on Object catch (error) {
@@ -233,6 +266,7 @@ final class _GitLogViewState extends State<GitLogView> {
                   diagnostic: sanitizeGitDiagnostic('$error'),
                 );
           _loading = false;
+          _clearReview();
         });
     }
   }
@@ -240,20 +274,26 @@ final class _GitLogViewState extends State<GitLogView> {
   Future<void> _select(GitCommit commit, {GitOid? parent}) async {
     final generation = ++_selectionGeneration;
     final previousFile = _selectedFile?.path;
+    final comparisonParent = parent ?? commit.parents.firstOrNull;
+    final retainExpanded =
+        _expandedDiff &&
+        _selected?.oid == commit.oid &&
+        _parent == comparisonParent;
+    final session = widget.session;
     setState(() {
       _selected = commit;
-      _parent = parent ?? commit.parents.firstOrNull;
+      _parent = comparisonParent;
       _files = [];
       _selectedFile = null;
-      _expandedDiff = false;
+      _expandedDiff = retainExpanded;
       _fileFailure = null;
       _filesLoading = true;
     });
     try {
-      final files = await widget.session.client.changedFiles(
-        widget.session.repository,
+      final files = await session.client.changedFiles(
+        session.repository,
         commit.oid,
-        parent: _parent,
+        parent: comparisonParent,
       );
       if (mounted && generation == _selectionGeneration)
         setState(() {
@@ -262,10 +302,13 @@ final class _GitLogViewState extends State<GitLogView> {
               ? null
               : files.where((file) => file.path == previousFile).firstOrNull;
           _filesLoading = false;
+          if (_selectedFile == null) _expandedDiff = false;
         });
     } on Object catch (error) {
       if (mounted && generation == _selectionGeneration)
         setState(() {
+          _selectedFile = null;
+          _expandedDiff = false;
           _filesLoading = false;
           _fileFailure = error is GitException
               ? error
@@ -1207,6 +1250,13 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Widget _changedFilesPane(GitCommit commit) {
+    final generation = _selectionGeneration;
+    final parent = _parent;
+    bool current() =>
+        mounted &&
+        _selectionGeneration == generation &&
+        _selected?.oid == commit.oid &&
+        _parent == parent;
     if (_filesLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -1218,7 +1268,9 @@ final class _GitLogViewState extends State<GitLogView> {
       return SingleChildScrollView(
         child: GitFailurePanel(
           error: error,
-          onRefresh: () => unawaited(_select(commit, parent: _parent)),
+          onRefresh: () {
+            if (current()) unawaited(_select(commit, parent: parent));
+          },
         ),
       );
     }
@@ -1257,7 +1309,9 @@ final class _GitLogViewState extends State<GitLogView> {
                   overflow: TextOverflow.ellipsis,
                 ),
           selected: _selectedFile?.path == file.path,
-          onTap: () => setState(() => _selectedFile = file),
+          onTap: () {
+            if (current()) setState(() => _selectedFile = file);
+          },
         );
       },
     );
@@ -1265,6 +1319,7 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Widget _detailPane() {
     final commit = _selected;
+    final generation = _selectionGeneration;
     if (commit == null)
       return const Center(child: GitLabel(GitMessages.selectACommit));
     return GitSplitter(
@@ -1293,7 +1348,12 @@ final class _GitLogViewState extends State<GitLogView> {
                     ),
                   ),
               ],
-              onChanged: (parent) => unawaited(_select(commit, parent: parent)),
+              onChanged: (parent) {
+                if (mounted &&
+                    generation == _selectionGeneration &&
+                    parent != null)
+                  unawaited(_select(commit, parent: parent));
+              },
             ),
           Padding(
             padding: EdgeInsets.all(widget.session.host.spacing),
@@ -1384,28 +1444,48 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Widget _diffPreview({bool expanded = false}) {
     final file = _selectedFile!;
-    final index = _files.indexOf(file);
+    final commit = _selected!;
+    final parent = _parent;
+    final files = List<GitChange>.unmodifiable(_files);
+    final generation = _selectionGeneration;
+    final session = widget.session;
+    final index = files.indexOf(file);
+    bool current() =>
+        mounted &&
+        widget.session == session &&
+        _selectionGeneration == generation &&
+        _selected?.oid == commit.oid &&
+        _parent == parent &&
+        _selectedFile == file;
+    void selectFile(int next) {
+      if (current()) setState(() => _selectedFile = files[next]);
+    }
+
     return Column(
       children: [
         Row(
           children: [
             if (expanded)
               TextButton.icon(
-                onPressed: () => setState(() => _expandedDiff = false),
+                onPressed: () {
+                  if (current()) setState(() => _expandedDiff = false);
+                },
                 icon: const GitIcon(GitGlyph.back),
                 label: const GitLabel(GitMessages.log),
               )
             else
               GitIconButton(
                 tooltip: gitString(context, GitMessages.reviewDifference),
-                onPressed: () => setState(() => _expandedDiff = true),
+                onPressed: () {
+                  if (current()) setState(() => _expandedDiff = true);
+                },
                 icon: const GitIcon(GitGlyph.expand),
               ),
             Expanded(
               child: Text(
                 '${file.originalPath == null ? file.path.display : '${file.originalPath!.display} → ${file.path.display}'} · '
-                '${_parent?.abbreviated ?? gitString(context, GitMessages.emptyTree)} → '
-                '${_selected!.oid.abbreviated}',
+                '${parent?.abbreviated ?? gitString(context, GitMessages.emptyTree)} → '
+                '${commit.oid.abbreviated}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -1415,24 +1495,22 @@ final class _GitLogViewState extends State<GitLogView> {
         Expanded(
           child: GitDiffView(
             key: ValueKey(
-              '${_selected!.oid.value}:${_parent?.value}:${file.path.key}:${file.originalPath?.key}',
+              '${session.repository.key}:${commit.oid.value}:${parent?.value}:${file.path.key}:${file.originalPath?.key}',
             ),
             session: widget.session,
             preview: !expanded,
             comparison: GitComparison(
               file.path,
-              _parent == null
+              parent == null
                   ? const ContentVersion.absent()
-                  : ContentVersion(ContentKind.commit, revision: _parent),
-              ContentVersion(ContentKind.commit, revision: _selected!.oid),
+                  : ContentVersion(ContentKind.commit, revision: parent),
+              ContentVersion(ContentKind.commit, revision: commit.oid),
               leftPath: file.originalPath,
             ),
-            onPreviousFile: index <= 0
+            onPreviousFile: index <= 0 ? null : () => selectFile(index - 1),
+            onNextFile: index < 0 || index + 1 >= files.length
                 ? null
-                : () => setState(() => _selectedFile = _files[index - 1]),
-            onNextFile: index < 0 || index + 1 >= _files.length
-                ? null
-                : () => setState(() => _selectedFile = _files[index + 1]),
+                : () => selectFile(index + 1),
           ),
         ),
       ],
