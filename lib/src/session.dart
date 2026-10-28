@@ -105,6 +105,7 @@ final class GitSession extends ChangeNotifier {
     try {
       saved = await host.drafts.read(repository.presentationKey);
     } on Object catch (error) {
+      if (_disposed) return;
       draftFailure = GitException(
         GitErrorCode.commandFailed,
         diagnostic: host.message(
