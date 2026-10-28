@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'diff_view.dart';
+import 'branch_views.dart';
 import 'host.dart';
 import 'session.dart';
 import 'workflow_ui.dart';
@@ -127,9 +128,12 @@ final class _PushState extends GitDialogState<GitPushView> {
   @override
   GitSession get session => widget.session;
   final destination = TextEditingController();
+  final branchName = TextEditingController();
   late GitSnapshot reviewed;
   List<Json> remotes = [];
   List<GitReference> tags = [];
+  List<GitReference> remoteBranches = [];
+  String destinationChoice = '__new__';
   final selectedTags = <String>{};
   String? remote;
   bool upstream = false, completed = false;
@@ -139,12 +143,14 @@ final class _PushState extends GitDialogState<GitPushView> {
     super.initState();
     reviewed = session.snapshot!;
     destination.text = 'refs/heads/${reviewed.branch ?? ''}';
+    branchName.text = reviewed.branch ?? '';
     unawaited(initialize());
   }
 
   @override
   void dispose() {
     destination.dispose();
+    branchName.dispose();
     super.dispose();
   }
 
@@ -164,16 +170,32 @@ final class _PushState extends GitDialogState<GitPushView> {
     setState(() {
       remotes = (data?['remotes'] as List? ?? []).cast<Json>();
       final configured = options['pushRemote'] as String?;
-      remote = configured == null
+      final previousRemote = remote;
+      remote =
+          previousRemote != null &&
+              remotes.any((entry) => entry['name'] == previousRemote)
+          ? previousRemote
+          : configured == null
           ? (remotes.length == 1 ? remotes.single['name'] as String : null)
           : remotes.any((e) => e['name'] == configured)
           ? configured
           : null;
       final tracking = options['upstreamBranch'] as String?;
-      if (remote == options['upstreamRemote'] &&
+      if (previousRemote == null &&
+          remote == options['upstreamRemote'] &&
           tracking?.startsWith('refs/heads/') == true)
         destination.text = tracking!;
       tags = refs.where((e) => e.name.startsWith('refs/tags/')).toList();
+      remoteBranches = refs
+          .where((e) => e.name.startsWith('refs/remotes/'))
+          .toList();
+      final choices = _existingDestinations();
+      destinationChoice = choices.contains(destination.text)
+          ? destination.text
+          : '__new__';
+      if (destinationChoice == '__new__' &&
+          destination.text.startsWith('refs/heads/'))
+        branchName.text = destination.text.substring('refs/heads/'.length);
       data = null;
       upstream = reviewed.upstream == null && reviewed.branch != null;
     });
@@ -189,6 +211,18 @@ final class _PushState extends GitDialogState<GitPushView> {
       completed = false;
       loading = false;
     });
+  }
+
+  List<String> _existingDestinations() {
+    final selectedRemote = remote;
+    if (selectedRemote == null) return const [];
+    final prefix = 'refs/remotes/$selectedRemote/';
+    return [
+      for (final ref in remoteBranches)
+        if (ref.name.startsWith(prefix) &&
+            ref.name.substring(prefix.length) != 'HEAD')
+          'refs/heads/${ref.name.substring(prefix.length)}',
+    ]..sort();
   }
 
   Future<void> preview() async {
@@ -256,22 +290,76 @@ final class _PushState extends GitDialogState<GitPushView> {
                     ? null
                     : (value) {
                         remote = value;
+                        destinationChoice =
+                            _existingDestinations().contains(destination.text)
+                            ? destination.text
+                            : '__new__';
                         invalidate();
                       },
               ),
             ),
             SizedBox(
               width: 300,
-              child: TextField(
-                controller: destination,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('$remote:$destinationChoice'),
+                initialValue: destinationChoice,
+                isExpanded: true,
                 decoration: InputDecoration(
                   labelText: gitString(
                     context,
                     GitMessages.destinationReference,
                   ),
                 ),
-                onChanged: (_) => invalidate(),
+                items: [
+                  for (final reference in _existingDestinations())
+                    DropdownMenuItem(
+                      value: reference,
+                      child: Text(reference.substring('refs/heads/'.length)),
+                    ),
+                  DropdownMenuItem(
+                    value: '__new__',
+                    child: GitLabel(GitMessages.newRemoteBranch),
+                  ),
+                ],
+                onChanged: loading
+                    ? null
+                    : (value) {
+                        if (value == null) return;
+                        destinationChoice = value;
+                        destination.text = value == '__new__'
+                            ? 'refs/heads/${branchName.text}'
+                            : value;
+                        invalidate();
+                      },
               ),
+            ),
+            if (destinationChoice == '__new__')
+              SizedBox(
+                width: 220,
+                child: TextField(
+                  controller: branchName,
+                  decoration: InputDecoration(
+                    labelText: gitString(context, GitMessages.newRemoteBranch),
+                  ),
+                  onChanged: (value) {
+                    destination.text = 'refs/heads/$value';
+                    invalidate();
+                  },
+                ),
+              ),
+            TextButton(
+              onPressed: loading
+                  ? null
+                  : () async {
+                      await session.host.present<void>(
+                        context,
+                        GitMessages.manageRemotes,
+                        GitRemotesView(session: session),
+                        expanded: true,
+                      );
+                      if (mounted) await initialize();
+                    },
+              child: const GitLabel(GitMessages.manageRemotes),
             ),
             OutlinedButton(
               onPressed: loading || remote == null || reviewed.head == null
@@ -775,6 +863,9 @@ final class _PullState extends GitDialogState<GitPullView> {
   late GitSnapshot reviewed;
   String? remote;
   final branch = TextEditingController();
+  List<GitReference> remoteBranches = [];
+  String? configuredBranch;
+  String? configuredRemote;
   PullStrategy strategy = PullStrategy.fastForwardOnly;
   bool initializing = true,
       preserveMerges = false,
@@ -800,8 +891,14 @@ final class _PullState extends GitDialogState<GitPullView> {
         const GitInspection(GitInspectionKind.commitOptions),
       ),
     );
-    if (!mounted) return;
+    final references = await query(
+      () => session.client.references(session.repository),
+    );
+    if (!mounted || references == null) return;
     setState(() {
+      remoteBranches = references
+          .where((ref) => ref.name.startsWith('refs/remotes/'))
+          .toList();
       initializing = false;
       if (options == null) return;
       final names = (data?['remotes'] as List? ?? [])
@@ -809,14 +906,21 @@ final class _PullState extends GitDialogState<GitPullView> {
           .map((e) => e['name'] as String)
           .toList();
       final configured = options['upstreamRemote'] as String?;
+      configuredRemote = configured;
       remote = configured == null
           ? (names.length == 1 ? names.single : null)
           : names.contains(configured)
           ? configured
           : null;
       final tracking = options['upstreamBranch'] as String?;
+      configuredBranch = tracking?.startsWith('refs/heads/') == true
+          ? tracking!.substring('refs/heads/'.length)
+          : null;
       if (tracking?.startsWith('refs/heads/') == true)
         branch.text = tracking!.substring('refs/heads/'.length);
+      if (!_sourceBranches().contains(branch.text)) {
+        branch.text = _sourceBranches().firstOrNull ?? '';
+      }
       final rebase = (options['pullRebase'] as String?)?.toLowerCase();
       preserveMerges = const {'merges', 'm'}.contains(rebase);
       interactivePreference = const {'interactive', 'i'}.contains(rebase);
@@ -846,6 +950,29 @@ final class _PullState extends GitDialogState<GitPullView> {
   void dispose() {
     branch.dispose();
     super.dispose();
+  }
+
+  List<String> _sourceBranches() {
+    final selectedRemote = remote;
+    if (selectedRemote == null) return const [];
+    final prefix = 'refs/remotes/$selectedRemote/';
+    final names = <String>{
+      for (final ref in remoteBranches)
+        if (ref.name.startsWith(prefix) &&
+            ref.name.substring(prefix.length) != 'HEAD')
+          ref.name.substring(prefix.length),
+      if (configuredBranch != null && selectedRemote == configuredRemote)
+        configuredBranch!,
+    }.toList()..sort();
+    return names;
+  }
+
+  bool get _cachedSource {
+    final selectedRemote = remote;
+    if (selectedRemote == null || branch.text.isEmpty) return false;
+    return !remoteBranches.any(
+      (ref) => ref.name == 'refs/remotes/$selectedRemote/${branch.text}',
+    );
   }
 
   @override
@@ -881,16 +1008,30 @@ final class _PullState extends GitDialogState<GitPullView> {
         ],
         onChanged: loading || initializing
             ? null
-            : (value) => setState(() => remote = value),
+            : (value) => setState(() {
+                remote = value;
+                if (!_sourceBranches().contains(branch.text))
+                  branch.text = _sourceBranches().firstOrNull ?? '';
+              }),
       ),
+      if (_cachedSource) const GitLabel(GitMessages.cachedTracking),
       SizedBox(height: session.host.spacing),
-      TextField(
-        controller: branch,
-        enabled: !loading && !initializing,
-        onChanged: (_) => setState(() {}),
+      DropdownButtonFormField<String>(
+        key: ValueKey('$remote:${branch.text}'),
+        initialValue: _sourceBranches().contains(branch.text)
+            ? branch.text
+            : null,
+        isExpanded: true,
         decoration: InputDecoration(
           labelText: gitString(context, GitMessages.sourceBranch),
         ),
+        items: [
+          for (final name in _sourceBranches())
+            DropdownMenuItem(value: name, child: Text(name)),
+        ],
+        onChanged: loading || initializing || _sourceBranches().isEmpty
+            ? null
+            : (value) => setState(() => branch.text = value ?? ''),
       ),
       SizedBox(height: session.host.spacing),
       DropdownButtonFormField<PullStrategy>(

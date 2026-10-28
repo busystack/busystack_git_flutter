@@ -172,8 +172,16 @@ void main() {
         findsOneWidget,
       );
       expect(find.text(client.distant.oid.value), findsNothing);
-      expect(find.text(client.older.oid.value), findsNothing);
+      expect(find.text(client.older.oid.value), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Only older'), findsOneWidget);
+      await tester.tap(find.text('Reset filters').last);
+      await tester.pumpAndSettle();
+      expect(find.text(client.distant.oid.value), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Only older'), findsOneWidget);
+      tester.widget<InputChip>(find.byType(InputChip).last).onDeleted!();
+      await tester.pumpAndSettle();
+      expect(find.text(client.distant.oid.value), findsNothing);
+      expect(find.text(client.older.oid.value), findsOneWidget);
       expect(client.mutations, isEmpty);
       await tester.pumpWidget(const SizedBox());
       session.dispose();

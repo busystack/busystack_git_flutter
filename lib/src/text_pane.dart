@@ -5,6 +5,88 @@ import 'package:flutter/rendering.dart';
 import 'host.dart';
 import 'text_undo.dart';
 
+enum GitHighlightKind { staged, unstaged, conflict }
+
+final class GitTextHighlight {
+  const GitTextHighlight(this.start, this.end, this.kind);
+  final int start, end;
+  final GitHighlightKind kind;
+}
+
+/// Paint reviewed regions without replacing the text field or its undo stack.
+final class GitHighlightedTextController extends TextEditingController {
+  GitHighlightedTextController({super.text});
+  List<GitTextHighlight> _highlights = const [];
+  List<GitTextHighlight> get highlights => _highlights;
+
+  void setHighlights(List<GitTextHighlight> ranges) {
+    _highlights = ranges;
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final content = text;
+    final boundaries = <int>{0, content.length};
+    for (final range in _highlights) {
+      boundaries.add(range.start.clamp(0, content.length));
+      boundaries.add(range.end.clamp(0, content.length));
+    }
+    final composing = value.composing;
+    if (withComposing && composing.isValid && composing.end <= content.length) {
+      boundaries.add(composing.start);
+      boundaries.add(composing.end);
+    }
+    final offsets = boundaries.toList()..sort();
+    final colors = Theme.of(context).colorScheme;
+    Color? background(int start, int end) {
+      GitHighlightKind? kind;
+      for (final range in _highlights) {
+        if (range.start >= end || range.end <= start) continue;
+        kind = kind == null || kind == range.kind
+            ? range.kind
+            : GitHighlightKind.conflict;
+      }
+      return switch (kind) {
+        GitHighlightKind.staged => colors.primaryContainer.withValues(
+          alpha: .55,
+        ),
+        GitHighlightKind.unstaged => colors.tertiaryContainer.withValues(
+          alpha: .55,
+        ),
+        GitHighlightKind.conflict => colors.errorContainer.withValues(
+          alpha: .65,
+        ),
+        null => null,
+      };
+    }
+
+    return TextSpan(
+      style: style,
+      children: [
+        for (var i = 0; i + 1 < offsets.length; i++)
+          TextSpan(
+            text: content.substring(offsets[i], offsets[i + 1]),
+            style: TextStyle(
+              backgroundColor: background(offsets[i], offsets[i + 1]),
+              decoration:
+                  withComposing &&
+                      composing.isValid &&
+                      offsets[i] < composing.end &&
+                      offsets[i + 1] > composing.start
+                  ? TextDecoration.underline
+                  : null,
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 /// A revision pane with a real native text field and logical line numbers.
 /// The gutter measures the editable's actual caret geometry, including wrapping
 /// and text scaling, instead of assuming a fixed line height.
@@ -172,6 +254,15 @@ final class _TextPaneState extends State<GitTextPane> {
                               ).colorScheme.onSurfaceVariant,
                             ),
                             textScaler: MediaQuery.textScalerOf(context),
+                            highlights: _text is GitHighlightedTextController
+                                ? (_text as GitHighlightedTextController)
+                                      .highlights
+                                : const [],
+                            stagedColor: Theme.of(context).colorScheme.primary,
+                            unstagedColor: Theme.of(
+                              context,
+                            ).colorScheme.tertiary,
+                            conflictColor: Theme.of(context).colorScheme.error,
                             repaint: Listenable.merge([
                               _text,
                               _scroll,
@@ -230,6 +321,10 @@ final class _LineGutter extends CustomPainter {
     required this.row,
     required this.style,
     required this.textScaler,
+    required this.highlights,
+    required this.stagedColor,
+    required this.unstagedColor,
+    required this.conflictColor,
     required super.repaint,
   });
   final List<int> starts;
@@ -237,6 +332,8 @@ final class _LineGutter extends CustomPainter {
   final RenderBox? Function() row;
   final TextStyle style;
   final TextScaler textScaler;
+  final List<GitTextHighlight> highlights;
+  final Color stagedColor, unstagedColor, conflictColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -279,6 +376,35 @@ final class _LineGutter extends CustomPainter {
         ),
       );
       number.dispose();
+    }
+    final contentLength = field.text?.toPlainText().length ?? 0;
+    for (final highlight in highlights) {
+      final start = highlight.start.clamp(0, contentLength);
+      final end = highlight.end.clamp(start, contentLength);
+      final startRect = field
+          .getLocalRectForCaret(TextPosition(offset: start))
+          .shift(field.localToGlobal(Offset.zero, ancestor: ancestor));
+      final endRect = field
+          .getLocalRectForCaret(TextPosition(offset: end))
+          .shift(field.localToGlobal(Offset.zero, ancestor: ancestor));
+      if (startRect.top > size.height || endRect.bottom < 0) continue;
+      final color = switch (highlight.kind) {
+        GitHighlightKind.staged => stagedColor,
+        GitHighlightKind.unstaged => unstagedColor,
+        GitHighlightKind.conflict => conflictColor,
+      };
+      canvas.drawRect(
+        Rect.fromLTWH(
+          0,
+          startRect.top.clamp(0, size.height).toDouble(),
+          3,
+          math
+              .max(4, endRect.bottom - startRect.top)
+              .clamp(0, size.height - startRect.top.clamp(0, size.height))
+              .toDouble(),
+        ),
+        Paint()..color = color,
+      );
     }
   }
 

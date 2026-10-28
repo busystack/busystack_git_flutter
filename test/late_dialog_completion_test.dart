@@ -62,6 +62,11 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Open index'));
         await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byWidgetPredicate((w) => w is TextField && !w.readOnly),
+          'reviewed index result\n',
+        );
+        await tester.pump();
         await tester.tap(find.text('Write edited result to this index entry'));
         await tester.pump();
         expect(client.mutations.single, isA<WriteIndex>());

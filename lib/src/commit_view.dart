@@ -49,6 +49,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
   bool? _sign;
   bool _composing = false;
   int _reviewGeneration = 0;
+  int _amendGeneration = 0, _messageRevision = 0;
+  GitOid? _amendTarget;
   GitSession get session => widget.session;
   GitHost get host => session.host;
   void _leaveReview(VoidCallback action) {
@@ -71,6 +73,8 @@ final class _GitCommitViewState extends State<GitCommitView> {
       !session.repository.bare &&
       session.canWriteMetadata &&
       _message.text.trim().isNotEmpty &&
+      (!_amend ||
+          _amendTarget != null && _amendTarget == session.snapshot?.head) &&
       !(session.outcome?.phase == GitOperationPhase.uncertain &&
           session.failure != null) &&
       (!_message.value.composing.isValid ||
@@ -79,7 +83,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       !session.snapshot!.operation.unmerged;
   void _changed() {
     if (!mounted) return;
-    if (_message.text != session.draft && !session.running)
+    if (!_amend && _message.text != session.draft && !session.running)
       _message.text = session.draft;
     setState(() {});
   }
@@ -93,6 +97,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
 
   @override
   void dispose() {
+    _amendGeneration++;
     session.removeListener(_changed);
     if (session.commitAction == _commit) {
       session.commitAction = null;
@@ -101,6 +106,72 @@ final class _GitCommitViewState extends State<GitCommitView> {
     _message.removeListener(_compositionChanged);
     _message.dispose();
     super.dispose();
+  }
+
+  String _amendDraftKey(GitOid target) =>
+      '${session.repository.presentationKey}:amend:${target.value}';
+
+  void _storeMessage(String value) {
+    _messageRevision++;
+    if (_amend && _amendTarget != null) {
+      final target = _amendTarget!;
+      unawaited(
+        host.drafts
+            .write(_amendDraftKey(target), value)
+            .catchError((Object error) => session.reportFailure(error)),
+      );
+    } else {
+      session.setDraft(value);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setAmend(bool value) async {
+    if (value == _amend) return;
+    final generation = ++_amendGeneration;
+    if (!value) {
+      setState(() {
+        _amend = false;
+        _amendTarget = null;
+        _message.text = session.draft;
+      });
+      return;
+    }
+    final target = session.snapshot?.head;
+    if (target == null) return;
+    final revision = _messageRevision;
+    setState(() {
+      _amend = true;
+      _amendTarget = target;
+      _message.text = '';
+    });
+    try {
+      final saved = await host.drafts.read(_amendDraftKey(target));
+      String? message = saved?.isNotEmpty == true ? saved : null;
+      if (message == null) {
+        final page = await session.client.history(
+          session.repository,
+          filter: HistoryFilter(reference: target.value),
+          limit: 1,
+        );
+        if (page.commits.firstOrNull?.oid != target) {
+          throw const GitException(GitErrorCode.staleReview);
+        }
+        message = page.commits.first.message;
+      }
+      if (!mounted ||
+          generation != _amendGeneration ||
+          !_amend ||
+          _amendTarget != target ||
+          session.snapshot?.head != target ||
+          revision != _messageRevision ||
+          _message.text.isNotEmpty)
+        return;
+      setState(() => _message.text = message!);
+    } on Object catch (error) {
+      if (mounted && generation == _amendGeneration && _amend)
+        session.reportFailure(error);
+    }
   }
 
   @override
@@ -432,21 +503,23 @@ final class _GitCommitViewState extends State<GitCommitView> {
                                 ? GitMessages.amendRevision
                                 : GitMessages.amendLastCommit,
                             values: {
-                              'revision': snapshot?.head?.abbreviated ?? '',
+                              'revision': _amend
+                                  ? _amendTarget?.abbreviated ?? ''
+                                  : snapshot?.head?.abbreviated ?? '',
                             },
                           ),
                           checked: _amend,
                           enabled: !session.running && snapshot?.head != null,
                           onTap: session.running || snapshot?.head == null
                               ? null
-                              : () => setState(() => _amend = !_amend),
+                              : () => unawaited(_setAmend(!_amend)),
                           child: ExcludeSemantics(
                             child: Checkbox(
                               value: _amend,
                               onChanged:
                                   session.running || snapshot?.head == null
                                   ? null
-                                  : (value) => setState(() => _amend = value!),
+                                  : (value) => unawaited(_setAmend(value!)),
                             ),
                           ),
                         ),
@@ -459,7 +532,9 @@ final class _GitCommitViewState extends State<GitCommitView> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               values: {
-                                'revision': snapshot?.head?.abbreviated ?? '',
+                                'revision': _amend
+                                    ? _amendTarget?.abbreviated ?? ''
+                                    : snapshot?.head?.abbreviated ?? '',
                               },
                             ),
                           ),
@@ -519,6 +594,15 @@ final class _GitCommitViewState extends State<GitCommitView> {
                         GitMessages
                             .rewritesTheSelectedHEADCommitRemoteTrackingCannotProveIt,
                       ),
+                    if (_amend && _amendTarget != snapshot?.head)
+                      Text(
+                        '${gitString(context, GitMessages.theRequestedRevisionIsUnavailable)} '
+                        'HEAD ${_amendTarget?.abbreviated ?? ''} → '
+                        '${snapshot?.head?.abbreviated ?? ''}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
                     if (session.draftFailure != null)
                       Text(
                         gitString(
@@ -548,8 +632,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                             border: OutlineInputBorder(),
                           ),
                           onChanged: (value) {
-                            session.setDraft(value);
-                            setState(() {});
+                            _storeMessage(value);
                           },
                         ),
                       ),
@@ -663,8 +746,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       }
       if (_message.text.isNotEmpty && !await _confirmReplace()) return;
       _message.text = template;
-      session.setDraft(template);
-      setState(() {});
+      _storeMessage(template);
     } on Object catch (error) {
       session.reportFailure(error);
     }
@@ -685,8 +767,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
     if (!mounted || value == null || _message.text != before) return;
     if (before.isNotEmpty && !await _confirmReplace()) return;
     _message.text = value;
-    session.setDraft(value);
-    setState(() {});
+    _storeMessage(value);
   }
 
   Future<void> _recent() async {
@@ -713,8 +794,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
       if (!mounted || value == null) return;
       if (_message.text.isNotEmpty && !await _confirmReplace()) return;
       _message.text = value;
-      session.setDraft(value);
-      setState(() {});
+      _storeMessage(value);
     } on Object catch (error) {
       session.reportFailure(error);
     }
@@ -743,7 +823,11 @@ final class _GitCommitViewState extends State<GitCommitView> {
     if (!_canCommit()) return;
     final snapshot = session.snapshot;
     if (snapshot == null) return;
-    final message = _message.text, revision = session.draftRevision;
+    final message = _message.text,
+        revision = session.draftRevision,
+        messageRevision = _messageRevision,
+        amending = _amend,
+        amendTarget = _amendTarget;
     final result = await session.mutate(
       CommitIndex(
         message,
@@ -762,7 +846,22 @@ final class _GitCommitViewState extends State<GitCommitView> {
     if (result.createdCommit != null &&
         result.completed &&
         result.error == null) {
-      if (_message.text == message && session.draftRevision == revision) {
+      if (amending) {
+        if (amendTarget != null) {
+          unawaited(
+            host.drafts
+                .write(_amendDraftKey(amendTarget), '')
+                .catchError((Object error) => session.reportFailure(error)),
+          );
+        }
+        if (_messageRevision != messageRevision || _message.text != message) {
+          session.setDraft(_message.text);
+        }
+        _amendGeneration++;
+        _amendTarget = null;
+        _message.text = session.draft;
+      } else if (_message.text == message &&
+          session.draftRevision == revision) {
         _message.clear();
         session.setDraft('');
       }
@@ -930,7 +1029,12 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       ..clear()
       ..add('$group:${target.path.key}');
     _collapsed.remove(group);
-    _collapsed.remove('$group/${target.path.parent}');
+    var directory = '';
+    for (final part in target.path.parent.split('/')) {
+      if (part.isEmpty) continue;
+      directory = directory.isEmpty ? part : '$directory/$part';
+      _collapsed.remove('$group/$directory');
+    }
     final index = _rows().indexWhere(
       (r) => r.key == '$group:${target.path.key}',
     );
@@ -974,29 +1078,42 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         ),
       );
       if (_collapsed.contains(group.key)) continue;
-      String? parent;
+      final seenDirectories = <String>{};
       for (final change in entries) {
-        final directory = change.path.parent;
-        if (directory.isNotEmpty && directory != parent) {
-          rows.add(
-            _ChangeRow(
-              '${group.key}/$directory',
-              directory,
-              group.key,
-              null,
-              1,
-            ),
-          );
-          parent = directory;
+        var directory = '';
+        var depth = 1;
+        var hidden = false;
+        for (final part in change.path.parent.split('/')) {
+          if (part.isEmpty) continue;
+          directory = directory.isEmpty ? part : '$directory/$part';
+          final directoryKey = '${group.key}/$directory';
+          if (!hidden && seenDirectories.add(directory)) {
+            rows.add(
+              _ChangeRow(
+                directoryKey,
+                part,
+                group.key,
+                null,
+                depth,
+                count: entries
+                    .where(
+                      (entry) => entry.path.display.startsWith('$directory/'),
+                    )
+                    .length,
+              ),
+            );
+          }
+          hidden = hidden || _collapsed.contains(directoryKey);
+          depth++;
         }
-        if (!_collapsed.contains('${group.key}/$directory'))
+        if (!hidden)
           rows.add(
             _ChangeRow(
               '${group.key}:${change.path.key}',
               change.path.basename,
               group.key,
               change,
-              directory.isEmpty ? 1 : 2,
+              depth,
             ),
           );
       }
@@ -1337,17 +1454,25 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                                     : null,
                                               ),
                                       ),
-                                      if (change != null && !change.conflicted)
+                                      if (row.group != GitMessages.conflicts &&
+                                          (change == null ||
+                                              !change.conflicted))
                                         GitIconButton(
                                           tooltip:
                                               row.group == GitMessages.staged
                                               ? gitString(
                                                   context,
-                                                  GitMessages.unstageFile,
+                                                  change == null
+                                                      ? GitMessages
+                                                            .unstageSelectedFiles
+                                                      : GitMessages.unstageFile,
                                                 )
                                               : gitString(
                                                   context,
-                                                  GitMessages.stageFile,
+                                                  change == null
+                                                      ? GitMessages
+                                                            .stageSelectedFiles
+                                                      : GitMessages.stageFile,
                                                 ),
                                           onPressed:
                                               widget.session.running ||
@@ -1515,17 +1640,44 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       return;
     final snapshot = reviewed ?? widget.session.snapshot!,
         keys = selection ?? _selected;
-    final chosen = rows
-        .where(
-          (row) =>
-              keys.contains(row.key) &&
-              row.change != null &&
-              !row.change!.conflicted &&
-              (unstage
-                  ? row.group == GitMessages.staged
-                  : row.group != GitMessages.staged),
-        )
-        .toList();
+    // Expand a selected folder or group against the reviewed snapshot, not
+    // against only the currently expanded/visible rows. The mutation still
+    // carries the snapshot and per-path content preconditions below.
+    final chosen = <_ChangeRow>[];
+    for (final group in [
+      GitMessages.staged,
+      GitMessages.unstaged,
+      GitMessages.untracked,
+    ]) {
+      if (unstage != (group == GitMessages.staged)) continue;
+      for (final change in snapshot.changes) {
+        if (change.conflicted || change.directory) continue;
+        if ((group == GitMessages.staged && !change.staged) ||
+            (group == GitMessages.unstaged && !change.unstaged) ||
+            (group == GitMessages.untracked && !change.untracked))
+          continue;
+        final path = change.path.display;
+        final selected =
+            keys.contains('$group:${change.path.key}') ||
+            keys.contains(group) ||
+            keys.any(
+              (key) =>
+                  key.startsWith('$group/') &&
+                  path.startsWith('${key.substring(group.length + 1)}/'),
+            );
+        if (selected) {
+          chosen.add(
+            _ChangeRow(
+              '$group:${change.path.key}',
+              change.path.basename,
+              group,
+              change,
+              change.path.parent.isEmpty ? 1 : 2,
+            ),
+          );
+        }
+      }
+    }
     final paths = {
       for (final row in chosen) ...[
         row.change!.path,
@@ -1620,7 +1772,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                     : GitMessages.collapseGroup
               : GitMessages.reviewDifference,
         ),
-        if (change != null && !change.conflicted)
+        if (row.group != GitMessages.conflicts &&
+            (change == null || !change.conflicted))
           GitMenuEntry(
             'stage',
             row.group == GitMessages.staged

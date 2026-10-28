@@ -71,6 +71,7 @@ void main() {
       );
       const pasted = '\uFEFFPasted prose\n';
       await tester.enterText(field, pasted);
+      await tester.pump();
       await tester.tap(find.text('Write edited result to this index entry'));
       await tester.pumpAndSettle();
       expect(client.mutations, isEmpty);
@@ -128,6 +129,7 @@ void main() {
       );
       const edited = '\uFEFFReviewed prose\r\n';
       await tester.enterText(field, edited);
+      await tester.pump();
       await tester.tap(find.text('Write edited result to this index entry'));
       await tester.pump();
       expect(
@@ -200,6 +202,7 @@ void main() {
         );
         final edited = '${removeBom ? '' : '\uFEFF'}Reviewed prose\r\n';
         await tester.enterText(editable, edited);
+        await tester.pump();
         await tester.tap(find.text('Write edited result to this index entry'));
         await tester.pumpAndSettle();
         if (removeBom) {

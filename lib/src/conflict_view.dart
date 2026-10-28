@@ -230,6 +230,8 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   @override
   GitSession get session => widget.session;
   final result = _ConflictResultController();
+  final _leftTextController = GitHighlightedTextController();
+  final _rightTextController = GitHighlightedTextController();
   final undo = UndoHistoryController();
   final resultFocus = FocusNode();
   GitContent? left, right, base, working, preview;
@@ -251,6 +253,8 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   @override
   void dispose() {
     _versionGeneration++;
+    _leftTextController.dispose();
+    _rightTextController.dispose();
     result.dispose();
     undo.dispose();
     resultFocus.dispose();
@@ -344,6 +348,38 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         preview = versions[4];
         reviewed = state;
         regions = alignedRegions;
+        _leftTextController.text = leftText;
+        _rightTextController.text = rightText;
+        _leftTextController.setHighlights([
+          for (final region in alignedRegions)
+            if (region.leftOffset != null &&
+                region.leftOffset! + region.left.length <= leftText.length &&
+                leftText.substring(
+                      region.leftOffset!,
+                      region.leftOffset! + region.left.length,
+                    ) ==
+                    region.left)
+              GitTextHighlight(
+                region.leftOffset!,
+                region.leftOffset! + region.left.length,
+                GitHighlightKind.conflict,
+              ),
+        ]);
+        _rightTextController.setHighlights([
+          for (final region in alignedRegions)
+            if (region.rightOffset != null &&
+                region.rightOffset! + region.right.length <= rightText.length &&
+                rightText.substring(
+                      region.rightOffset!,
+                      region.rightOffset! + region.right.length,
+                    ) ==
+                    region.right)
+              GitTextHighlight(
+                region.rightOffset!,
+                region.rightOffset! + region.right.length,
+                GitHighlightKind.conflict,
+              ),
+        ]);
         activeRegion = 0;
         result.regions = regions;
         result.activeRegion = 0;
@@ -547,9 +583,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
               panes: [
                 (scroll) => GitTextPane(
                   label: _sourceLabel(leftSource: true),
-                  text:
-                      left!.text ??
-                      gitString(context, GitMessages.absentPlaceholder),
+                  controller: _leftTextController,
+                  readOnly: true,
+                  semanticLabel: GitMessages.readOnlyRevisionContent,
                   scrollController: scroll,
                   revealRevision: _anchorRevision,
                   revealOffset: regions.isEmpty
@@ -559,9 +595,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 (scroll) => resultPane(scroll),
                 (scroll) => GitTextPane(
                   label: _sourceLabel(leftSource: false),
-                  text:
-                      right!.text ??
-                      gitString(context, GitMessages.absentPlaceholder),
+                  controller: _rightTextController,
+                  readOnly: true,
+                  semanticLabel: GitMessages.readOnlyRevisionContent,
                   scrollController: scroll,
                   revealRevision: _anchorRevision,
                   revealOffset: regions.isEmpty

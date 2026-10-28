@@ -11,6 +11,18 @@ final class _PolicyClient extends FixtureClient implements GitWorkflowClient {
   final String? ff;
   final inspections = <GitInspection>[];
   @override
+  Future<List<GitReference>> references(RepositoryId repository) async => [
+    for (final name in ['review/main', 'feature'])
+      GitReference(
+        name: 'refs/remotes/team/upstream/$name',
+        oid: GitOid('a' * 40),
+      ),
+    GitReference(
+      name: 'refs/remotes/my/publish/existing',
+      oid: GitOid('b' * 40),
+    ),
+  ];
+  @override
   Future<GitSnapshot> status(
     RepositoryId repository, {
     GitCancellation? cancellation,
@@ -187,13 +199,26 @@ void main() {
           tester
               .widget<DropdownButtonFormField<String>>(
                 find.byWidgetPredicate(
-                  (w) => w is DropdownButtonFormField<String>,
+                  (w) =>
+                      w is DropdownButtonFormField<String> &&
+                      w.decoration.labelText == 'Source remote',
                 ),
               )
               .initialValue,
           'team/upstream',
         );
-        expect(find.widgetWithText(TextField, 'review/main'), findsOneWidget);
+        expect(
+          tester
+              .widget<DropdownButtonFormField<String>>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is DropdownButtonFormField<String> &&
+                      widget.decoration.labelText == 'Source branch',
+                ),
+              )
+              .initialValue,
+          'review/main',
+        );
         expect(
           find.text(
             preserving
@@ -250,6 +275,72 @@ void main() {
         (client.mutations.single as PullRemote).strategy,
         PullStrategy.rebase,
       );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets('Pull source choices follow the selected remote', (tester) async {
+    final client = _PolicyClient('false');
+    final session = GitSession(client: client, repository: repo, host: host());
+    await session.start();
+    await _show(tester, GitPullView(session: session));
+    final source = find.byWidgetPredicate(
+      (widget) =>
+          widget is DropdownButtonFormField<String> &&
+          widget.decoration.labelText == 'Source branch',
+    );
+    await tester.tap(source);
+    await tester.pumpAndSettle();
+    expect(find.text('feature'), findsOneWidget);
+    await tester.tap(find.text('feature'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Pull with selected strategy'));
+    await tester.pumpAndSettle();
+    expect((client.mutations.single as PullRemote).branch, 'feature');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
+
+  testWidgets(
+    'Push selects existing destinations and invalidates prior review',
+    (tester) async {
+      final client = _PolicyClient('false');
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      tester.view.physicalSize = const Size(1400, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: GitPushView(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final destination = find.byWidgetPredicate(
+        (widget) =>
+            widget is DropdownButtonFormField<String> &&
+            widget.decoration.labelText == 'Destination reference',
+      );
+      await tester.tap(destination);
+      await tester.pumpAndSettle();
+      expect(find.text('existing'), findsOneWidget);
+      await tester.tap(find.text('existing'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Choose a destination and review the outgoing commits.'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Review destinations'));
+      await tester.pumpAndSettle();
+      expect(client.inspections.last.destination, 'refs/heads/existing');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       session.dispose();

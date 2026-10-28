@@ -180,6 +180,10 @@ abstract final class GitMessages {
   static const undo = "Undo";
   static const redo = "Redo";
   static const reloadIndexReview = "Reload index review?";
+  static const discardUnsavedIndexDraft = "Discard unsaved index draft?";
+  static const closingTheIndexEditorDiscardsOnlyItsDraft =
+      "Closing the index editor discards only its draft. The index and working file remain unchanged.";
+  static const discardIndexDraft = "Discard index draft";
   static const reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces =
       "Reload the current HEAD, index and working versions. This replaces the unsaved index editor draft.";
   static const replaceDraftAndReload = "Replace draft and reload";
@@ -1087,6 +1091,9 @@ abstract final class GitMessages {
     undo,
     redo,
     reloadIndexReview,
+    discardUnsavedIndexDraft,
+    closingTheIndexEditorDiscardsOnlyItsDraft,
+    discardIndexDraft,
     reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces,
     replaceDraftAndReload,
     reloadVersions,

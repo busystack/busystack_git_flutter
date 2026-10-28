@@ -129,3 +129,17 @@ Targets retain reviewed reference tips and resolved commit identities; preparing
 and starting a plan revalidates those references. Plan, selection and message
 preview requests have separate generations. Replaced plans and obsolete row
 callbacks cannot change the active review or retarget its repository.
+
+## Commit, Log, and comparison interaction
+
+Commit keeps its index-backed change hierarchy, message draft, and primary action
+visible while file selection drives a review of that exact comparison. Log keeps
+reference navigation separate from history filtering; its graph/table selection
+drives changed-file details and a comparison against the selected parent. File
+history follows the historical path and compares that file directly to its
+parent or current working file. Review can expand without changing the bound
+repository, content versions, or selected paths. The two-way comparison is the
+common review surface; the Index and conflict Result editors retain separate
+write targets, drafts, and preconditions. This follows the information hierarchy
+of the IntelliJ Commit, Log, diff, and conflict references while using each
+application's native presentation and Git's own index/operation state.

@@ -41,13 +41,16 @@ final class _GitLogViewState extends State<GitLogView> {
   List<GitReference> _references = [];
   List<GitChange> _files = [];
   GitCommit? _selected;
+  GitChange? _selectedFile;
+  bool _expandedDiff = false;
   final _selectedIds = <GitOid>{};
   final _tableScroll = ScrollController();
   final _tableFocus = FocusNode(debugLabel: 'Git commits');
   final _contextMenuKeys = GitContextMenuKeys();
   int _selectionAnchor = 0;
   GitOid? _parent;
-  String? _reference, _anchor;
+  String? _reference, _anchor, _navigationReference;
+  GitOid? _pendingNavigation;
   DateTime? _since, _until;
   GitException? _failure, _fileFailure;
   bool _filesLoading = false;
@@ -98,7 +101,7 @@ final class _GitLogViewState extends State<GitLogView> {
           (identity(refs) != identity(_references) ||
               _observedHead != widget.session.snapshot?.head)) {
         _observedHead = widget.session.snapshot?.head;
-        await _load();
+        await _load(preserveNavigation: true);
       }
     } on Object catch (error) {
       if (mounted)
@@ -131,21 +134,37 @@ final class _GitLogViewState extends State<GitLogView> {
     super.dispose();
   }
 
-  HistoryFilter get _filter => HistoryFilter(
-    reference: _reference,
-    author: _author.text,
-    message: _message.text,
-    since: _since,
-    until: _until,
-    path: _path.text.isEmpty ? null : RepoPath.text(_path.text),
-    follow: widget.path != null,
-  );
-  Future<void> _load({bool append = false, GitOid? reveal}) async {
+  HistoryFilter get _filter => _navigationReference != null
+      ? HistoryFilter(reference: _navigationReference)
+      : HistoryFilter(
+          reference: _reference,
+          author: _author.text,
+          message: _message.text,
+          since: _since,
+          until: _until,
+          path: _path.text.isEmpty ? null : RepoPath.text(_path.text),
+          follow: widget.path != null,
+        );
+  bool get _hasFilters =>
+      _reference != null ||
+      _message.text.isNotEmpty ||
+      _author.text.isNotEmpty ||
+      _path.text.isNotEmpty ||
+      _since != null ||
+      _until != null;
+
+  Future<void> _load({
+    bool append = false,
+    bool preserveNavigation = false,
+    GitOid? reveal,
+  }) async {
+    if (!append && !preserveNavigation) _navigationReference = null;
     final generation = ++_generation;
     setState(() {
       _loading = true;
       _failure = null;
       _navigationOutsideFilters = false;
+      if (!preserveNavigation) _pendingNavigation = null;
     });
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
@@ -220,10 +239,13 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Future<void> _select(GitCommit commit, {GitOid? parent}) async {
     final generation = ++_selectionGeneration;
+    final previousFile = _selectedFile?.path;
     setState(() {
       _selected = commit;
       _parent = parent ?? commit.parents.firstOrNull;
       _files = [];
+      _selectedFile = null;
+      _expandedDiff = false;
       _fileFailure = null;
       _filesLoading = true;
     });
@@ -236,6 +258,9 @@ final class _GitLogViewState extends State<GitLogView> {
       if (mounted && generation == _selectionGeneration)
         setState(() {
           _files = files;
+          _selectedFile = previousFile == null
+              ? null
+              : files.where((file) => file.path == previousFile).firstOrNull;
           _filesLoading = false;
         });
     } on Object catch (error) {
@@ -276,6 +301,8 @@ final class _GitLogViewState extends State<GitLogView> {
     _author.clear();
     _path.clear();
     _reference = null;
+    _navigationReference = null;
+    _pendingNavigation = null;
     _since = _until = null;
     unawaited(_load());
   }
@@ -347,6 +374,19 @@ final class _GitLogViewState extends State<GitLogView> {
           value: widget.session.split('logBranchesSplit', .20),
           onChanged: (v) => widget.session.setViewState('logBranchesSplit', v),
         );
+      if (_selectedFile != null && !_expandedDiff)
+        main = GitSplitter(
+          axis: Axis.vertical,
+          first: main,
+          second: _diffPreview(),
+          initial: .67,
+          minimum: 220,
+          minimumSecond: 200,
+          value: widget.session.split('logPreviewSplit', .67),
+          onChanged: (v) => widget.session.setViewState('logPreviewSplit', v),
+        );
+      if (_expandedDiff && _selectedFile != null)
+        main = _diffPreview(expanded: true);
       return Column(
         children: [
           Padding(
@@ -567,6 +607,17 @@ final class _GitLogViewState extends State<GitLogView> {
                       },
                     ),
                   ),
+                if (_navigationReference != null)
+                  InputChip(
+                    label: Text(
+                      gitString(
+                        context,
+                        GitMessages.referenceArg0,
+                        values: {'arg0': _navigationReference},
+                      ),
+                    ),
+                    onDeleted: () => unawaited(_load()),
+                  ),
               ],
             ),
           ),
@@ -582,6 +633,19 @@ final class _GitLogViewState extends State<GitLogView> {
                     )
                   : null,
               onRefresh: () => unawaited(_load()),
+            ),
+          if (_navigationOutsideFilters && _pendingNavigation != null)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton(
+                onPressed: () {
+                  final target = _pendingNavigation!;
+                  _pendingNavigation = null;
+                  _navigationReference = target.value;
+                  unawaited(_load(preserveNavigation: true, reveal: target));
+                },
+                child: const GitLabel(GitMessages.resetFilters),
+              ),
             ),
           Expanded(child: main),
           if (widget.onChooseCommit != null)
@@ -694,6 +758,12 @@ final class _GitLogViewState extends State<GitLogView> {
   Widget _commitTable() {
     final graph = graphRows(_commits),
         rowHeight = widget.session.host.rowHeight(context);
+    // A lane has the same horizontal coordinate in every row. Reserving the
+    // widest graph column also keeps native table insets aligned with pixels.
+    final graphWidth = graph.fold<double>(40, (width, row) {
+      final needed = row.width * 14.0 + 14;
+      return needed > width ? needed : width;
+    });
     if (!_loading && _commits.isEmpty)
       return const Center(
         child: GitLabel(GitMessages.noCommitsMatchTheCurrentFilters),
@@ -741,7 +811,10 @@ final class _GitLogViewState extends State<GitLogView> {
           rowCount: _commits.length,
           rowHeight: rowHeight,
           columns: columns,
-          headerInsets: [40, for (var i = 1; i < columns.length; i++) spacing],
+          headerInsets: [
+            graphWidth,
+            for (var i = 1; i < columns.length; i++) spacing,
+          ],
           widths: [
             bounds.maxWidth -
                 (showAuthor ? authorWidth : 0) -
@@ -760,7 +833,7 @@ final class _GitLogViewState extends State<GitLogView> {
             return GitNativeRow(
               id: commit.oid.value,
               textInsets: [
-                (graph[index].width * 14.0 + 14).clamp(40, 120),
+                graphWidth,
                 for (var i = 1; i < columns.length; i++) spacing,
               ],
               cells: [
@@ -946,8 +1019,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                   children: [
                                     ExcludeSemantics(
                                       child: SizedBox(
-                                        width: (graph[index].width * 14.0 + 14)
-                                            .clamp(40, 120),
+                                        width: graphWidth,
                                         height: rowHeight,
                                         child: CustomPaint(
                                           painter: _GraphPainter(
@@ -1171,14 +1243,21 @@ final class _GitLogViewState extends State<GitLogView> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          subtitle: file.path.parent.isEmpty
+          subtitle: file.originalPath != null
+              ? Text(
+                  '${file.originalPath!.display} → ${file.path.display}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                )
+              : file.path.parent.isEmpty
               ? null
               : Text(
                   file.path.parent,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-          onTap: () => unawaited(_diff(file)),
+          selected: _selectedFile?.path == file.path,
+          onTap: () => setState(() => _selectedFile = file),
         );
       },
     );
@@ -1303,21 +1382,62 @@ final class _GitLogViewState extends State<GitLogView> {
     );
   }
 
-  Future<void> _diff(GitChange file) => widget.session.host.present<void>(
-    context,
-    '${_parent?.abbreviated ?? GitMessages.emptyTree} → ${_selected!.oid.abbreviated}',
-    GitDiffView(
-      session: widget.session,
-      comparison: GitComparison(
-        file.path,
-        _parent == null
-            ? const ContentVersion.absent()
-            : ContentVersion(ContentKind.commit, revision: _parent),
-        ContentVersion(ContentKind.commit, revision: _selected!.oid),
-      ),
-    ),
-    expanded: true,
-  );
+  Widget _diffPreview({bool expanded = false}) {
+    final file = _selectedFile!;
+    final index = _files.indexOf(file);
+    return Column(
+      children: [
+        Row(
+          children: [
+            if (expanded)
+              TextButton.icon(
+                onPressed: () => setState(() => _expandedDiff = false),
+                icon: const GitIcon(GitGlyph.back),
+                label: const GitLabel(GitMessages.log),
+              )
+            else
+              GitIconButton(
+                tooltip: gitString(context, GitMessages.reviewDifference),
+                onPressed: () => setState(() => _expandedDiff = true),
+                icon: const GitIcon(GitGlyph.expand),
+              ),
+            Expanded(
+              child: Text(
+                '${file.originalPath == null ? file.path.display : '${file.originalPath!.display} → ${file.path.display}'} · '
+                '${_parent?.abbreviated ?? gitString(context, GitMessages.emptyTree)} → '
+                '${_selected!.oid.abbreviated}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        Expanded(
+          child: GitDiffView(
+            key: ValueKey(
+              '${_selected!.oid.value}:${_parent?.value}:${file.path.key}:${file.originalPath?.key}',
+            ),
+            session: widget.session,
+            comparison: GitComparison(
+              file.path,
+              _parent == null
+                  ? const ContentVersion.absent()
+                  : ContentVersion(ContentKind.commit, revision: _parent),
+              ContentVersion(ContentKind.commit, revision: _selected!.oid),
+              leftPath: file.originalPath,
+            ),
+            onPreviousFile: index <= 0
+                ? null
+                : () => setState(() => _selectedFile = _files[index - 1]),
+            onNextFile: index < 0 || index + 1 >= _files.length
+                ? null
+                : () => setState(() => _selectedFile = _files[index + 1]),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _menu(GitCommit commit, {Offset? position}) async {
     if (widget.onChooseCommit != null) return;
     final action = await widget.session.host.menu(
@@ -1425,9 +1545,22 @@ final class _GitLogViewState extends State<GitLogView> {
       if (!reload && existing != null) {
         setState(() => _loading = false);
         await _reveal(existing);
+      } else if (_hasFilters && _navigationReference == null) {
+        // Keep the current filtered table and selection. The user can choose
+        // to reveal the resolved object without discarding the filter fields.
+        setState(() {
+          _loading = false;
+          _pendingNavigation = target.oid;
+          _navigationOutsideFilters = true;
+          _failure = const GitException(
+            GitErrorCode.invalidRequest,
+            diagnostic: GitMessages
+                .theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
+          );
+        });
       } else {
-        _reference = value;
-        await _load(reveal: target.oid);
+        _navigationReference = target.oid.value;
+        await _load(preserveNavigation: true, reveal: target.oid);
       }
     } on Object catch (error) {
       if (mounted && generation == _generation) {
@@ -1532,7 +1665,7 @@ final class _GraphPainter extends CustomPainter {
       ..color = color
       ..strokeWidth = 1.5
       ..style = PaintingStyle.stroke;
-    double x(int lane) => (lane * 14.0 + 10).clamp(4, size.width - 4);
+    double x(int lane) => lane * 14.0 + 10;
     for (final edge in row.edges) {
       final path = Path()
         ..moveTo(x(edge.$1), edge.$3 ? size.height / 2 : 0)

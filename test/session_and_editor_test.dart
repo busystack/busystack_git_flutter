@@ -467,6 +467,7 @@ void main() {
         find.byWidgetPredicate((w) => w is TextField && !w.readOnly),
         'manual index result\n',
       );
+      await tester.pump();
       await tester.tap(find.text('Write edited result to this index entry'));
       await tester.pumpAndSettle();
       expect(client.mutations.single, isA<WriteIndex>());

@@ -7,6 +7,7 @@ import 'session.dart';
 import 'workflow_ui.dart';
 import 'history_actions.dart';
 import 'network_views.dart';
+import 'reference_picker.dart';
 
 final class GitBranchesView extends StatefulWidget {
   const GitBranchesView({super.key, required this.session, this.onOpenFolder});
@@ -470,24 +471,21 @@ final class _MergeState extends GitDialogState<GitMergeView> {
   @override
   GitSession get session => widget.session;
   late final GitSnapshot reviewed;
-  List<GitReference> refs = [];
-  GitReference? source;
+  GitRevisionTarget? source;
   MergePolicy policy = MergePolicy.fastForward;
   bool stop = false;
   @override
   void initState() {
     super.initState();
     reviewed = session.snapshot!;
-    source = widget.source;
-    unawaited(_load());
-  }
-
-  Future<void> _load() async {
-    final values = await query(
-      () => session.client.references(session.repository),
-    );
-    if (mounted && values != null)
-      setState(() => refs = values.where((e) => !e.current).toList());
+    final initial = widget.source;
+    if (initial != null)
+      source = GitRevisionTarget(
+        initial.oid,
+        initial.shortName,
+        reference: initial.name,
+        referenceTip: initial.oid,
+      );
   }
 
   @override
@@ -507,21 +505,23 @@ final class _MergeState extends GitDialogState<GitMergeView> {
         ),
       ),
       states(),
-      DropdownButtonFormField<String>(
-        initialValue: source?.name,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: gitString(context, GitMessages.sourceBranchOrTag),
-        ),
-        items: [
-          for (final ref in refs)
-            DropdownMenuItem(value: ref.name, child: Text(ref.shortName)),
-        ],
-        onChanged: loading
+      OutlinedButton.icon(
+        onPressed: loading
             ? null
-            : (name) => setState(
-                () => source = refs.firstWhere((e) => e.name == name),
-              ),
+            : () async {
+                final chosen = await gitChooseRevision(
+                  context,
+                  session,
+                  GitMessages.sourceBranchOrTag,
+                );
+                if (mounted && chosen != null) setState(() => source = chosen);
+              },
+        icon: const GitIcon(GitGlyph.branch),
+        label: Text(
+          source == null
+              ? gitString(context, GitMessages.sourceBranchOrTag)
+              : '${source!.label} · ${source!.oid.abbreviated}',
+        ),
       ),
       SizedBox(height: session.host.spacing),
       DropdownButtonFormField<MergePolicy>(
@@ -595,6 +595,22 @@ final class _MergeState extends GitDialogState<GitMergeView> {
         onPressed: loading || source == null
             ? null
             : () async {
+                if (source!.reference case final reference?) {
+                  final refs = await query(
+                    () => session.client.references(session.repository),
+                  );
+                  if (refs == null || !mounted) return;
+                  if (!refs.any(
+                    (ref) =>
+                        ref.name == reference &&
+                        ref.oid == source!.referenceTip,
+                  )) {
+                    session.reportFailure(
+                      const GitException(GitErrorCode.staleReview),
+                    );
+                    return;
+                  }
+                }
                 final result = await apply(
                   MergeRevision(
                     source!.oid,
@@ -615,7 +631,9 @@ final class _MergeState extends GitDialogState<GitMergeView> {
             context,
             GitMessages.mergeArg0IntoArg1,
             values: {
-              'arg0': source?.shortName ?? 'source',
+              'arg0':
+                  source?.label ??
+                  gitString(context, GitMessages.sourceBranchOrTag),
               'arg1': reviewed.branch ?? GitMessages.head,
             },
           ),
