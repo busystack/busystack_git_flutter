@@ -42,6 +42,17 @@ Future<List<(int, int, int)>> _backgroundSearch(
   return matches;
 });
 
+// Callers rebuild immutable comparison descriptors when surrounding panes or
+// labels change. Only actual endpoint changes retire the loaded review.
+bool _sameComparison(GitComparison a, GitComparison b) {
+  bool version(ContentVersion x, ContentVersion y) =>
+      x.kind == y.kind && x.revision == y.revision && x.stage == y.stage;
+  return a.path == b.path &&
+      (a.leftPath ?? a.path) == (b.leftPath ?? b.path) &&
+      version(a.left, b.left) &&
+      version(a.right, b.right);
+}
+
 final class GitDiffView extends StatefulWidget {
   const GitDiffView({
     super.key,
@@ -80,6 +91,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
   String? _rowSettings;
   List<(int?, int?)>? _rowCache;
   final _selected = <int>{};
+  final _scrollStorageKey = GlobalKey(debugLabel: 'Git diff vertical scroll');
+  final _leftHorizontalStorageKey = GlobalKey(
+    debugLabel: 'Git diff left scroll',
+  );
+  final _rightHorizontalStorageKey = GlobalKey(
+    debugLabel: 'Git diff right scroll',
+  );
   final _lineFocus = <int, FocusNode>{};
   final _searchMatches = <(int, int, int)>[];
   int _activeSearchMatch = -1, _searchQueryGeneration = 0;
@@ -137,7 +155,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       oldWidget.session.removeListener(_repositoryChanged);
       widget.session.addListener(_repositoryChanged);
     }
-    if (oldWidget.comparison != widget.comparison ||
+    if (!_sameComparison(oldWidget.comparison, widget.comparison) ||
         oldWidget.session != widget.session)
       unawaited(_load());
   }
@@ -1126,6 +1144,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     }
 
     final list = ListView.builder(
+      key: _scrollStorageKey,
       controller: _scroll,
       itemCount: rows.length,
       itemBuilder: (context, row) {
@@ -1216,6 +1235,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
               controller: controller,
               thumbVisibility: true,
               child: SingleChildScrollView(
+                key: identical(controller, _rightHorizontalScroll)
+                    ? _rightHorizontalStorageKey
+                    : _leftHorizontalStorageKey,
                 controller: controller,
                 scrollDirection: Axis.horizontal,
                 child: SizedBox(

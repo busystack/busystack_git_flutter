@@ -14,7 +14,7 @@ import 'native_table.dart';
 import 'operation_banner.dart';
 import 'text_undo.dart';
 
-final class GitCommitView extends StatefulWidget {
+final class GitCommitView extends StatelessWidget {
   const GitCommitView({
     super.key,
     required this.session,
@@ -40,10 +40,22 @@ final class GitCommitView extends StatefulWidget {
   final VoidCallback onLog, onBranches, onPush;
   final ValueChanged<BuildContext> onMore;
   @override
-  State<GitCommitView> createState() => _GitCommitViewState();
+  Widget build(BuildContext context) =>
+      _GitCommitSession(key: ObjectKey(session), configuration: this);
 }
 
-final class _GitCommitViewState extends State<GitCommitView> {
+// Session identity owns the editor state and every outstanding continuation.
+// Reusing the public view for another worktree creates a new binding while the
+// retired state finishes only its original operation and draft ownership.
+final class _GitCommitSession extends StatefulWidget {
+  const _GitCommitSession({super.key, required this.configuration});
+  final GitCommitView configuration;
+  @override
+  State<_GitCommitSession> createState() => _GitCommitViewState();
+}
+
+final class _GitCommitViewState extends State<_GitCommitSession> {
+  GitCommitView get view => widget.configuration;
   final _message = TextEditingController();
   bool _amend = false, _signOff = false;
   bool? _sign;
@@ -51,7 +63,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
   int _reviewGeneration = 0;
   int _amendGeneration = 0, _messageRevision = 0;
   GitOid? _amendTarget;
-  GitSession get session => widget.session;
+  GitSession get session => view.session;
   GitHost get host => session.host;
   void _leaveReview(VoidCallback action) {
     _reviewGeneration++;
@@ -225,7 +237,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
 
   @override
   Widget build(BuildContext context) => GitHostScope(
-    host: widget.session.host,
+    host: view.session.host,
     child: Builder(builder: _build),
   );
   Widget _build(BuildContext context) => LayoutBuilder(
@@ -310,7 +322,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                 inner,
                 maxLines: 1,
               )) +
-        (widget.notice == null ? 0 : row * 3) +
+        (view.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
         (session.snapshot?.capabilities.writeMetadata == false ? row * 3 : 0);
     return header +
@@ -403,7 +415,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                   children: [
                     Expanded(
                       child: TextButton.icon(
-                        onPressed: () => _leaveReview(widget.onBranches),
+                        onPressed: () => _leaveReview(view.onBranches),
                         icon: GitIcon(GitGlyph.branch, size: 16),
                         label: Text(
                           snapshot?.branch ??
@@ -423,7 +435,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     ),
                     GitIconButton(
                       tooltip: gitString(context, GitMessages.log),
-                      onPressed: () => _leaveReview(widget.onLog),
+                      onPressed: () => _leaveReview(view.onLog),
                       icon: GitIcon(GitGlyph.history, size: 18),
                     ),
                     GitIconButton(
@@ -442,7 +454,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                           GitMessages.repositoryActions,
                         ),
                         onPressed: () =>
-                            _leaveReview(() => widget.onMore(anchor)),
+                            _leaveReview(() => view.onMore(anchor)),
                         icon: const GitIcon(GitGlyph.more, size: 18),
                       ),
                     ),
@@ -501,7 +513,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
                     GitMessages
                         .readOnlyRepositoryStagingAndCommitsAreUnavailable,
                   ),
-                if (widget.notice != null) widget.notice!,
+                if (view.notice != null) view.notice!,
               ],
             ),
           ),
@@ -540,15 +552,15 @@ final class _GitCommitViewState extends State<GitCommitView> {
                       child: GitLabel(GitMessages.repositoryStatusUnavailable),
                     )
                   : GitChangeTree(
-                      active: widget.active,
+                      active: view.active,
                       reviewContext: () => (
                         _reviewGeneration,
-                        widget.reviewContext?.call(),
-                        widget.selectedComparison,
+                        view.reviewContext?.call(),
+                        view.selectedComparison,
                       ),
                       session: session,
-                      onReview: widget.onReview,
-                      selectedComparison: widget.selectedComparison,
+                      onReview: view.onReview,
+                      selectedComparison: view.selectedComparison,
                     ),
               second: Padding(
                 padding: EdgeInsets.symmetric(horizontal: host.spacing),
@@ -973,7 +985,7 @@ final class _GitCommitViewState extends State<GitCommitView> {
         ),
       );
       setState(() {});
-      if (push) widget.onPush();
+      if (push) view.onPush();
     } else if (mounted && result.createdCommit != null) {
       host.notify(
         gitString(

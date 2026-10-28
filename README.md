@@ -143,3 +143,33 @@ common review surface; the Index and conflict Result editors retain separate
 write targets, drafts, and preconditions. This follows the information hierarchy
 of the IntelliJ Commit, Log, diff, and conflict references while using each
 application's native presentation and Git's own index/operation state.
+
+## Commit/Log/comparison stabilization (2026-10-27)
+
+Baseline: core `c687625`, shared UI `fe6654e`, BusyMark `4cececc`, BusyFiles
+`93fa8a9`; all four working trees clean. Flutter is official 3.47.5 (`6a19cca`),
+Dart 3.13.4. The original SDK is read-only in this session; verification uses an
+unchanged full copy at `/tmp/busystack-git-flutter-3.47.5`. No upstream edits.
+
+Implementation order and acceptance checklist:
+
+- Stabilization: bind index/conflict region actions to exact source/draft
+  generations; make Log selection coherent; guard actual host dismissal paths;
+  isolate versioned normal/amend draft ownership; fix split-pane viewports.
+- Stage A: verify rename/parent availability, rendered graph lanes and bounded
+  navigation, keeping Go to distinct from filtering.
+- Stage B: preserve continuous review and real-index scope; finish corresponding
+  two-way navigation, branch context operations and network destination review.
+- Stage C: finish three-way index/conflict local controls, correspondence,
+  editing and dirty/stale protection using the same safe primitives.
+- Integration: pin source archives/checksums in both consumers; run final suites,
+  integrity checks and builds; inspect native captures; commit without pushing.
+
+Layout/interaction: keep Commit beside BusyMark's authoring area and BusyFiles'
+contextual workspace; retain focused operation dialogs. Diff labels, divider and
+pane viewports stay fixed while document contents scroll. Selection reviews;
+explicit stage/unstage mutates the real index. Index and conflict results are
+separate drafts with explicit Apply/Save. User dismissal consults dirty guards;
+successful operation completion closes only its owning route. Evidence belongs
+under each existing `build/git-verification` tree; checklist entries above are
+requirements, not a declaration that acceptance has passed.

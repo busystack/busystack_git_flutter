@@ -33,13 +33,36 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
   bool _compactReview = false;
   final _commitKey = GlobalKey(), _diffKey = GlobalKey();
   GitComparison? _comparison;
+  List<GitComparison> _reviewedFiles = const [];
+  int _reviewGeneration = 0;
+
+  @override
+  void didUpdateWidget(GitWorkspace oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session) {
+      _reviewGeneration++;
+      _comparison = null;
+      _reviewedFiles = const [];
+      _compactReview = false;
+      _log = false;
+      _logVisited = false;
+    }
+  }
+
   VoidCallback? _navigate(int direction) {
-    final targets = gitStatusComparisons(widget.session.snapshot);
+    final generation = _reviewGeneration;
+    final targets = _reviewedFiles;
     final index = gitComparisonIndex(targets, _comparison);
     final next = index + direction;
     return index < 0 || next < 0 || next >= targets.length
         ? null
-        : () => setState(() => _comparison = targets[next]);
+        : () {
+            if (!mounted || generation != _reviewGeneration) return;
+            setState(() {
+              _reviewGeneration++;
+              _comparison = targets[next];
+            });
+          };
   }
 
   @override
@@ -241,34 +264,49 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
     ],
   );
 
-  Widget _commitView(bool active) => GitCommitView(
-    key: _commitKey,
-    active: !_log && active,
-    reviewContext: () => (_log, _compactReview, _comparison),
-    session: widget.session,
-    selectedComparison: _comparison,
-    onReview: (comparison) => setState(() {
-      _comparison = comparison;
-      _compactReview = true;
-    }),
-    onLog: () => setState(() {
-      _log = true;
-      _logVisited = true;
-      _compactReview = false;
-    }),
-    onBranches:
-        widget.onBranches ??
-        () => GitWorkflowUi(context, widget.session).branches(),
-    onPush:
-        widget.onPush ?? () => GitWorkflowUi(context, widget.session).push(),
-    onMore: (anchor) {
-      if (widget.onMore != null) {
-        widget.onMore!();
-      } else {
-        unawaited(GitWorkflowUi(anchor, widget.session).more());
-      }
-    },
-  );
+  Widget _commitView(bool active) {
+    final session = widget.session;
+    final generation = _reviewGeneration;
+    return GitCommitView(
+      key: _commitKey,
+      active: !_log && active,
+      reviewContext: () => (_log, _compactReview, _comparison),
+      session: session,
+      selectedComparison: _comparison,
+      onReview: (comparison) {
+        if (!mounted ||
+            widget.session != session ||
+            generation != _reviewGeneration ||
+            _log)
+          return;
+        setState(() {
+          _reviewGeneration++;
+          _reviewedFiles = List.unmodifiable(
+            gitStatusComparisons(session.snapshot),
+          );
+          _comparison = comparison;
+          _compactReview = true;
+        });
+      },
+      onLog: () => setState(() {
+        _log = true;
+        _logVisited = true;
+        _compactReview = false;
+      }),
+      onBranches:
+          widget.onBranches ??
+          () => GitWorkflowUi(context, widget.session).branches(),
+      onPush:
+          widget.onPush ?? () => GitWorkflowUi(context, widget.session).push(),
+      onMore: (anchor) {
+        if (widget.onMore != null) {
+          widget.onMore!();
+        } else {
+          unawaited(GitWorkflowUi(anchor, widget.session).more());
+        }
+      },
+    );
+  }
 
   Widget _reviewView() => _comparison == null
       ? const Center(child: GitLabel(GitMessages.selectAChangeToReview))

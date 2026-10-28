@@ -46,6 +46,9 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _expandedDiff = false;
   final _selectedIds = <GitOid>{};
   final _tableScroll = ScrollController();
+  final _tableKey = GlobalKey(debugLabel: 'Git Log table');
+  final _previewKey = GlobalKey(debugLabel: 'Git Log comparison');
+  FocusNode? _previewReturnFocus;
   final _graphScroll = ScrollController();
   double _graphOffset = 0;
   final _tableFocus = FocusNode(debugLabel: 'Git commits');
@@ -430,19 +433,28 @@ final class _GitLogViewState extends State<GitLogView> {
           value: widget.session.split('logBranchesSplit', .20),
           onChanged: (v) => widget.session.setViewState('logBranchesSplit', v),
         );
-      if (_selectedFile != null && !_expandedDiff)
+      if (_selectedFile != null) {
         main = GitSplitter(
           axis: Axis.vertical,
           first: main,
-          second: _diffPreview(),
+          second: _expandedDiff ? const SizedBox.expand() : _diffPreview(),
           initial: .67,
           minimum: 220,
           minimumSecond: 200,
           value: widget.session.split('logPreviewSplit', .67),
           onChanged: (v) => widget.session.setViewState('logPreviewSplit', v),
         );
-      if (_expandedDiff && _selectedFile != null)
-        main = _diffPreview(expanded: true);
+        main = Stack(
+          fit: StackFit.expand,
+          children: [
+            Offstage(
+              offstage: _expandedDiff,
+              child: ExcludeFocus(excluding: _expandedDiff, child: main),
+            ),
+            if (_expandedDiff) _diffPreview(expanded: true),
+          ],
+        );
+      }
       return Column(
         children: [
           Padding(
@@ -969,10 +981,11 @@ final class _GitLogViewState extends State<GitLogView> {
           child: child,
         );
         return GitNativeTable(
+          key: _tableKey,
           name: gitString(context, GitMessages.gitCommits),
           description: widget.session.repository.root,
           revision: (widget.session.repository.key, _historyRevision),
-          active: widget.active,
+          active: widget.active && !_expandedDiff,
           busy: _loading,
           rowCount: _commits.length,
           rowHeight: rowHeight,
@@ -1619,7 +1632,17 @@ final class _GitLogViewState extends State<GitLogView> {
             if (expanded)
               TextButton.icon(
                 onPressed: () {
-                  if (current()) setState(() => _expandedDiff = false);
+                  if (!current()) return;
+                  setState(() => _expandedDiff = false);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!current()) return;
+                    final focus = _previewReturnFocus;
+                    if (focus?.context != null && focus!.canRequestFocus) {
+                      focus.requestFocus();
+                    } else {
+                      _tableFocus.requestFocus();
+                    }
+                  });
                 },
                 icon: const GitIcon(GitGlyph.back),
                 label: const GitLabel(GitMessages.log),
@@ -1628,7 +1651,9 @@ final class _GitLogViewState extends State<GitLogView> {
               GitIconButton(
                 tooltip: gitString(context, GitMessages.reviewDifference),
                 onPressed: () {
-                  if (current()) setState(() => _expandedDiff = true);
+                  if (!current()) return;
+                  _previewReturnFocus = FocusManager.instance.primaryFocus;
+                  setState(() => _expandedDiff = true);
                 },
                 icon: const GitIcon(GitGlyph.expand),
               ),
@@ -1645,9 +1670,7 @@ final class _GitLogViewState extends State<GitLogView> {
         ),
         Expanded(
           child: GitDiffView(
-            key: ValueKey(
-              '${session.repository.key}:${commit.oid.value}:${parent?.value}:${file.path.key}:${file.originalPath?.key}',
-            ),
+            key: _previewKey,
             session: widget.session,
             preview: !expanded,
             comparison: GitComparison(
