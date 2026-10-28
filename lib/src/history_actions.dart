@@ -615,17 +615,22 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
     unawaited(refresh());
   }
 
-  Future<void> refresh() => widget.session != _session
-      ? Future<void>.value()
-      : load(
-          GitInspection(
-            GitInspectionKind.fileHistory,
-            path: widget.path,
-            revision: widget.revision,
-            offset: offset,
-          ),
-        );
+  Future<void> refresh() {
+    if (widget.session != _session) return Future<void>.value();
+    // Retire actions immediately, before the next widget rebuild or read.
+    _reviewGeneration++;
+    return load(
+      GitInspection(
+        GitInspectionKind.fileHistory,
+        path: widget.path,
+        revision: widget.revision,
+        offset: offset,
+      ),
+    );
+  }
+
   Widget _comparison(Json row) {
+    final reviewGeneration = _reviewGeneration;
     final commit = GitCommit.fromJson(row['commit'] as Json);
     return _FileHistoryComparison(
       key: ValueKey((
@@ -636,7 +641,13 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
       session: session,
       row: row,
       parent: _parents[commit.oid],
-      onParent: (parent) => _parents[commit.oid] = parent,
+      onParent: (parent) {
+        if (mounted &&
+            widget.session == _session &&
+            reviewGeneration == _reviewGeneration) {
+          _parents[commit.oid] = parent;
+        }
+      },
     );
   }
 
@@ -657,7 +668,9 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         mounted &&
         reviewGeneration == _reviewGeneration &&
         widget.session == _session;
-    final entries = (data?['entries'] as List? ?? []).cast<Json>();
+    final entries = !loading && error == null
+        ? (data?['entries'] as List? ?? []).cast<Json>()
+        : const <Json>[];
     final selected =
         entries
             .where(
@@ -669,7 +682,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         entries.firstOrNull;
     return Column(
       children: [
-        states(),
+        states(refresh: refresh),
         Row(
           children: [
             Expanded(
@@ -682,22 +695,35 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
               ),
             ),
             TextButton(
-              onPressed: () => GitWorkflowUi(context, session).present(
-                GitMessages.blameCommittedContent,
-                GitBlameView(
-                  session: session,
-                  path: widget.path,
-                  revision: widget.revision ?? session.snapshot!.head!,
-                ),
-                expanded: true,
-              ),
+              onPressed: selected == null || selected['deleted'] == true
+                  ? null
+                  : () {
+                      if (!current()) return;
+                      GitWorkflowUi(context, session).present(
+                        GitMessages.blameCommittedContent,
+                        GitBlameView(
+                          session: session,
+                          path: RepoPath.fromJson(selected['pathAtCommit']),
+                          revision: GitCommit.fromJson(
+                            selected['commit'] as Json,
+                          ).oid,
+                        ),
+                        expanded: true,
+                      );
+                    },
               child: const GitLabel(GitMessages.blame),
             ),
           ],
         ),
         Expanded(
           child: selected == null
-              ? ListView(children: const [])
+              ? data != null && !loading && error == null
+                    ? const Center(
+                        child: GitLabel(
+                          GitMessages.noFileHistoryForThisPathAndRevision,
+                        ),
+                      )
+                    : const SizedBox.expand()
               : GitSplitter(
                   axis: Axis.vertical,
                   initial: .42,
@@ -726,8 +752,13 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                               subtitle: Text(
                                 '${commit.oid.abbreviated} · ${commit.author} · ${path.display}',
                               ),
-                              onTap: () =>
-                                  setState(() => selectedRevision = commit.oid),
+                              onTap: () {
+                                if (!current()) return;
+                                setState(() {
+                                  _reviewGeneration++;
+                                  selectedRevision = commit.oid;
+                                });
+                              },
                               trailing: GitMenuButton(
                                 host: session.host,
                                 onSelected: (action) async {
@@ -823,18 +854,20 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         Row(
           children: [
             TextButton(
-              onPressed: offset == 0
+              onPressed: loading || error != null || offset == 0
                   ? null
                   : () {
+                      if (!current()) return;
                       offset = (offset - 100).clamp(0, 1000000);
                       unawaited(refresh());
                     },
               child: const GitLabel(GitMessages.previousPage),
             ),
             TextButton(
-              onPressed: data?['hasMore'] != true
+              onPressed: loading || error != null || data?['hasMore'] != true
                   ? null
                   : () {
+                      if (!current()) return;
                       offset += 100;
                       unawaited(refresh());
                     },

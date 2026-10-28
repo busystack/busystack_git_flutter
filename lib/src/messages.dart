@@ -206,6 +206,13 @@ abstract final class GitMessages {
   static const theEditedResultChangedDuringFormatReviewReviewItAgain =
       "The edited result changed during format review. Review it again.";
   static const synchronizeScrolling = "Synchronize scrolling";
+  static const changedLine = "Changed line";
+  static const copyHeadRegionIntoIndexDraft =
+      "Copy HEAD region into index draft";
+  static const copyWorkingRegionIntoIndexDraft =
+      "Copy working region into index draft";
+  static const indexAppliedNewerDraftPreserved =
+      "The submitted draft was written to the index. Newer text is still in this editor. Reload and review the current versions before applying it.";
   static const readOnlyRevisionContent = "Read-only revision content";
   static const editableIndexContent = "Editable index content";
   static const theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters =
@@ -965,6 +972,15 @@ abstract final class GitMessages {
   static const conflictIdentity = "{path} · {kind}";
 
   static const rebaseArg0OntoArg1 = "Rebase {arg0} onto {arg1}";
+  static const updatingConflictRegions = "Updating conflict regions";
+  static const remainingConflictMarkers =
+      "Result regions with conflict markers: {count}";
+  static const ignoreLeftRegion = "Ignore left suggestion";
+  static const ignoreRightRegion = "Ignore right suggestion";
+  static const newerConflictDraftRetained =
+      "The submitted result was saved. Your newer result draft is still unsaved.";
+  static const noFileHistoryForThisPathAndRevision =
+      "No file history is available for this path and revision.";
   static const all = <String>[
     mergeInProgress,
     rebaseInProgress,
@@ -1124,6 +1140,10 @@ abstract final class GitMessages {
     writeReviewedIndexResult,
     theEditedResultChangedDuringFormatReviewReviewItAgain,
     synchronizeScrolling,
+    changedLine,
+    copyHeadRegionIntoIndexDraft,
+    copyWorkingRegionIntoIndexDraft,
+    indexAppliedNewerDraftPreserved,
     readOnlyRevisionContent,
     editableIndexContent,
     theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
@@ -1734,5 +1754,11 @@ abstract final class GitMessages {
     showAllAffectedFiles,
     graphLanes,
     rebaseArg0OntoArg1,
+    updatingConflictRegions,
+    remainingConflictMarkers,
+    ignoreLeftRegion,
+    ignoreRightRegion,
+    newerConflictDraftRetained,
+    noFileHistoryForThisPathAndRevision,
   ];
 }
