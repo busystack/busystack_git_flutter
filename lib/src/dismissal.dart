@@ -18,10 +18,18 @@ final class GitDismissalRegistry {
   });
 
   Future<bool> _check() async {
-    for (final guard in _guards.reversed.toList()) {
-      if (_guards.contains(guard) && !await guard()) return false;
+    final reviewed = <Future<bool> Function()>{};
+    while (true) {
+      final pending = _guards.reversed
+          .where((guard) => !reviewed.contains(guard))
+          .toList();
+      if (pending.isEmpty) return true;
+      for (final guard in pending) {
+        if (!_guards.contains(guard)) continue;
+        if (!await guard()) return false;
+        reviewed.add(guard);
+      }
     }
-    return true;
   }
 }
 

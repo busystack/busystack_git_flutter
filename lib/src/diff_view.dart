@@ -14,9 +14,12 @@ import 'session.dart';
 import 'text_pane.dart';
 import 'text_encoding.dart';
 import 'text_undo.dart';
+import 'text_correspondence.dart';
+import 'diff_document_selection.dart';
 import 'dismissal.dart';
 import 'workflow_ui.dart' show gitConfirm;
 export 'text_pane.dart';
+export 'text_correspondence.dart';
 
 Future<TextDiff> _backgroundDiff(String left, String right) =>
     Isolate.run(() => computeTextDiff(left, right));
@@ -27,16 +30,16 @@ Future<List<(int, int, int)>> _backgroundSearch(
   List<String> lines,
   String query,
 ) => Isolate.run(() {
-  final matches = <(int, int, int)>[], needle = query.toLowerCase();
+  final matches = <(int, int, int)>[];
+  final literal = RegExp(
+    RegExp.escape(query),
+    caseSensitive: false,
+    unicode: true,
+  );
   for (var line = 0; line < lines.length; line++) {
-    final text = lines[line].toLowerCase();
-    var start = 0;
-    while (start < text.length) {
-      final match = text.indexOf(needle, start);
-      if (match < 0) break;
-      matches.add((line, match, match + needle.length));
+    for (final match in literal.allMatches(lines[line])) {
+      matches.add((line, match.start, match.end));
       if (matches.length > 10000) return matches;
-      start = match + needle.length;
     }
   }
   return matches;
@@ -100,6 +103,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
   );
   final _lineFocus = <int, FocusNode>{};
   final _searchMatches = <(int, int, int)>[];
+  final _searchMatchesByLine = <int, List<(int, int)>>{};
   int _activeSearchMatch = -1, _searchQueryGeneration = 0;
   bool _searchLoading = false, _matchesLimited = false;
   GitException? _searchFailure;
@@ -192,6 +196,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       _textKeys.clear();
       _difference = -1;
       _searchMatches.clear();
+      _searchMatchesByLine.clear();
       _activeSearchMatch = -1;
       _searchLoading = false;
     });
@@ -307,6 +312,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final query = _search.text;
     setState(() {
       _searchMatches.clear();
+      _searchMatchesByLine.clear();
       _activeSearchMatch = -1;
       _matchesLimited = false;
       _searchFailure = null;
@@ -343,6 +349,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
       if (!current()) return;
       setState(() {
         _searchMatches.addAll(matches.take(10000));
+        for (final match in _searchMatches) {
+          _searchMatchesByLine.putIfAbsent(match.$1, () => []).add((
+            match.$2,
+            match.$3,
+          ));
+        }
         _matchesLimited = matches.length > 10000;
         _activeSearchMatch = _searchMatches.isEmpty ? -1 : 0;
         _searchLoading = false;
@@ -877,6 +889,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               ),
             ),
           Row(
+            textDirection: TextDirection.ltr,
             children: [
               Expanded(child: _label(_left!)),
               Expanded(child: _label(_right!)),
@@ -922,25 +935,28 @@ final class _GitDiffViewState extends State<GitDiffView> {
     );
   }
 
-  Widget _label(GitContent content) => Padding(
-    padding: const EdgeInsets.all(6),
-    child: Text(
-      gitString(
-        context,
-        GitMessages.arg0Arg1Arg2BytesArg3,
-        values: {
-          'arg0': gitVersionLabel(context, content.version),
-          'arg1': content.mode,
-          'arg2': content.size,
-          'arg3': content.bytes.isNotEmpty && content.bytes.last != 10
-              ? gitString(context, GitMessages.noFinalNewline)
-              : '',
-        },
+  Widget _label(GitContent content) {
+    final label = gitString(
+      context,
+      GitMessages.arg0Arg1Arg2BytesArg3,
+      values: {
+        'arg0': gitVersionLabel(context, content.version),
+        'arg1': '\u2066${content.path.display}\u2069 · ${content.mode}',
+        'arg2': content.size,
+        'arg3': content.bytes.isNotEmpty && content.bytes.last != 10
+            ? gitString(context, GitMessages.noFinalNewline)
+            : '',
+      },
+    );
+    return Tooltip(
+      message: label,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
       ),
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-    ),
-  );
+    );
+  }
+
   Widget _nonText() {
     final generation = _generation;
     return Center(
@@ -1111,7 +1127,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       final kind = edit?.kind ?? TextEditKind.equal;
       return Semantics(
         selected: index != null && _selected.contains(index),
-        label: changed
+        label: changed && _canStage
             ? gitString(
                 context,
                 GitMessages.arg0ChangedLine,
@@ -1121,7 +1137,10 @@ final class _GitDiffViewState extends State<GitDiffView> {
                       : gitString(context, GitMessages.stage),
                 },
               )
-            : gitString(context, GitMessages.context),
+            : gitString(
+                context,
+                changed ? GitMessages.changedLine : GitMessages.context,
+              ),
         child: ColoredBox(
           color: _lineColor(index),
           child: ConstrainedBox(
@@ -1137,6 +1156,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   : null,
               horizontal: right ? _rightHorizontalScroll : _horizontalScroll,
               editIndex: index,
+              copyLine: index == null
+                  ? null
+                  : _unified
+                  ? index
+                  : (right ? edit!.newLine! : edit!.oldLine!) - 1,
             ),
           ),
         ),
@@ -1167,21 +1191,26 @@ final class _GitDiffViewState extends State<GitDiffView> {
           key: _rowKeys.putIfAbsent(row, GlobalKey.new),
           children: [
             if (gap)
-              TextButton(
-                onPressed: () => setState(() => _collapse = false),
-                child: const GitLabel(GitMessages.expandUnchangedContext),
+              SelectionContainer.disabled(
+                child: TextButton(
+                  onPressed: () => setState(() => _collapse = false),
+                  child: const GitLabel(GitMessages.expandUnchangedContext),
+                ),
               ),
             if (_canStage &&
                 changed &&
                 (first == 0 || edits[first - 1].kind == TextEditKind.equal))
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: () => unawaited(_applySelection(generation, hunk)),
-                  child: Text(
-                    _unstage
-                        ? gitString(context, GitMessages.unstageThisHunk)
-                        : gitString(context, GitMessages.stageThisHunk),
+                child: SelectionContainer.disabled(
+                  child: TextButton(
+                    onPressed: () =>
+                        unawaited(_applySelection(generation, hunk)),
+                    child: Text(
+                      _unstage
+                          ? gitString(context, GitMessages.unstageThisHunk)
+                          : gitString(context, GitMessages.stageThisHunk),
+                    ),
                   ),
                 ),
               ),
@@ -1190,6 +1219,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
             else
               IntrinsicHeight(
                 child: Row(
+                  textDirection: TextDirection.ltr,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: cell(left, right, false)),
@@ -1202,7 +1232,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
         );
       },
     );
-    if (_wrap) return SelectionArea(child: list);
+    if (_wrap)
+      return GitDiffDocumentSelection(
+        diff: _diff!,
+        unified: _unified,
+        child: list,
+      );
     // The vertical list remains bounded and row-aligned. Each fixed pane has
     // one document scrollbar; its offset is used by every visible content row.
     // Neither the divider nor the opposite viewport is part of that surface.
@@ -1250,7 +1285,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
         );
     return Column(
       children: [
-        Expanded(child: SelectionArea(child: list)),
+        Expanded(
+          child: GitDiffDocumentSelection(
+            diff: _diff!,
+            unified: _unified,
+            child: list,
+          ),
+        ),
         if (_unified)
           scrollbar(
             _horizontalScroll,
@@ -1259,6 +1300,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           )
         else
           Row(
+            textDirection: TextDirection.ltr,
             children: [
               Expanded(
                 child: scrollbar(
@@ -1378,26 +1420,35 @@ final class _GitDiffViewState extends State<GitDiffView> {
     String? counterpart, {
     required ScrollController horizontal,
     required int? editIndex,
+    required int? copyLine,
   }) {
     final generation = _generation;
-    final shown = text.endsWith('\n')
+    final shown = text.endsWith('\r\n')
+        ? text.substring(0, text.length - 2)
+        : text.endsWith('\n')
         ? text.substring(0, text.length - 1)
         : text;
     final style = Theme.of(
       context,
     ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
-    final content = Text.rich(
-      key: editIndex == null
-          ? null
-          : _textKeys.putIfAbsent((
-              editIndex,
-              identical(horizontal, _rightHorizontalScroll),
-            ), GlobalKey.new),
-      TextSpan(children: _wordSpans(shown, counterpart, kind, editIndex)),
-      style: style,
-      softWrap: _wrap,
+    final content = GitDiffCopyText(
+      line: copyLine,
+      right: !_unified && identical(horizontal, _rightHorizontalScroll),
+      child: Text.rich(
+        key: editIndex == null
+            ? null
+            : _textKeys.putIfAbsent((
+                editIndex,
+                identical(horizontal, _rightHorizontalScroll),
+              ), GlobalKey.new),
+        TextSpan(children: _wordSpans(shown, counterpart, kind, editIndex)),
+        style: style,
+        softWrap: _wrap,
+        textDirection: TextDirection.ltr,
+      ),
     );
     Widget gutter = Row(
+      textDirection: TextDirection.ltr,
       mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
@@ -1482,9 +1533,10 @@ final class _GitDiffViewState extends State<GitDiffView> {
       );
     }
     return Row(
+      textDirection: TextDirection.ltr,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        gutter,
+        SelectionContainer.disabled(child: gutter),
         Expanded(
           child: _wrap
               ? content
@@ -1577,36 +1629,54 @@ final class _GitDiffViewState extends State<GitDiffView> {
   }
 
   List<InlineSpan> _highlight(String value, TextStyle? style, int? editIndex) {
-    final search = _search.text;
-    if (search.isEmpty) return [TextSpan(text: value)];
-    final spans = <InlineSpan>[];
-    var start = 0;
-    while (start < value.length) {
-      final index = value.toLowerCase().indexOf(search.toLowerCase(), start);
-      if (index < 0) {
-        spans.add(TextSpan(text: value.substring(start)));
-        break;
+    final matches = _searchMatchesByLine[editIndex];
+    if (_search.text.isEmpty || matches == null || matches.isEmpty)
+      return [TextSpan(text: value)];
+    final active =
+        _activeSearchMatch >= 0 &&
+            _searchMatches[_activeSearchMatch].$1 == editIndex
+        ? _searchMatches[_activeSearchMatch]
+        : null;
+    var first = 0;
+    if (active != null) {
+      var low = 0, high = matches.length;
+      while (low < high) {
+        final middle = (low + high) ~/ 2;
+        if (matches[middle].$1 < active.$2) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
       }
-      spans.add(TextSpan(text: value.substring(start, index)));
-      final active =
-          _activeSearchMatch >= 0 &&
-          _searchMatches[_activeSearchMatch].$1 == editIndex &&
-          _searchMatches[_activeSearchMatch].$2 == index;
+      first = math.max(0, low - 128);
+    }
+    // A single Markdown paragraph may contain thousands of matches. Paint a
+    // bounded neighborhood around the current match; navigation still indexes
+    // every retained match, using original UTF-16 positions from the worker.
+    final last = math.min(matches.length, first + 256), spans = <InlineSpan>[];
+    var offset = 0;
+    for (var index = first; index < last; index++) {
+      final (start, end) = matches[index];
+      if (start < offset || end > value.length) continue;
+      if (start > offset)
+        spans.add(TextSpan(text: value.substring(offset, start)));
+      final current = active != null && active.$2 == start && active.$3 == end;
       spans.add(
         TextSpan(
-          text: value.substring(index, index + search.length),
+          text: value.substring(start, end),
           style: TextStyle(
-            backgroundColor: active
+            backgroundColor: current
                 ? Theme.of(context).colorScheme.secondaryContainer
                 : Theme.of(context).colorScheme.tertiaryContainer,
-            decoration: active ? TextDecoration.underline : null,
-            fontWeight: active ? FontWeight.bold : null,
+            decoration: current ? TextDecoration.underline : null,
+            fontWeight: current ? FontWeight.bold : null,
           ),
         ),
       );
-
-      start = index + search.length;
+      offset = end;
     }
+    if (offset < value.length)
+      spans.add(TextSpan(text: value.substring(offset)));
     return spans;
   }
 
@@ -1824,13 +1894,22 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   final _workingText = GitHighlightedTextController();
   final _undo = UndoHistoryController();
   final _regions = <_IndexRegion>[];
+  final _paneGeometry = List.generate(3, (_) => GitTextPaneGeometry());
+  GitTextCorrespondence? _headMap, _workingMap;
+  final _revealOffsets = List<int?>.filled(3, null);
   Timer? _regionTimer;
   int _loadGeneration = 0, _regionGeneration = 0, _activeRegion = 0;
-  int _anchorRevision = 0, _draftRevision = 0;
+  int _anchorRevision = 0, _draftRevision = 0, _correspondenceRevision = 0;
   _IndexRegionReview? _regionReview;
+  _AppliedIndexReview? _appliedReview;
+  bool _reviewingSavedIndex = false;
   String? _lastResultText;
+  String _draftBaseline = '';
   bool _saving = false, _dirty = false, _regionsLoading = false;
-  bool _stale = false, _allowClose = false;
+  bool _stale = false,
+      _allowClose = false,
+      _navigationStarted = false,
+      _appliedNewerDraft = false;
   @override
   void initState() {
     super.initState();
@@ -1890,7 +1969,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     // Controller notifications are synchronous. Invalidate offsets before even
     // an already-mounted button callback can observe the new draft.
     _invalidateRegions();
-    setState(() => _dirty = _result.text != (_index?.text ?? ''));
+    setState(() => _dirty = _result.text != _draftBaseline);
     _regionTimer = Timer(
       const Duration(milliseconds: 120),
       () => unawaited(_computeRegions()),
@@ -1901,6 +1980,8 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     _regionTimer?.cancel();
     _regionGeneration++;
     _regionReview = null;
+    _headMap = _workingMap = null;
+    _revealOffsets.fillRange(0, 3, null);
     _regions.clear();
     _regionsLoading = true;
     _headText.setHighlights(const []);
@@ -1941,11 +2022,22 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     );
     setState(() => _regionsLoading = true);
     try {
-      final compute = widget.computeDiff ?? _backgroundDiff;
-      final diffs = await Future.wait([
+      final testCompute = widget.computeDiff;
+      Future<GitTextCorrespondence> compute(String left, String right) async {
+        if (testCompute == null)
+          return GitTextCorrespondence.compute(left, right);
+        return GitTextCorrespondence(
+          await testCompute(left, right),
+          left,
+          right,
+        );
+      }
+
+      final maps = await Future.wait([
         compute(head, index),
         compute(index, working),
       ]);
+      final diffs = [maps[0].diff, maps[1].diff];
       if (!_isCurrentRegionReview(review)) return;
       final staged = _indexRegions(
         diffs[0],
@@ -1959,8 +2051,12 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         working,
         GitHighlightKind.unstaged,
       );
+      final headMap = maps[0], workingMap = maps[1];
       setState(() {
         _regionReview = review;
+        _headMap = headMap;
+        _workingMap = workingMap;
+        _correspondenceRevision++;
         _regions
           ..clear()
           ..addAll(
@@ -2007,10 +2103,73 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     }
   }
 
+  int? _mapPaneOffset(
+    _IndexRegionReview? review,
+    int source,
+    int target,
+    int offset,
+  ) {
+    if (review == null ||
+        !identical(review, _regionReview) ||
+        !_isCurrentRegionReview(review) ||
+        _headMap == null ||
+        _workingMap == null)
+      return null;
+    final index = switch (source) {
+      0 => _headMap!.forward(offset),
+      2 => _workingMap!.reverse(offset),
+      _ => offset,
+    };
+    return switch (target) {
+      0 => _headMap!.reverse(index),
+      2 => _workingMap!.forward(index),
+      _ => index,
+    };
+  }
+
+  List<GitTextPaneAction> _sourceActions(GitHighlightKind kind) {
+    final review = _regionReview;
+    if (review == null ||
+        _saving ||
+        _regionsLoading ||
+        !_isCurrentRegionReview(review))
+      return const [];
+    return [
+      for (final region in _regions.where((region) => region.kind == kind))
+        GitTextPaneAction(
+          start: region.sourceStart,
+          end: region.sourceEnd,
+          label: kind == GitHighlightKind.staged
+              ? GitMessages.copyHeadRegionIntoIndexDraft
+              : GitMessages.copyWorkingRegionIntoIndexDraft,
+          glyph: kind == GitHighlightKind.staged
+              ? GitGlyph.next
+              : GitGlyph.previous,
+          onInvoke: _regionAction(region),
+        ),
+    ];
+  }
+
+  VoidCallback? _activeTransfer(GitHighlightKind kind) {
+    if (_regions.isEmpty || _regions[_activeRegion].kind != kind) return null;
+    return _regionAction(_regions[_activeRegion]);
+  }
+
   void _navigateRegion(int direction) {
     if (_regions.isEmpty) return;
     setState(() {
-      _activeRegion = (_activeRegion + direction) % _regions.length;
+      _activeRegion = !_navigationStarted
+          ? (direction > 0 ? 0 : _regions.length - 1)
+          : (_activeRegion + direction) % _regions.length;
+      _navigationStarted = true;
+      final region = _regions[_activeRegion];
+      _revealOffsets[0] = region.kind == GitHighlightKind.staged
+          ? region.sourceStart
+          : _headMap?.reverse(region.indexStart);
+      _revealOffsets[1] = region.indexStart;
+      _revealOffsets[2] = region.kind == GitHighlightKind.unstaged
+          ? region.sourceStart
+          : _workingMap?.forward(region.indexStart);
       _anchorRevision++;
     });
   }
@@ -2022,16 +2181,11 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         !_isCurrentRegionReview(review) ||
         !_regions.contains(region))
       return;
-    final next = _result.text.replaceRange(
-      region.indexStart,
-      region.indexEnd,
+    _navigationStarted = true;
+    _activeRegion = _regions.indexOf(region);
+    _result.value = _result.value.replaced(
+      TextRange(start: region.indexStart, end: region.indexEnd),
       region.replacement,
-    );
-    _result.value = TextEditingValue(
-      text: next,
-      selection: TextSelection.collapsed(
-        offset: region.indexStart + region.replacement.length,
-      ),
     );
     _anchorRevision++;
   }
@@ -2041,7 +2195,23 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     return review == null ? null : () => _transferRegion(review, region);
   }
 
-  Future<void> _load() async {
+  Future<void> _reviewSavedIndex(_AppliedIndexReview applied) async {
+    if (_saving || _reviewingSavedIndex || !_ownsAppliedReview(applied)) return;
+    setState(() => _reviewingSavedIndex = true);
+    try {
+      await _load(applied: applied);
+    } finally {
+      if (mounted) setState(() => _reviewingSavedIndex = false);
+    }
+  }
+
+  bool _ownsAppliedReview(_AppliedIndexReview applied) =>
+      identical(applied, _appliedReview) &&
+      identical(applied.session, widget.session) &&
+      applied.path == widget.path &&
+      applied.snapshot.repository.key == widget.session.repository.key;
+
+  Future<void> _load({_AppliedIndexReview? applied}) async {
     final generation = ++_loadGeneration;
     _invalidateRegions();
     _draftRevision++;
@@ -2049,7 +2219,16 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     try {
       final snapshot = await session.readStatus();
       if (!mounted || generation != _loadGeneration) return;
+      if (applied != null &&
+          (!_ownsAppliedReview(applied) ||
+              !applied.matchesSnapshot(snapshot))) {
+        throw const GitException(
+          GitErrorCode.staleReview,
+          diagnostic: GitMessages.indexSourcesChangedSinceApply,
+        );
+      }
       final headPath =
+          applied?.head.path ??
           snapshot.changes
               .where((e) => e.path == path && e.index == 'R')
               .firstOrNull
@@ -2076,8 +2255,19 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       ]);
       final after = await session.readStatus();
       if (!mounted || generation != _loadGeneration) return;
-      if (after.token != snapshot.token) {
+      if (after.token != snapshot.token ||
+          !identical(session, widget.session) ||
+          path != widget.path) {
         throw const GitException(GitErrorCode.staleReview);
+      }
+      if (applied != null &&
+          (!_ownsAppliedReview(applied) ||
+              !applied.matchesSnapshot(after) ||
+              !applied.matchesContent(values))) {
+        throw const GitException(
+          GitErrorCode.staleReview,
+          diagnostic: GitMessages.indexSourcesChangedSinceApply,
+        );
       }
       if (values.any(
         (value) =>
@@ -2094,10 +2284,23 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         _working = values[2];
         _headText.text = _head!.text ?? '';
         _workingText.text = _working!.text ?? '';
-        _lastResultText = _index!.text ?? '';
-        _result.text = _index!.text ?? '';
-        _dirty = false;
+        _draftBaseline = _index!.text ?? '';
+        // Only an explicit reload replaces text. Reviewing our own completed
+        // Apply keeps the current editing value, Undo history and composition,
+        // including text entered while these source reads were outstanding.
+        _regionTimer?.cancel();
+        if (applied == null) {
+          _lastResultText = _draftBaseline;
+          _result.text = _draftBaseline;
+        } else {
+          _lastResultText = _result.text;
+        }
+        _dirty = _result.text != _draftBaseline;
         _stale = false;
+        _failure = null;
+        _navigationStarted = false;
+        _appliedNewerDraft = false;
+        _appliedReview = null;
       });
       unawaited(_computeRegions());
     } on Object catch (error) {
@@ -2122,231 +2325,274 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       );
     if (_snapshot == null)
       return const Center(child: CircularProgressIndicator());
+    final _regionReviewForBuild = _regionReview;
     return GitDraftGuard(
       host: widget.session.host,
       canDismiss: _allowClose || (!_dirty && !_saving),
       confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
-      child: Column(
-        children: [
-          Text(
-            '${_snapshot!.repository.root} · ${_reviewPath!.display}',
-            maxLines: 2,
-          ),
-          if (_saving)
-            LinearProgressIndicator(
-              semanticsLabel: gitString(
-                context,
-                GitMessages.writingReviewedIndexResult,
-              ),
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.f7): () =>
+              _navigateRegion(1),
+          const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
+              _navigateRegion(-1),
+          if (_activeTransfer(GitHighlightKind.staged) case final transfer?)
+            const SingleActivator(
+              LogicalKeyboardKey.arrowRight,
+              control: true,
+              alt: true,
+            ): transfer,
+          if (_activeTransfer(GitHighlightKind.unstaged) case final transfer?)
+            const SingleActivator(
+              LogicalKeyboardKey.arrowLeft,
+              control: true,
+              alt: true,
+            ): transfer,
+        },
+        child: Column(
+          children: [
+            Text(
+              '${_snapshot!.repository.root} · ${_reviewPath!.display}',
+              maxLines: 2,
             ),
-          if (_stale)
-            const GitLabel(
-              GitMessages
-                  .theReviewedIndexOrWorkingContentChangedRefreshThisComparison,
-            ),
-          if (_failure != null)
-            Flexible(
-              child: SingleChildScrollView(
-                child: GitFailurePanel(error: _failure!),
+            if (_saving)
+              LinearProgressIndicator(
+                semanticsLabel: gitString(
+                  context,
+                  GitMessages.writingReviewedIndexResult,
+                ),
               ),
-            ),
-          Wrap(
-            spacing: widget.session.host.spacing,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              GitLabel(
-                GitMessages.groupCount,
-                values: {
-                  'group': gitString(context, GitMessages.staged),
-                  'count': _regions
-                      .where((r) => r.kind == GitHighlightKind.staged)
-                      .length,
-                },
-              ),
-              GitLabel(
-                GitMessages.groupCount,
-                values: {
-                  'group': gitString(context, GitMessages.unstaged),
-                  'count': _regions
-                      .where((r) => r.kind == GitHighlightKind.unstaged)
-                      .length,
-                },
-              ),
-              if (_dirty) const GitLabel(GitMessages.dirty),
-              GitIconButton(
-                tooltip: gitString(context, GitMessages.previousDifference),
-                onPressed: _regions.isEmpty ? null : () => _navigateRegion(-1),
-                icon: const GitIcon(GitGlyph.up),
-              ),
-              GitIconButton(
-                tooltip: gitString(context, GitMessages.nextDifference),
-                onPressed: _regions.isEmpty ? null : () => _navigateRegion(1),
-                icon: const GitIcon(GitGlyph.down),
-              ),
+            if (_appliedNewerDraft)
+              const GitLabel(GitMessages.indexAppliedNewerDraftPreserved),
+            if (_appliedReview case final applied?)
               TextButton(
                 onPressed:
-                    _regions.isEmpty ||
-                        _saving ||
-                        _regionsLoading ||
-                        _regions[_activeRegion].kind != GitHighlightKind.staged
+                    _saving ||
+                        _reviewingSavedIndex ||
+                        !_ownsAppliedReview(applied)
                     ? null
-                    : _regionAction(_regions[_activeRegion]),
-                child: const GitLabel(GitMessages.unstageThisHunk),
+                    : () => unawaited(_reviewSavedIndex(applied)),
+                child: const GitLabel(GitMessages.reviewSavedIndexAndKeepDraft),
               ),
-              TextButton(
-                onPressed:
-                    _regions.isEmpty ||
-                        _saving ||
-                        _regionsLoading ||
-                        _regions[_activeRegion].kind !=
-                            GitHighlightKind.unstaged
-                    ? null
-                    : _regionAction(_regions[_activeRegion]),
-                child: const GitLabel(GitMessages.stageThisHunk),
+            if (_stale)
+              const GitLabel(
+                GitMessages
+                    .theReviewedIndexOrWorkingContentChangedRefreshThisComparison,
               ),
-            ],
-          ),
-          Expanded(
-            child: GitRevisionPanes(
-              labels: const [
-                GitMessages.head,
-                GitMessages.index,
-                GitMessages.workingTree,
-              ],
-              anchorRevision: _anchorRevision,
-              panes: [
-                (scroll) => GitTextPane(
-                  label: gitString(
-                    context,
-                    GitMessages.headArg0,
-                    values: {
-                      'arg0':
-                          _snapshot!.head?.abbreviated ??
-                          gitString(context, GitMessages.unborn),
-                    },
-                  ),
-                  controller: _headText,
-                  readOnly: true,
-                  semanticLabel: GitMessages.readOnlyRevisionContent,
-                  scrollController: scroll,
-                  revealRevision: _anchorRevision,
-                  revealOffset:
+            if (_failure != null)
+              Flexible(
+                child: SingleChildScrollView(
+                  child: GitFailurePanel(error: _failure!),
+                ),
+              ),
+            Wrap(
+              spacing: widget.session.host.spacing,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                GitLabel(
+                  GitMessages.groupCount,
+                  values: {
+                    'group': gitString(context, GitMessages.staged),
+                    'count': _regions
+                        .where((r) => r.kind == GitHighlightKind.staged)
+                        .length,
+                  },
+                ),
+                GitLabel(
+                  GitMessages.groupCount,
+                  values: {
+                    'group': gitString(context, GitMessages.unstaged),
+                    'count': _regions
+                        .where((r) => r.kind == GitHighlightKind.unstaged)
+                        .length,
+                  },
+                ),
+                if (_dirty) const GitLabel(GitMessages.dirty),
+                GitIconButton(
+                  tooltip: gitString(context, GitMessages.previousDifference),
+                  onPressed: _regions.isEmpty
+                      ? null
+                      : () => _navigateRegion(-1),
+                  icon: const GitIcon(GitGlyph.up),
+                ),
+                GitIconButton(
+                  tooltip: gitString(context, GitMessages.nextDifference),
+                  onPressed: _regions.isEmpty ? null : () => _navigateRegion(1),
+                  icon: const GitIcon(GitGlyph.down),
+                ),
+                TextButton(
+                  onPressed:
                       _regions.isEmpty ||
+                          _saving ||
+                          _regionsLoading ||
                           _regions[_activeRegion].kind !=
                               GitHighlightKind.staged
                       ? null
-                      : _regions[_activeRegion].sourceStart,
+                      : _regionAction(_regions[_activeRegion]),
+                  child: const GitLabel(GitMessages.unstageThisHunk),
                 ),
-                (scroll) => GitTextPane(
-                  label: gitString(context, GitMessages.indexEditableUTF8Blob),
-                  controller: _result,
-                  readOnly: _saving,
-                  undoController: _undo,
-                  scrollController: scroll,
-                  revealRevision: _anchorRevision,
-                  revealOffset: _regions.isEmpty
-                      ? null
-                      : _regions[_activeRegion].indexStart,
-                ),
-                (scroll) => GitTextPane(
-                  label: gitVersionLabel(context, _working!.version),
-                  controller: _workingText,
-                  readOnly: true,
-                  semanticLabel: GitMessages.readOnlyRevisionContent,
-                  scrollController: scroll,
-                  revealRevision: _anchorRevision,
-                  revealOffset:
+                TextButton(
+                  onPressed:
                       _regions.isEmpty ||
+                          _saving ||
+                          _regionsLoading ||
                           _regions[_activeRegion].kind !=
                               GitHighlightKind.unstaged
                       ? null
-                      : _regions[_activeRegion].sourceStart,
+                      : _regionAction(_regions[_activeRegion]),
+                  child: const GitLabel(GitMessages.stageThisHunk),
                 ),
               ],
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(widget.session.host.spacing),
-            child: Wrap(
-              spacing: widget.session.host.spacing,
-              children: [
-                ListenableBuilder(
-                  listenable: _undo,
-                  builder: (context, _) => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      TextButton(
-                        onPressed: _saving || !_undo.value.canUndo
-                            ? null
-                            : _undo.undo,
-                        child: const GitLabel(GitMessages.undo),
-                      ),
-                      TextButton(
-                        onPressed: _saving || !_undo.value.canRedo
-                            ? null
-                            : _undo.redo,
-                        child: const GitLabel(GitMessages.redo),
-                      ),
-                    ],
-                  ),
+            Expanded(
+              child: GitRevisionPanes(
+                geometry: _paneGeometry,
+                mapOffset: (source, target, offset) => _mapPaneOffset(
+                  _regionReviewForBuild,
+                  source,
+                  target,
+                  offset,
                 ),
-                TextButton(
-                  onPressed: _saving
-                      ? null
-                      : () async {
-                          if (_result.text != (_index!.text ?? '') &&
-                              await widget.session.host.present<bool>(
-                                    context,
-                                    GitMessages.reloadIndexReview,
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const GitLabel(
-                                          GitMessages
-                                              .reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces,
-                                        ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.of(context).pop(true),
-                                          child: const GitLabel(
-                                            GitMessages.replaceDraftAndReload,
+                correspondenceRevision: _correspondenceRevision,
+                labels: const [
+                  GitMessages.head,
+                  GitMessages.index,
+                  GitMessages.workingTree,
+                ],
+                anchorRevision: _anchorRevision,
+                panes: [
+                  (scroll) => GitTextPane(
+                    geometry: _paneGeometry[0],
+                    regionActions: _sourceActions(GitHighlightKind.staged),
+                    minimumActionColumns: 1,
+                    label: gitString(
+                      context,
+                      GitMessages.headArg0,
+                      values: {
+                        'arg0':
+                            _snapshot!.head?.abbreviated ??
+                            gitString(context, GitMessages.unborn),
+                      },
+                    ),
+                    controller: _headText,
+                    readOnly: true,
+                    semanticLabel: GitMessages.readOnlyRevisionContent,
+                    scrollController: scroll,
+                    revealRevision: _anchorRevision,
+                    revealOffset: _revealOffsets[0],
+                  ),
+                  (scroll) => GitTextPane(
+                    geometry: _paneGeometry[1],
+                    label: gitString(
+                      context,
+                      GitMessages.indexEditableUTF8Blob,
+                    ),
+                    controller: _result,
+                    readOnly: _saving,
+                    undoController: _undo,
+                    scrollController: scroll,
+                    revealRevision: _anchorRevision,
+                    revealOffset: _revealOffsets[1],
+                  ),
+                  (scroll) => GitTextPane(
+                    geometry: _paneGeometry[2],
+                    regionActions: _sourceActions(GitHighlightKind.unstaged),
+                    minimumActionColumns: 1,
+                    label: gitVersionLabel(context, _working!.version),
+                    controller: _workingText,
+                    readOnly: true,
+                    semanticLabel: GitMessages.readOnlyRevisionContent,
+                    scrollController: scroll,
+                    revealRevision: _anchorRevision,
+                    revealOffset: _revealOffsets[2],
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.all(widget.session.host.spacing),
+              child: Wrap(
+                spacing: widget.session.host.spacing,
+                children: [
+                  ListenableBuilder(
+                    listenable: _undo,
+                    builder: (context, _) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: _saving || !_undo.value.canUndo
+                              ? null
+                              : _undo.undo,
+                          child: const GitLabel(GitMessages.undo),
+                        ),
+                        TextButton(
+                          onPressed: _saving || !_undo.value.canRedo
+                              ? null
+                              : _undo.redo,
+                          child: const GitLabel(GitMessages.redo),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _saving || _reviewingSavedIndex
+                        ? null
+                        : () async {
+                            if (_saving || _reviewingSavedIndex) return;
+                            if (_result.text != (_index!.text ?? '') &&
+                                await widget.session.host.present<bool>(
+                                      context,
+                                      GitMessages.reloadIndexReview,
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const GitLabel(
+                                            GitMessages
+                                                .reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces,
                                           ),
-                                        ),
-                                      ],
-                                    ),
-                                    expanded: false,
-                                  ) !=
-                                  true)
-                            return;
-                          if (mounted) {
-                            setState(() => _failure = null);
-                            await _load();
-                          }
-                        },
-                  child: const GitLabel(GitMessages.reloadVersions),
-                ),
-                FilledButton(
-                  onPressed: _saving || _stale || !_dirty
-                      ? null
-                      : () => unawaited(_apply()),
-                  child: const GitLabel(
-                    GitMessages.writeEditedResultToThisIndexEntry,
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(context).pop(true),
+                                            child: const GitLabel(
+                                              GitMessages.replaceDraftAndReload,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      expanded: false,
+                                    ) !=
+                                    true)
+                              return;
+                            if (mounted) {
+                              setState(() => _failure = null);
+                              await _load();
+                            }
+                          },
+                    child: const GitLabel(GitMessages.reloadVersions),
                   ),
-                ),
-                const GitLabel(
-                  GitMessages
-                      .workingFilesRemainOnDiskReviewTheEditedIndexBefore,
-                ),
-                ListenableBuilder(
-                  listenable: _result,
-                  builder: (context, _) => GitLabel(
-                    gitTextFormatLabel(_result.text, context: context),
+                  FilledButton(
+                    onPressed: _saving || _stale || !_dirty
+                        ? null
+                        : () => unawaited(_apply()),
+                    child: const GitLabel(
+                      GitMessages.writeEditedResultToThisIndexEntry,
+                    ),
                   ),
-                ),
-              ],
+                  const GitLabel(
+                    GitMessages
+                        .workingFilesRemainOnDiskReviewTheEditedIndexBefore,
+                  ),
+                  ListenableBuilder(
+                    listenable: _result,
+                    builder: (context, _) => GitLabel(
+                      gitTextFormatLabel(_result.text, context: context),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -2369,9 +2615,13 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   }
 
   Future<void> _apply() async {
-    if (_stale || !_dirty) return;
+    if (_saving || _reviewingSavedIndex || _stale || !_dirty) return;
     final text = _result.text, session = widget.session, path = widget.path;
-    final snapshot = _snapshot!, index = _index!, working = _working!;
+    final draftRevision = _draftRevision;
+    final snapshot = _snapshot!,
+        index = _index!,
+        working = _working!,
+        head = _head!;
     final formatChange = gitTextFormatChange(
       _index!.text ?? '',
       text,
@@ -2392,6 +2642,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       return;
     if (!mounted) return;
     if (_result.text != text ||
+        _draftRevision != draftRevision ||
         _stale ||
         !identical(session, widget.session) ||
         path != widget.path ||
@@ -2406,23 +2657,48 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       return;
     }
     setState(() => _saving = true);
-    final result = await session.mutate(
-      WriteIndex(
-        path,
-        Uint8List.fromList(utf8.encode(text)),
-        expectedHead: snapshot.head,
-        expectedIndex: snapshot.indexToken,
-        expectedContent: index.token,
-        expectedWorktree: working.sourceToken.isEmpty
-            ? working.token
-            : working.sourceToken,
-        mode: _index!.mode == '000000'
-            ? (_working!.mode == '000000' ? '100644' : _working!.mode)
-            : _index!.mode,
-      ),
+    final request = WriteIndex(
+      path,
+      Uint8List.fromList(utf8.encode(text)),
+      expectedHead: snapshot.head,
+      expectedIndex: snapshot.indexToken,
+      expectedContent: index.token,
+      expectedWorktree: working.sourceToken.isEmpty
+          ? working.token
+          : working.sourceToken,
+      mode: _index!.mode == '000000'
+          ? (_working!.mode == '000000' ? '100644' : _working!.mode)
+          : _index!.mode,
     );
+    final result = await session.mutate(request);
     if (!mounted) return;
-    if (result?.completed == true) {
+    if (result?.completed == true &&
+        (draftRevision != _draftRevision ||
+            _result.text != text ||
+            !identical(session, widget.session) ||
+            path != widget.path ||
+            !identical(snapshot, _snapshot))) {
+      setState(() {
+        _draftBaseline = text;
+        _appliedNewerDraft = true;
+        _appliedReview = _AppliedIndexReview(
+          session,
+          path,
+          snapshot,
+          head,
+          working,
+          text,
+          request.mode,
+        );
+        _dirty = _result.text != text;
+        _saving = false;
+        _stale = true;
+        _failure = const GitException(
+          GitErrorCode.staleReview,
+          diagnostic: GitMessages.indexAppliedNewerDraftPreserved,
+        );
+      });
+    } else if (result?.completed == true) {
       setState(() => _allowClose = true);
       await WidgetsBinding.instance.endOfFrame;
       if (mounted) gitCompleteSurface(context);
@@ -2431,6 +2707,59 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         _failure = result?.error;
         _saving = false;
       });
+  }
+}
+
+/// The sole continuation which can preserve a draft across source reload is a
+/// known successful write by this editor. It never authorizes external changes.
+final class _AppliedIndexReview {
+  const _AppliedIndexReview(
+    this.session,
+    this.path,
+    this.snapshot,
+    this.head,
+    this.working,
+    this.submitted,
+    this.mode,
+  );
+  final GitSession session;
+  final RepoPath path;
+  final GitSnapshot snapshot;
+  final GitContent head, working;
+  final String submitted, mode;
+
+  bool matchesSnapshot(GitSnapshot current) {
+    Object operation(RepositoryOperation value) => (
+      value.kind,
+      value.head,
+      value.other,
+      value.message,
+      value.editStop,
+      value.unmerged,
+    );
+    return current.repository.key == snapshot.repository.key &&
+        current.head == snapshot.head &&
+        current.branch == snapshot.branch &&
+        operation(current.operation) == operation(snapshot.operation) &&
+        current.capabilities.writeMetadata ==
+            snapshot.capabilities.writeMetadata &&
+        current.capabilities.replaceWorkingFiles ==
+            snapshot.capabilities.replaceWorkingFiles;
+  }
+
+  bool matchesContent(List<GitContent> content) {
+    bool same(GitContent a, GitContent b) =>
+        a.path == b.path &&
+        a.availability == b.availability &&
+        a.token == b.token &&
+        a.sourceToken == b.sourceToken &&
+        a.mode == b.mode;
+    return same(head, content[0]) &&
+        same(working, content[2]) &&
+        content[1].path == path &&
+        content[1].availability == ContentAvailability.present &&
+        content[1].mode == mode &&
+        content[1].text == submitted;
   }
 }
 
@@ -2531,7 +2860,13 @@ final class GitRevisionPanes extends StatefulWidget {
     required this.labels,
     required this.panes,
     this.anchorRevision = 0,
+    this.geometry,
+    this.mapOffset,
+    this.correspondenceRevision = 0,
   });
+  final int correspondenceRevision;
+  final List<GitTextPaneGeometry>? geometry;
+  final int? Function(int source, int target, int offset)? mapOffset;
   final int anchorRevision;
   final List<String> labels;
   final List<Widget Function(ScrollController)> panes;
@@ -2541,7 +2876,10 @@ final class GitRevisionPanes extends StatefulWidget {
 
 final class _RevisionPanesState extends State<GitRevisionPanes> {
   final _scrolls = List.generate(3, (_) => ScrollController());
-  int _selected = 1;
+  final _paneKeys = List.generate(3, (_) => GlobalKey());
+  int _selected = 1, _syncRequest = 0;
+  int? _lastSource;
+  ({int offset, double y})? _lastAnchor;
   bool _sync = true, _moving = false, _anchoring = false;
   @override
   void initState() {
@@ -2555,6 +2893,13 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
   @override
   void didUpdateWidget(covariant GitRevisionPanes oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.correspondenceRevision != oldWidget.correspondenceRevision &&
+        _lastSource != null) {
+      final source = _lastSource!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _synchronize(source);
+      });
+    }
     if (widget.anchorRevision != oldWidget.anchorRevision) {
       _anchoring = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2564,21 +2909,49 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
   }
 
   void _synchronize(int source) {
-    if (!_sync || _anchoring || _moving || !_scrolls[source].hasClients) return;
-    _moving = true;
-    try {
-      for (var i = 0; i < 3; i++) {
-        if (i != source && _scrolls[i].hasClients)
-          _scrolls[i].jumpTo(
-            _scrolls[source].offset.clamp(
-              0,
-              _scrolls[i].position.maxScrollExtent,
-            ),
-          );
+    if (_anchoring ||
+        _moving ||
+        !_scrolls[source].hasClients ||
+        widget.geometry == null)
+      return;
+    _lastSource = source;
+    _lastAnchor = widget.geometry![source].anchor();
+    if (!_sync || widget.mapOffset == null || _lastAnchor == null) return;
+    final request = ++_syncRequest;
+    void align() {
+      if (!mounted ||
+          request != _syncRequest ||
+          !_sync ||
+          _anchoring ||
+          widget.geometry == null ||
+          widget.mapOffset == null)
+        return;
+      // Re-read the same user's pane after layout so edits before its viewport
+      // do not reuse an old numeric offset. This pane itself is never moved.
+      final anchor = widget.geometry![source].anchor();
+      if (anchor == null) return;
+      _lastAnchor = anchor;
+      _moving = true;
+      try {
+        for (var target = 0; target < 3; target++) {
+          if (target == source) continue;
+          final offset = widget.mapOffset!(source, target, anchor.offset);
+          if (offset != null) widget.geometry![target].align(offset, anchor.y);
+        }
+      } finally {
+        _moving = false;
       }
-    } finally {
-      _moving = false;
     }
+
+    // The source's scroll can be reported before other text fields have
+    // completed their resized/wrapped layout. Measure after layout, then
+    // reconcile once more after the target scroll positions have settled.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      align();
+      if (mounted && request == _syncRequest) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => align());
+      }
+    });
   }
 
   @override
@@ -2598,7 +2971,17 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
         MediaQuery.textScalerOf(context).scale(font) / 14 * 720,
       );
       final narrow = bounds.maxWidth < minimum;
-      final panes = [for (var i = 0; i < 3; i++) widget.panes[i](_scrolls[i])];
+      final direction = Directionality.of(context);
+      final panes = [
+        for (var i = 0; i < 3; i++)
+          KeyedSubtree(
+            key: _paneKeys[i],
+            child: Directionality(
+              textDirection: direction,
+              child: widget.panes[i](_scrolls[i]),
+            ),
+          ),
+      ];
       return Column(
         children: [
           Wrap(
@@ -2620,8 +3003,18 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
                 ),
               FilterChip(
                 label: const GitLabel(GitMessages.synchronizeScrolling),
-                selected: _sync,
-                onSelected: (value) => setState(() => _sync = value),
+                selected:
+                    _sync &&
+                    widget.geometry != null &&
+                    widget.mapOffset != null,
+                onSelected: widget.geometry == null || widget.mapOffset == null
+                    ? null
+                    : (value) {
+                        setState(() => _sync = value);
+                        if (value && _lastSource != null) {
+                          _synchronize(_lastSource!);
+                        }
+                      },
               ),
             ],
           ),
@@ -2643,15 +3036,18 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
                         ),
                     ],
                   )
-                : GitSplitter(
-                    initial: .33,
-                    minimum: 220,
-                    first: panes[0],
-                    second: GitSplitter(
-                      initial: .5,
+                : Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: GitSplitter(
+                      initial: .33,
                       minimum: 220,
-                      first: panes[1],
-                      second: panes[2],
+                      first: panes[0],
+                      second: GitSplitter(
+                        initial: .5,
+                        minimum: 220,
+                        first: panes[1],
+                        second: panes[2],
+                      ),
                     ),
                   ),
           ),

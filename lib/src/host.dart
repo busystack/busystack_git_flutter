@@ -614,10 +614,12 @@ final class GitIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     required this.icon,
+    this.compact = false,
   });
   final String tooltip;
   final VoidCallback? onPressed;
   final Widget icon;
+  final bool compact;
   @override
   Widget build(BuildContext context) => Semantics(
     container: true,
@@ -630,6 +632,15 @@ final class GitIconButton extends StatelessWidget {
         tooltip: gitString(context, tooltip),
         onPressed: onPressed,
         icon: icon,
+        padding: compact ? EdgeInsets.zero : null,
+        constraints: compact ? const BoxConstraints() : null,
+        style: compact
+            ? IconButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              )
+            : null,
       ),
     ),
   );

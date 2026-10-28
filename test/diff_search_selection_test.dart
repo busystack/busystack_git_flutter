@@ -137,7 +137,7 @@ final class _LongSearchClient extends FixtureClient {
   );
 }
 
-final class _ManyMatchesClient extends FixtureClient {
+final class _LiteralClient extends FixtureClient {
   @override
   Future<GitContent> content(
     RepositoryId repository,
@@ -151,18 +151,193 @@ final class _ManyMatchesClient extends FixtureClient {
     token: version.label,
     mode: '100644',
     bytes: utf8.encode(
-      [
-        for (var line = 0; line < 10020; line++)
-          if (line == 0)
-            version.kind == ContentKind.indexVersion ? 'old' : 'new'
-          else
-            'needle $line',
-      ].join('\n'),
+      version.kind == ContentKind.indexVersion
+          ? 'old\n'
+          : 'prefix Kelvin and .* literal\n',
+    ),
+  );
+}
+
+final class _ManyMatchesClient extends FixtureClient {
+  _ManyMatchesClient({this.paragraph = false});
+  final bool paragraph;
+  @override
+  Future<GitContent> content(
+    RepositoryId repository,
+    RepoPath path,
+    ContentVersion version, {
+    GitCancellation? cancellation,
+  }) async => GitContent(
+    path: path,
+    version: version,
+    availability: ContentAvailability.present,
+    token: version.label,
+    mode: '100644',
+    bytes: utf8.encode(
+      paragraph
+          ? (version.kind == ContentKind.indexVersion
+                ? 'old\n'
+                : '${List.filled(10020, 'needle').join(' ')}\n')
+          : [
+              for (var line = 0; line < 10020; line++)
+                if (line == 0)
+                  version.kind == ContentKind.indexVersion ? 'old' : 'new'
+                else
+                  'needle $line',
+            ].join('\n'),
     ),
   );
 }
 
 void main() {
+  testWidgets(
+    'one paragraph with10020 matches has bounded span metadata and reveals the last retained match',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = GitSession(
+        client: _ManyMatchesClient(paragraph: true),
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      session.setViewState('diffWrap', false);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitDiffView(
+              session: session,
+              comparison: GitComparison(
+                RepoPath.text('many-paragraph.md'),
+                const ContentVersion.index(),
+                const ContentVersion.working(),
+              ),
+            ),
+          ),
+        ),
+      );
+      for (
+        var step = 0;
+        step < 400 && find.byTooltip('Search comparison').evaluate().isEmpty;
+        step++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Search comparison'));
+      await tester.pump();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Search'),
+        'needle',
+      );
+      await _finishSearch(tester);
+      expect(find.text('1 of 10000 matches'), findsOneWidget);
+      final paragraphFinder = find.descendant(
+        of: find.textContaining('needle needle'),
+        matching: find.byType(RichText),
+      );
+      final rich = tester.widget<RichText>(paragraphFinder);
+      var spanCount = 0;
+      void count(InlineSpan span) {
+        spanCount++;
+        if (span is TextSpan)
+          for (final child in span.children ?? <InlineSpan>[]) count(child);
+      }
+
+      count(rich.text);
+      expect(spanCount, lessThan(600));
+      await tester.tap(find.byTooltip('Previous search match'));
+      await tester.pumpAndSettle();
+      expect(find.text('10000 of 10000 matches'), findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(paragraphFinder);
+      final match = paragraph
+          .getBoxesForSelection(
+            const TextSelection(
+              baseOffset: 9999 * 7,
+              extentOffset: 9999 * 7 + 6,
+            ),
+          )
+          .first
+          .toRect();
+      final point = paragraph.localToGlobal(match.center),
+          pane = tester.getRect(
+            find.byKey(const ValueKey('git-diff-right-horizontal')),
+          );
+      expect(point.dx, inInclusiveRange(pane.left, pane.right));
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets('literal Unicode search highlights original UTF16 match text', (
+    tester,
+  ) async {
+    // Exercise the production worker against source text supplied by a literal
+    // fixture, rather than mocking case folding or the displayed offsets.
+    tester.view.physicalSize = const Size(1280, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = GitSession(
+      client: _LiteralClient(),
+      repository: repo,
+      host: host(),
+    );
+    await session.start();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GitDiffView(
+            session: session,
+            comparison: GitComparison(
+              RepoPath.text('unicode.md'),
+              const ContentVersion.index(),
+              const ContentVersion.working(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 120)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Search comparison'));
+    await tester.pump();
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), 'kelvin');
+    await _finishSearch(tester);
+    expect(find.text('1 of 1 matches'), findsOneWidget);
+    bool current(String value) {
+      var found = false;
+      void visit(InlineSpan span) {
+        if (span is TextSpan) {
+          if (span.text == value &&
+              span.style?.decoration == TextDecoration.underline)
+            found = true;
+          for (final child in span.children ?? <InlineSpan>[]) visit(child);
+        }
+      }
+
+      for (final rich in tester.widgetList<RichText>(find.byType(RichText)))
+        visit(rich.text);
+      return found;
+    }
+
+    expect(current('Kelvin'), isTrue);
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), '.*');
+    await _finishSearch(tester);
+    expect(find.text('1 of 1 matches'), findsOneWidget);
+    expect(current('.*'), isTrue);
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
+
   testWidgets(
     'mouse text selection copies through Clipboard without selecting staged lines',
     (tester) async {

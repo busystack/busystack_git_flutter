@@ -161,6 +161,8 @@
   "copyHeadRegionIntoIndexDraft": "Copy HEAD region into index draft",
   "copyWorkingRegionIntoIndexDraft": "Copy working region into index draft",
   "indexAppliedNewerDraftPreserved": "The submitted draft was written to the index. Newer text is still in this editor. Reload and review the current versions before applying it.",
+  "reviewSavedIndexAndKeepDraft": "Review saved index and keep draft",
+  "indexSourcesChangedSinceApply": "The saved index or its sources changed. The newer draft is retained; review those changes separately before applying it.",
   "readOnlyRevisionContent": "Read-only revision content",
   "editableIndexContent": "Editable index content",
   "theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters": "The requested revision is outside the current filters. Reset filters to reveal it.",

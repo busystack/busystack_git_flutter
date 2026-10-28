@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -59,134 +60,304 @@ final class _IsolatedRunner implements GitRunner {
   );
 }
 
-void main() {
-  testWidgets(
-    'rapid Unstage writes exact index bytes and preserves working and unrelated index',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 900);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      late Directory fixture;
-      late _IsolatedRunner runner;
-      late GitSession session;
-      late BackgroundGitClient client;
-      Future<Uint8List> git(List<String> arguments) async {
-        final result = await runner.run(arguments, cwd: fixture.path);
-        expect(
-          result.success,
-          isTrue,
-          reason: '${arguments.first}: ${result.diagnostic}',
-        );
-        return result.stdout;
-      }
+/// Hold delivery after the real engine has applied the reviewed bytes, allowing
+/// a queued native/controller edit before the view receives completion.
+final class _HeldCompletionClient implements GitClient {
+  _HeldCompletionClient(this.delegate);
+  final GitClient delegate;
+  final observed = Completer<GitOutcome>(), release = Completer<void>();
+  final mutations = <GitMutation>[];
+  @override
+  Future<RepositoryId?> discover(
+    String path, {
+    GitCancellation? cancellation,
+  }) => delegate.discover(path, cancellation: cancellation);
+  @override
+  Future<GitSnapshot> status(
+    RepositoryId repo, {
+    GitCancellation? cancellation,
+    GitReadPolicy policy = GitReadPolicy.restricted,
+  }) => delegate.status(repo, cancellation: cancellation, policy: policy);
+  @override
+  Future<List<GitReference>> references(RepositoryId repo) =>
+      delegate.references(repo);
+  @override
+  Future<HistoryPage> history(
+    RepositoryId repo, {
+    HistoryFilter filter = const HistoryFilter(),
+    int offset = 0,
+    int limit = 100,
+    String? anchor,
+    GitCancellation? cancellation,
+  }) => delegate.history(
+    repo,
+    filter: filter,
+    offset: offset,
+    limit: limit,
+    anchor: anchor,
+    cancellation: cancellation,
+  );
+  @override
+  Future<GitContent> content(
+    RepositoryId repo,
+    RepoPath path,
+    ContentVersion version, {
+    GitCancellation? cancellation,
+  }) => delegate.content(repo, path, version, cancellation: cancellation);
+  @override
+  Future<List<GitChange>> changedFiles(
+    RepositoryId repo,
+    GitOid revision, {
+    GitOid? parent,
+  }) => delegate.changedFiles(repo, revision, parent: parent);
+  @override
+  Stream<void> watch(RepositoryId repo) => delegate.watch(repo);
+  @override
+  Future<GitOutcome> mutate(
+    RepositoryId repo,
+    GitMutation request, {
+    GitCancellation? cancellation,
+    void Function(GitProgress)? onProgress,
+  }) async {
+    mutations.add(request);
+    final outcome = await delegate.mutate(
+      repo,
+      request,
+      cancellation: cancellation,
+      onProgress: onProgress,
+    );
+    if (!observed.isCompleted) {
+      observed.complete(outcome);
+      await release.future;
+    }
+    return outcome;
+  }
+}
 
-      await tester.runAsync(() async {
-        fixture = await Directory.systemTemp.createTemp('bsg-index-regions-');
-        runner = _IsolatedRunner(fixture);
-        await runner.process.verify();
-        await git(['init', '--initial-branch=main']);
-        await File('${fixture.path}/note.md').writeAsString('one\nold\nend\n');
-        await File(
-          '${fixture.path}/unrelated.md',
-        ).writeAsString('old unrelated\n');
-        await git(['add', '.']);
-        await git(['commit', '-m', 'base']);
-        await File(
-          '${fixture.path}/note.md',
-        ).writeAsString('one\nstaged\nend\n');
-        await File(
-          '${fixture.path}/unrelated.md',
-        ).writeAsString('staged unrelated\n');
-        await git(['add', '.']);
-        await File(
-          '${fixture.path}/note.md',
-        ).writeAsString('one\nstaged\nend\nunstaged\n');
-        client = BackgroundGitClient(
-          executable: runner.process.executable,
-          helperPath: runner.process.helperPath,
-          authorize: (_) => true,
-        );
-        final repository = (await client.discover(fixture.path))!;
-        session = GitSession(
-          client: client,
-          repository: repository,
-          host: host(),
-        );
-        await session.start();
-      });
-      addTearDown(() async {
-        await tester.pumpWidget(const SizedBox());
-        session.dispose();
+void main() {
+  for (final newerDraft in [false, true]) {
+    testWidgets(
+      newerDraft
+          ? 'real Apply writes B once and keeps queued C recoverable without changing working or unrelated index'
+          : 'rapid Unstage writes exact index bytes and preserves working and unrelated index',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        late Directory fixture;
+        late _IsolatedRunner runner;
+        late GitSession session;
+        late BackgroundGitClient client;
+        late _HeldCompletionClient held;
+        Future<Uint8List> git(List<String> arguments) async {
+          final result = await runner.run(arguments, cwd: fixture.path);
+          expect(
+            result.success,
+            isTrue,
+            reason: '${arguments.first}: ${result.diagnostic}',
+          );
+          return result.stdout;
+        }
+
         await tester.runAsync(() async {
-          await client.close();
-          await fixture.delete(recursive: true);
+          fixture = await Directory.systemTemp.createTemp('bsg-index-regions-');
+          runner = _IsolatedRunner(fixture);
+          await runner.process.verify();
+          await git(['init', '--initial-branch=main']);
+          await File(
+            '${fixture.path}/note.md',
+          ).writeAsString('one\nold\nend\n');
+          await File(
+            '${fixture.path}/unrelated.md',
+          ).writeAsString('old unrelated\n');
+          await git(['add', '.']);
+          await git(['commit', '-m', 'base']);
+          await File(
+            '${fixture.path}/note.md',
+          ).writeAsString('one\nstaged\nend\n');
+          await File(
+            '${fixture.path}/unrelated.md',
+          ).writeAsString('staged unrelated\n');
+          await git(['add', '.']);
+          await File(
+            '${fixture.path}/note.md',
+          ).writeAsString('one\nstaged\nend\nunstaged\n');
+          client = BackgroundGitClient(
+            executable: runner.process.executable,
+            helperPath: runner.process.helperPath,
+            authorize: (_) => true,
+          );
+          final repository = (await client.discover(fixture.path))!;
+          held = _HeldCompletionClient(client);
+          if (!newerDraft) held.release.complete();
+          session = GitSession(
+            client: held,
+            repository: repository,
+            host: host(),
+          );
+          await session.start();
         });
-      });
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: GitIndexEditor(
-              session: session,
-              path: RepoPath.text('note.md'),
-              computeDiff: (a, b) async => computeTextDiff(a, b),
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          session.dispose();
+          if (!held.release.isCompleted) held.release.complete();
+          await tester.runAsync(() async {
+            await client.close();
+            await fixture.delete(recursive: true);
+          });
+        });
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: GitIndexEditor(
+                session: session,
+                path: RepoPath.text('note.md'),
+                computeDiff: (a, b) async => computeTextDiff(a, b),
+              ),
             ),
           ),
-        ),
-      );
-      final unstage = find.widgetWithText(TextButton, 'Unstage this hunk');
-      for (var i = 0; i < 100 && unstage.evaluate().isEmpty; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
         );
-        await tester.pump(const Duration(milliseconds: 20));
-      }
-      expect(
-        unstage,
-        findsOneWidget,
-        reason: tester
-            .widgetList<Text>(find.byType(Text))
-            .map(
-              (widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '',
+        final unstage = find.widgetWithText(TextButton, 'Unstage this hunk');
+        for (var i = 0; i < 100 && unstage.evaluate().isEmpty; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(
+          unstage,
+          findsOneWidget,
+          reason: tester
+              .widgetList<Text>(find.byType(Text))
+              .map(
+                (widget) => widget.data ?? widget.textSpan?.toPlainText() ?? '',
+              )
+              .join('\n'),
+        );
+        final callback = tester.widget<TextButton>(unstage).onPressed!;
+        callback();
+        callback(); // Reuse the actual mounted action without a frame or debounce.
+        final draft = tester
+            .widget<TextField>(
+              find.widgetWithText(TextField, 'Editable index content'),
             )
-            .join('\n'),
-      );
-      final callback = tester.widget<TextButton>(unstage).onPressed!;
-      callback();
-      callback(); // Reuse the actual mounted action without a frame or debounce.
-      final draft = tester
-          .widget<TextField>(
-            find.widgetWithText(TextField, 'Editable index content'),
-          )
-          .controller!;
-      expect(draft.text, 'one\nold\nend\n');
-      await tester.pump(const Duration(milliseconds: 20));
-      await tester.tap(find.text('Write edited result to this index entry'));
-      for (var i = 0; i < 100 && session.running; i++) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 10)),
-        );
+            .controller!;
+        expect(draft.text, 'one\nold\nend\n');
         await tester.pump(const Duration(milliseconds: 20));
-      }
-      expect(session.failure, isNull);
-      expect(session.outcome?.completed, isTrue);
-      await tester.runAsync(() async {
-        expect(await git(['show', ':note.md']), utf8.encode('one\nold\nend\n'));
-        expect(
-          await git(['show', ':unrelated.md']),
-          utf8.encode('staged unrelated\n'),
-        );
-        expect(
-          await File('${fixture.path}/note.md').readAsBytes(),
-          utf8.encode('one\nstaged\nend\nunstaged\n'),
-        );
-        expect(
-          await File('${fixture.path}/unrelated.md').readAsBytes(),
-          utf8.encode('staged unrelated\n'),
-        );
-      });
-      await tester.pump(const Duration(milliseconds: 120));
-      expect(tester.takeException(), isNull);
-    },
-  );
+        await tester.tap(find.text('Write edited result to this index entry'));
+        if (newerDraft) {
+          for (
+            var attempt = 0;
+            attempt < 200 && !held.observed.isCompleted;
+            attempt++
+          ) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 10)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          expect(held.observed.isCompleted, isTrue);
+          draft.value = const TextEditingValue(
+            text: 'queued unsaved C\n',
+            selection: TextSelection(baseOffset: 2, extentOffset: 8),
+            composing: TextRange(start: 0, end: 6),
+          );
+          held.release.complete();
+        }
+        for (var i = 0; i < 100 && session.running; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        expect(session.failure, isNull);
+        expect(session.outcome?.completed, isTrue);
+        expect(held.mutations, hasLength(1));
+        if (newerDraft) {
+          expect(find.byType(GitIndexEditor), findsOneWidget);
+          expect(
+            draft.value,
+            const TextEditingValue(
+              text: 'queued unsaved C\n',
+              selection: TextSelection(baseOffset: 2, extentOffset: 8),
+              composing: TextRange(start: 0, end: 6),
+            ),
+          );
+          expect(
+            find.textContaining(
+              'The submitted draft was written to the index.',
+            ),
+            findsOneWidget,
+          );
+        }
+        await tester.runAsync(() async {
+          expect(
+            await git(['show', ':note.md']),
+            utf8.encode('one\nold\nend\n'),
+          );
+          expect(
+            await git(['show', ':unrelated.md']),
+            utf8.encode('staged unrelated\n'),
+          );
+          expect(
+            await File('${fixture.path}/note.md').readAsBytes(),
+            utf8.encode('one\nstaged\nend\nunstaged\n'),
+          );
+          expect(
+            await File('${fixture.path}/unrelated.md').readAsBytes(),
+            utf8.encode('staged unrelated\n'),
+          );
+        });
+        if (newerDraft) {
+          final kept = draft.value;
+          await tester.tap(find.text('Review saved index and keep draft'));
+          final apply = find.widgetWithText(
+            FilledButton,
+            'Write edited result to this index entry',
+          );
+          for (
+            var attempt = 0;
+            attempt < 200 &&
+                tester.widget<FilledButton>(apply).onPressed == null;
+            attempt++
+          ) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 10)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          expect(draft.value, kept);
+          expect(tester.widget<FilledButton>(apply).onPressed, isNotNull);
+          expect(held.mutations, hasLength(1));
+          await tester.tap(apply);
+          for (var attempt = 0; attempt < 200 && session.running; attempt++) {
+            await tester.runAsync(
+              () => Future<void>.delayed(const Duration(milliseconds: 10)),
+            );
+            await tester.pump(const Duration(milliseconds: 20));
+          }
+          expect(session.failure, isNull);
+          expect(session.outcome?.completed, isTrue);
+          expect(held.mutations, hasLength(2));
+          await tester.runAsync(() async {
+            expect(
+              await git(['show', ':note.md']),
+              utf8.encode('queued unsaved C\n'),
+            );
+            expect(
+              await git(['show', ':unrelated.md']),
+              utf8.encode('staged unrelated\n'),
+            );
+            expect(
+              await File('${fixture.path}/note.md').readAsBytes(),
+              utf8.encode('one\nstaged\nend\nunstaged\n'),
+            );
+          });
+        }
+        await tester.pump(const Duration(milliseconds: 120));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

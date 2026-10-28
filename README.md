@@ -173,3 +173,11 @@ separate drafts with explicit Apply/Save. User dismissal consults dirty guards;
 successful operation completion closes only its owning route. Evidence belongs
 under each existing `build/git-verification` tree; checklist entries above are
 requirements, not a declaration that acceptance has passed.
+
+File history now asks the pinned Git for `--diff-merges=first-parent` so a merge
+commit is visible and can offer its actual parents. Without that flag Git's
+`--follow --name-status` query omitted the merge entirely. This narrowly scoped
+engine correction is covered by a real Unicode/CRLF merge fixture and literal
+byte-path regression. Selecting another parent requests that parent's changed
+files and rename endpoints again; first-parent rename metadata is never reused
+for that comparison. The public engine API and controlled Git version are unchanged.

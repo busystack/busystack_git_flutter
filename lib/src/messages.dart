@@ -213,6 +213,10 @@ abstract final class GitMessages {
       "Copy working region into index draft";
   static const indexAppliedNewerDraftPreserved =
       "The submitted draft was written to the index. Newer text is still in this editor. Reload and review the current versions before applying it.";
+  static const reviewSavedIndexAndKeepDraft =
+      "Review saved index and keep draft";
+  static const indexSourcesChangedSinceApply =
+      "The saved index or its sources changed. The newer draft is retained; review those changes separately before applying it.";
   static const readOnlyRevisionContent = "Read-only revision content";
   static const editableIndexContent = "Editable index content";
   static const theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters =
@@ -1144,6 +1148,8 @@ abstract final class GitMessages {
     copyHeadRegionIntoIndexDraft,
     copyWorkingRegionIntoIndexDraft,
     indexAppliedNewerDraftPreserved,
+    reviewSavedIndexAndKeepDraft,
+    indexSourcesChangedSinceApply,
     readOnlyRevisionContent,
     editableIndexContent,
     theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,

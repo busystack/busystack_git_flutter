@@ -38,6 +38,7 @@ void main() {
     late GitSession session;
     late RepositoryId repository;
     late GitOid root, pureRename, edited, merge, other;
+    late GitCommit mergedCommit;
     final baseBytes = utf8.encode(
       '${List.generate(30, (i) => 'Markdown paragraph $i 東京').join('\r\n')}\r\n',
     );
@@ -134,7 +135,8 @@ void main() {
         ),
       );
       await session.start();
-      expect((await engine.history(repository)).commits.first.oid, merge);
+      mergedCommit = (await engine.history(repository)).commits.first;
+      expect(mergedCommit.oid, merge);
       final pure = await engine.changedFiles(
         repository,
         pureRename,
@@ -296,6 +298,75 @@ void main() {
         .comparison;
     expect(comparison.left.revision, other);
     expect(comparison.leftPath, RepoPath.text('side/東京.md'));
+    await _waitFor(
+      tester,
+      () => find
+          .descendant(
+            of: find.byType(GitDiffView),
+            matching: find.byType(CircularProgressIndicator),
+          )
+          .evaluate()
+          .isEmpty,
+    );
+    await tester.runAsync(
+      () => tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitHostScope(
+              host: session.host,
+              child: GitCommitFiles(session: session, commit: mergedCommit),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _waitFor(
+      tester,
+      () => find.byType(GitDiffView).evaluate().isNotEmpty,
+    );
+    comparison = tester
+        .widget<GitDiffView>(find.byType(GitDiffView))
+        .comparison;
+    expect(comparison.left.revision, edited);
+    expect(comparison.leftPath, RepoPath.text('main/東京.md'));
+    await tester.runAsync(() async {
+      tester
+          .widget<DropdownButton<GitOid>>(find.byType(DropdownButton<GitOid>))
+          .onChanged!(other);
+    });
+    await _waitFor(
+      tester,
+      () => find.byType(GitDiffView).evaluate().isNotEmpty,
+    );
+    comparison = tester
+        .widget<GitDiffView>(find.byType(GitDiffView))
+        .comparison;
+    expect(comparison.left.revision, other);
+    expect(comparison.leftPath, RepoPath.text('side/東京.md'));
+    await tester.runAsync(() async {
+      expect(
+        (await engine.content(
+          repository,
+          comparison.leftPath!,
+          comparison.left,
+        )).bytes,
+        baseBytes,
+      );
+      expect(
+        (await engine.content(
+          repository,
+          comparison.path,
+          comparison.right,
+        )).bytes,
+        mergedBytes,
+      );
+    });
+    await tester.tap(find.byTooltip('Review difference'));
+    await tester.pump();
+    expect(
+      tester.widget<GitDiffView>(find.byType(GitDiffView)).comparison.leftPath,
+      RepoPath.text('side/東京.md'),
+    );
     await _waitFor(
       tester,
       () => find
