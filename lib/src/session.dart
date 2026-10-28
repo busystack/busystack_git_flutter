@@ -20,6 +20,17 @@ final class _MessageDraftSlot {
   Future<void> pending = Future<void>.value();
 }
 
+// A host can attach several tabs to the same worktree. Ownership and durable
+// write order belong to its existing draft store, rather than one tab's lifetime.
+final _draftStores = Expando<_MessageDraftState>('Git message draft ownership');
+
+final class _MessageDraftState extends ChangeNotifier {
+  final slots = <String, _MessageDraftSlot>{};
+  final views = <String, Map<String, Object>>{};
+  final viewWrites = <String, Future<void>>{};
+  void changed() => notifyListeners();
+}
+
 /// One instance per attached worktree surface. Outstanding callbacks retain this
 /// identity; changing a host tab never retargets an operation.
 final class GitSession extends ChangeNotifier {
@@ -27,7 +38,9 @@ final class GitSession extends ChangeNotifier {
     required this.client,
     required this.repository,
     required this.host,
-  });
+  }) {
+    _draftState.addListener(_draftsChanged);
+  }
   final GitClient client;
   final RepositoryId repository;
   final GitHost host;
@@ -45,7 +58,13 @@ final class GitSession extends ChangeNotifier {
   bool _refreshQueued = false;
   StreamSubscription<void>? _watch;
   GitCancellation? _readCancellation, _mutationCancellation;
-  final _messageDrafts = <String, _MessageDraftSlot>{};
+  late final _MessageDraftState _draftState = _draftStores[host.drafts] ??=
+      _MessageDraftState();
+  Map<String, _MessageDraftSlot> get _messageDrafts => _draftState.slots;
+  void _draftsChanged() {
+    if (!_disposed) notifyListeners();
+  }
+
   _MessageDraftSlot _messageSlot(String key) =>
       _messageDrafts.putIfAbsent(key, _MessageDraftSlot.new);
   String get draft => _messageSlot(repository.presentationKey).text ?? '';
@@ -78,7 +97,10 @@ final class GitSession extends ChangeNotifier {
     _authorizedInspection = false;
   }
 
-  Map<String, Object> viewState = {};
+  Map<String, Object> get viewState =>
+      _draftState.views.putIfAbsent(repository.presentationKey, () => {});
+  set viewState(Map<String, Object> value) =>
+      _draftState.views[repository.presentationKey] = value;
   double split(String name, double fallback) => switch (viewState[name]) {
     final num value when value.isFinite => value.toDouble().clamp(.05, .95),
     _ => fallback,
@@ -94,7 +116,11 @@ final class GitSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _viewStateWrite = Future<void>.value();
+  Future<void> get _viewStateWrite =>
+      _draftState.viewWrites[repository.presentationKey] ??
+      Future<void>.value();
+  set _viewStateWrite(Future<void> value) =>
+      _draftState.viewWrites[repository.presentationKey] = value;
   void setViewState(String name, Object value) {
     viewState = {...viewState, name: value};
     final write = host.writeViewState;
@@ -184,6 +210,7 @@ final class GitSession extends ChangeNotifier {
         generation == slot.readGeneration &&
         slot.text == null) {
       slot.text = saved ?? '';
+      _draftState.changed();
     }
     return messageDraft(key);
   }
@@ -224,7 +251,9 @@ final class GitSession extends ChangeNotifier {
             }
           },
         );
-    return messageDraft(key);
+    final version = messageDraft(key);
+    _draftState.changed();
+    return version;
   }
 
   /// A mutation may consume only the exact version that it submitted.
@@ -379,6 +408,7 @@ final class GitSession extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _draftState.removeListener(_draftsChanged);
     _generation++;
     _readCancellation?.cancel();
     // Closing a surface does not cancel a mutation or abort the sequencer.

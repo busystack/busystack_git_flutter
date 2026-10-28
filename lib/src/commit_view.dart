@@ -88,8 +88,13 @@ final class _GitCommitViewState extends State<GitCommitView> {
       !session.snapshot!.operation.unmerged;
   void _changed() {
     if (!mounted) return;
-    if (!_amend && _message.text != session.draft && !session.running)
-      _message.text = session.draft;
+    final draft = _amend && _amendTarget != null
+        ? session.messageDraft(_amendDraftKey(_amendTarget!)).text
+        : session.draft;
+    if (_message.text != draft && !session.running && !_composing) {
+      _messageRevision++;
+      _message.text = draft;
+    }
     setState(() {});
   }
 

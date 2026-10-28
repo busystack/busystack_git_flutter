@@ -47,6 +47,42 @@ GitSession _session(_DelayedStore store) {
 }
 
 void main() {
+  test(
+    'sessions sharing one host store share slot ownership and durable order',
+    () async {
+      final store = _DelayedStore();
+      final first = _session(store), second = _session(store);
+      addTearDown(first.dispose);
+      addTearDown(second.dispose);
+      first.setDraft('older A');
+      final submitted = first.setMessageDraft('amend', 'submitted B');
+      await Future<void>.delayed(Duration.zero);
+      final submittedInFirstTab = first.setMessageDraft('amend', 'older C');
+      second.setMessageDraft('amend', 'newest D in another tab');
+      expect(first.clearMessageDraft(submittedInFirstTab), isFalse);
+      expect(first.clearMessageDraft(submitted), isFalse);
+      expect(first.messageDraft('amend').text, 'newest D in another tab');
+      expect(second.messageDraft('amend').text, 'newest D in another tab');
+      await Future<void>.delayed(Duration.zero);
+      expect(store.writes.where((write) => write.key == 'amend'), hasLength(1));
+      final messages = <String>[];
+      for (var i = 0; i < 3; i++) {
+        final write = store.writes.lastWhere((write) => write.key == 'amend');
+        messages.add(write.value);
+        write.done.complete();
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(messages, ['submitted B', 'older C', 'newest D in another tab']);
+      store.writes
+          .firstWhere((write) => write.key == repo.presentationKey)
+          .done
+          .complete();
+      await first.flushMessageDrafts();
+      expect(store.values['amend'], 'newest D in another tab');
+      expect(store.values[repo.presentationKey], 'older A');
+    },
+  );
+
   test('out-of-order reads cannot publish the obsolete slot value', () async {
     final store = _DelayedStore()..delayReads = true;
     final session = _session(store);
