@@ -436,6 +436,7 @@ final class _TextPaneState extends State<GitTextPane> {
                   }
                   return Row(
                     key: _rowKey,
+                    textDirection: TextDirection.ltr,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       SizedBox(
@@ -507,6 +508,8 @@ final class _TextPaneState extends State<GitTextPane> {
                             maxLines: null,
                             onChanged: widget.onChanged,
                             textAlignVertical: TextAlignVertical.top,
+                            textDirection: TextDirection.ltr,
+                            textAlign: TextAlign.left,
                             style: style,
                             decoration: InputDecoration(
                               labelText: gitString(

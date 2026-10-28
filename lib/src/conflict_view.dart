@@ -577,6 +577,9 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         _correspondence = review;
         _correspondenceRevision++;
         _remaining = display.remaining;
+        if (!_remaining.any((r) => r.sourceRegion == activeRegion)) {
+          activeRegion = _remaining.firstOrNull?.sourceRegion ?? -1;
+        }
         _calculatingRegions = false;
       });
       _leftTextController.setHighlights(display.leftHighlights);
@@ -631,7 +634,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           result.text.substring(region.start, region.end) != region.block)
         return;
       if (acceptLeft != null) {
-        final source = regions[sourceIndex];
+        final source = region.source!;
         _replaceResult(
           region.start,
           region.end,
@@ -665,7 +668,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     _ResultConflict region,
     bool useLeft,
   ) {
-    final source = regions[region.sourceRegion!];
+    final source = region.source!;
     final start = useLeft ? source.leftOffset : source.rightOffset;
     final text = useLeft ? source.left : source.right;
     final sourceText = (useLeft ? left : right)?.text ?? '';
@@ -831,8 +834,18 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                   GitMessages.loadingConflictVersions,
                 ),
               ),
-            Text(
-              '${session.repository.root} · ${_ownerPath.display} · ${_kindLabel()}',
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: session.host.spacing,
+              children: [
+                Directionality(
+                  textDirection: TextDirection.ltr,
+                  child: Text(
+                    '${session.repository.root} · ${_ownerPath.display}',
+                  ),
+                ),
+                Text(_kindLabel()),
+              ],
             ),
             if (data != null)
               Wrap(
@@ -907,14 +920,21 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                     icon: const GitIcon(GitGlyph.down),
                   ),
                   Text(
-                    regions.isEmpty
+                    activeRegion < 0 || regions.isEmpty
                         ? gitString(context, GitMessages.manualResolution)
                         : gitString(
                             context,
                             GitMessages.regionArg0Arg1Arg2Reviewed,
                             values: {
-                              'arg0': activeRegion + 1,
-                              'arg1': regions.length,
+                              'arg0': _ownsCorrespondence(_correspondence)
+                                  ? _remaining.indexWhere(
+                                          (r) => r.sourceRegion == activeRegion,
+                                        ) +
+                                        1
+                                  : activeRegion + 1,
+                              'arg1': _ownsCorrespondence(_correspondence)
+                                  ? _remaining.length
+                                  : regions.length,
                               'arg2': reviewedRegions.length,
                             },
                           ),
@@ -1258,15 +1278,49 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     // Matching is against the current exact draft, never an old offset. The
     // caller additionally binds the action to its source and draft generation.
     final block = matchingResultRegion(result.text, region);
-    final offset = block == null ? -1 : result.text.indexOf(block);
+    var offset = block == null ? -1 : result.text.indexOf(block);
+    var length = block?.length ?? 0;
+    var replacement = useLeft ? region.left : region.right;
+    if (offset < 0) {
+      // A new callback may be invoked before debounced maps are ready. Like
+      // the exact single-region match above, permit only one unambiguous
+      // current block from exact reviewed source spans; never borrow old
+      // draft offsets or guess between repeated source/result copies.
+      final parsed = _remainingResultRegions(result.text);
+      final matches = <(_ResultConflict, _MergeRegion)>[];
+      for (final actual in parsed) {
+        final groups = _sourceGroups(
+          actual,
+          regions,
+          left!.text!,
+          right!.text!,
+        );
+        if (groups.length != 1 ||
+            parsed
+                    .where(
+                      (r) => r.left == actual.left && r.right == actual.right,
+                    )
+                    .length !=
+                1)
+          continue;
+        final group = groups.single;
+        if (group.first <= index && index <= group.last)
+          matches.add((actual, group.region));
+      }
+      if (matches.length == 1) {
+        final (actual, source) = matches.single;
+        offset = actual.start;
+        length = actual.end - actual.start;
+        replacement = useLeft ? source.left : source.right;
+      }
+    }
     if (offset < 0) {
       session.host.notify(
         GitMessages.theResultWasEditedKeepTheManualResultOrSelect,
       );
       return;
     }
-    final replacement = useLeft ? region.left : region.right;
-    _replaceResult(offset, offset + block!.length, replacement);
+    _replaceResult(offset, offset + length, replacement);
     setState(() {
       reviewedRegions.add(index);
       saved = false;
@@ -1422,8 +1476,12 @@ final class _MergeRegion {
     this.previewRight, {
     this.leftOffset,
     this.rightOffset,
-  });
+    String? leftMarkerBody,
+    String? rightMarkerBody,
+  }) : leftMarkerBody = leftMarkerBody ?? left,
+       rightMarkerBody = rightMarkerBody ?? right;
   final String block, left, right;
+  final String leftMarkerBody, rightMarkerBody;
   final int previewLeft, previewRight;
   final int? leftOffset, rightOffset;
 }
@@ -1460,8 +1518,8 @@ String? matchingResultRegion(String result, _MergeRegion region) {
       right.write(lines[i++]);
     }
     if (i < lines.length &&
-        left.toString() == region.left &&
-        right.toString() == region.right)
+        left.toString() == region.leftMarkerBody &&
+        right.toString() == region.rightMarkerBody)
       candidates.add(lines.sublist(start, i + 1).join());
   }
   return candidates.length == 1 ? candidates.single : null;
@@ -1558,19 +1616,63 @@ List<_MergeRegion> _alignedRegions(
         right,
         regions.map((r) => r.previewRight).toList(),
       );
+  for (var i = 0; i < regions.length; i++) {
+    leftAnchors[i] = _sourceRegionOffset(left, leftAnchors[i], regions[i].left);
+    rightAnchors[i] = _sourceRegionOffset(
+      right,
+      rightAnchors[i],
+      regions[i].right,
+    );
+  }
   return [
     for (var i = 0; i < regions.length; i++)
       _MergeRegion(
         regions[i].block,
-        regions[i].left,
-        regions[i].right,
+        _sourceRegionText(left, leftAnchors[i], regions[i].left),
+        _sourceRegionText(right, rightAnchors[i], regions[i].right),
         regions[i].previewLeft,
         regions[i].previewRight,
         leftOffset: leftAnchors[i],
         rightOffset: rightAnchors[i],
+        leftMarkerBody: regions[i].left,
+        rightMarkerBody: regions[i].right,
       ),
   ];
 }
+
+// A Git marker delimiter needs a line break even when a source ends without
+// one. Keep that representation separate from the exact bytes being accepted.
+// Remove only the single synthetic LF proven by this source's EOF identity.
+String _sourceRegionText(String source, int? start, String markerBody) {
+  if (start != null &&
+      start >= 0 &&
+      !source.endsWith('\n') &&
+      markerBody.endsWith('\n') &&
+      start + markerBody.length - 1 == source.length &&
+      source.substring(start) ==
+          markerBody.substring(0, markerBody.length - 1)) {
+    return markerBody.substring(0, markerBody.length - 1);
+  }
+  return markerBody;
+}
+
+int? _sourceRegionOffset(String source, int? proposed, String markerBody) {
+  // A line diff represents a missing final LF as removal plus insertion, so
+  // its insertion anchor may be source EOF. Recover only the exact suffix
+  // ending there, with one proven marker delimiter LF removed.
+  if (proposed == source.length &&
+      !source.endsWith('\n') &&
+      markerBody.endsWith('\n')) {
+    final raw = markerBody.substring(0, markerBody.length - 1),
+        start = source.length - markerBody.length + 1;
+    if (start >= 0 && source.substring(start) == raw) return start;
+  }
+  return proposed;
+}
+
+bool _sameMarkerBody(String source, int end, String raw, String markerBody) =>
+    raw == markerBody ||
+    end == source.length && !source.endsWith('\n') && markerBody == '$raw\n';
 
 Future<_ConflictDisplay> _backgroundConflictDisplay(
   String left,
@@ -1613,7 +1715,7 @@ _ConflictDisplay _conflictDisplay(
 ) {
   final leftMap = GitTextCorrespondence(diffs[0], left, result),
       rightMap = GitTextCorrespondence(diffs[1], right, result);
-  final parsed = _remainingResultRegions(result, sourceRegions);
+  final parsed = _remainingResultRegions(result);
   final remaining = _associateResultRegions(
     parsed,
     sourceRegions,
@@ -1626,7 +1728,7 @@ _ConflictDisplay _conflictDisplay(
     for (final region in remaining)
       if (region.sourceRegion != null)
         ..._sourceConflictHighlight(
-          sourceRegions[region.sourceRegion!],
+          region.source!,
           useLeft,
           useLeft ? left : right,
         ),
@@ -1686,12 +1788,19 @@ final class _ResultConflict {
     this.end,
     this.block,
     this.sourceRegion, {
-    this.candidates = const [],
+    this.left = '',
+    this.right = '',
+    this.closed = true,
+    this.source,
+    this.sourceIndices = const [],
   });
   final int start, end;
   final String block;
   final int? sourceRegion;
-  final List<int> candidates;
+  final String left, right;
+  final bool closed;
+  final _MergeRegion? source;
+  final List<int> sourceIndices;
 }
 
 List<GitTextHighlight> _diffHighlights(TextDiff diff, {required bool source}) {
@@ -1712,10 +1821,7 @@ List<GitTextHighlight> _diffHighlights(TextDiff diff, {required bool source}) {
   return ranges;
 }
 
-List<_ResultConflict> _remainingResultRegions(
-  String text,
-  List<_MergeRegion> sources,
-) {
+List<_ResultConflict> _remainingResultRegions(String text) {
   final lines = exactLines(text), offsets = <int>[];
   var offset = 0;
   for (final line in lines) {
@@ -1741,19 +1847,15 @@ List<_ResultConflict> _remainingResultRegions(
         !RegExp('^${'>' * size}(?: |\r?\$)').hasMatch(lines[i]))
       right.write(lines[i++]);
     final end = i < lines.length ? offsets[i] + lines[i].length : text.length;
-    final matches = [
-      for (var j = 0; j < sources.length; j++)
-        if (sources[j].left == left.toString() &&
-            sources[j].right == right.toString())
-          j,
-    ];
     result.add(
       _ResultConflict(
         offsets[start],
         end,
         text.substring(offsets[start], end),
-        i < lines.length && matches.length == 1 ? matches.single : null,
-        candidates: i < lines.length ? matches : const [],
+        null,
+        left: left.toString(),
+        right: right.toString(),
+        closed: i < lines.length,
       ),
     );
     start = i;
@@ -1771,41 +1873,41 @@ List<_ResultConflict> _associateResultRegions(
 ) {
   final result = <_ResultConflict>[];
   for (final region in parsed) {
-    final repeats = parsed.where((other) => other.block == region.block).length;
-    int? identity;
-    if (region.candidates.length == 1 && repeats == 1) {
-      identity = region.candidates.single;
-    } else if (repeats <= region.candidates.length) {
-      final candidates = <int>[];
-      for (final index in region.candidates) {
-        final source = sources[index],
-            a = source.leftOffset,
-            b = source.rightOffset;
-        if (a == null ||
-            b == null ||
-            a < 0 ||
-            b < 0 ||
-            a + source.left.length > left.length ||
-            b + source.right.length > right.length ||
-            left.substring(a, a + source.left.length) != source.left ||
-            right.substring(b, b + source.right.length) != source.right)
-          continue;
-        final mappedA = leftMap.forward(a), mappedB = rightMap.forward(b);
+    final groups = _sourceGroups(region, sources, left, right);
+    final repeats = parsed
+        .where(
+          (other) => other.left == region.left && other.right == region.right,
+        )
+        .length;
+    ({int first, int last, _MergeRegion region})? chosen;
+    if (groups.length == 1 && repeats == 1) {
+      chosen = groups.single;
+    } else if (repeats <= groups.length) {
+      final candidates = <({int first, int last, _MergeRegion region})>[];
+      for (final group in groups) {
+        final mappedA = leftMap.forward(group.region.leftOffset!),
+            mappedB = rightMap.forward(group.region.rightOffset!);
         if (mappedA >= region.start &&
             mappedA < region.end &&
             mappedB >= region.start &&
             mappedB < region.end)
-          candidates.add(index);
+          candidates.add(group);
       }
-      if (candidates.length == 1) identity = candidates.single;
+      if (candidates.length == 1) chosen = candidates.single;
     }
     result.add(
       _ResultConflict(
         region.start,
         region.end,
         region.block,
-        identity,
-        candidates: region.candidates,
+        chosen?.first,
+        left: region.left,
+        right: region.right,
+        closed: region.closed,
+        source: chosen?.region,
+        sourceIndices: chosen == null
+            ? const []
+            : [for (var i = chosen.first; i <= chosen.last; i++) i],
       ),
     );
   }
@@ -1816,15 +1918,80 @@ List<_ResultConflict> _associateResultRegions(
         region.end,
         region.block,
         region.sourceRegion != null &&
-                result
-                        .where(
-                          (other) => other.sourceRegion == region.sourceRegion,
-                        )
-                        .length ==
-                    1
+                !result.any(
+                  (other) =>
+                      !identical(other, region) &&
+                      other.sourceIndices.any(region.sourceIndices.contains),
+                )
             ? region.sourceRegion
             : null,
-        candidates: region.candidates,
+        left: region.left,
+        right: region.right,
+        closed: region.closed,
+        source: region.source,
+        sourceIndices: region.sourceIndices,
       ),
   ];
+}
+
+// Git's saved merge markers can combine neighboring preview regions. Associate
+// that actual block with exact contiguous spans from both immutable sources;
+// this changes neither the saved result nor Git's merge decisions. Unknown or
+// edited/ambiguous blocks remain manual, and overlapping source ownership is
+// rejected above rather than selecting the first matching copy.
+List<({int first, int last, _MergeRegion region})> _sourceGroups(
+  _ResultConflict actual,
+  List<_MergeRegion> sources,
+  String left,
+  String right,
+) {
+  if (!actual.closed) return const [];
+  final groups = <({int first, int last, _MergeRegion region})>[];
+  for (var first = 0; first < sources.length; first++) {
+    final a = sources[first].leftOffset, b = sources[first].rightOffset;
+    if (a == null || b == null || a < 0 || b < 0) continue;
+    var previousA = a, previousB = b;
+    for (var last = first; last < sources.length; last++) {
+      final region = sources[last],
+          startA = region.leftOffset,
+          startB = region.rightOffset;
+      if (startA == null ||
+          startB == null ||
+          startA < previousA ||
+          startB < previousB)
+        break;
+      final endA = startA + region.left.length,
+          endB = startB + region.right.length;
+      if (endA > left.length ||
+          endB > right.length ||
+          left.substring(startA, endA) != region.left ||
+          right.substring(startB, endB) != region.right)
+        break;
+      previousA = endA;
+      previousB = endB;
+      if (endA - a > actual.left.length || endB - b > actual.right.length)
+        break;
+      final rawLeft = left.substring(a, endA),
+          rawRight = right.substring(b, endB);
+      if (!_sameMarkerBody(left, endA, rawLeft, actual.left) ||
+          !_sameMarkerBody(right, endB, rawRight, actual.right))
+        continue;
+      groups.add((
+        first: first,
+        last: last,
+        region: _MergeRegion(
+          actual.block,
+          rawLeft,
+          rawRight,
+          sources[first].previewLeft,
+          sources[first].previewRight,
+          leftOffset: a,
+          rightOffset: b,
+          leftMarkerBody: actual.left,
+          rightMarkerBody: actual.right,
+        ),
+      ));
+    }
+  }
+  return groups;
 }

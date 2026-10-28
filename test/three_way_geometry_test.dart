@@ -128,6 +128,38 @@ Future<(GitSession, List<TextField>)> mount(
 
 void main() {
   testWidgets(
+    'RTL Git document rows keep literal source and paths left to right',
+    (tester) async {
+      final (_, fields) = await mount(tester, 1.5, TextDirection.rtl);
+      for (var pane = 0; pane < 3; pane++) {
+        final field = find.byType(TextField).at(pane);
+        final render = editable(tester, field);
+        expect(render.textDirection, TextDirection.ltr);
+        expect(
+          render.getLocalRectForCaret(const TextPosition(offset: 0)).left,
+          lessThan(20),
+        );
+      }
+      final source = fields[0].controller!.text;
+      expect(source, startsWith('common 0 prose\n'));
+      final localCommand = find.byTooltip('Copy HEAD region into index draft');
+      expect(
+        tester.getRect(localCommand).right,
+        lessThanOrEqualTo(tester.getRect(find.byType(TextField).at(0)).left),
+      );
+      final path = find.text('/fixture/repo · note.md');
+      expect(path, findsOneWidget);
+      expect(Directionality.of(tester.element(path)), TextDirection.ltr);
+      // Localized pane chrome retains its ambient RTL direction.
+      final heading = find.textContaining('HEAD ·');
+      expect(
+        Directionality.of(tester.element(heading.first)),
+        TextDirection.rtl,
+      );
+      expect(fields[0].controller!.text, source);
+    },
+  );
+  testWidgets(
     'optional independent scrolling resumes correspondence from the last scrolled pane',
     (tester) async {
       final (_, fields) = await mount(tester, 1, TextDirection.ltr);
@@ -409,7 +441,9 @@ void main() {
             fields[0].scrollController!.offset + caret.top - 40,
           );
           await tester.pumpAndSettle();
-          final x = direction == TextDirection.rtl ? head.size.width : 0.0;
+          final x = head.textDirection == TextDirection.rtl
+              ? head.size.width
+              : 0.0;
           final offset = head
               .getPositionForPoint(head.localToGlobal(Offset(x, 0)))
               .offset;
@@ -437,7 +471,7 @@ void main() {
           );
           await tester.pumpAndSettle();
           final workField = editable(tester, find.byType(TextField).at(2));
-          final workX = direction == TextDirection.rtl
+          final workX = workField.textDirection == TextDirection.rtl
               ? workField.size.width
               : 0.0;
           final workOffset = workField

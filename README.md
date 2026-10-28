@@ -174,10 +174,16 @@ successful operation completion closes only its owning route. Evidence belongs
 under each existing `build/git-verification` tree; checklist entries above are
 requirements, not a declaration that acceptance has passed.
 
-File history now asks the pinned Git for `--diff-merges=first-parent` so a merge
-commit is visible and can offer its actual parents. Without that flag Git's
-`--follow --name-status` query omitted the merge entirely. This narrowly scoped
-engine correction is covered by a real Unicode/CRLF merge fixture and literal
-byte-path regression. Selecting another parent requests that parent's changed
-files and rename endpoints again; first-parent rename metadata is never reused
-for that comparison. The public engine API and controlled Git version are unchanged.
+File history retains merge boundaries without making a first-parent diff alter
+Git's rename-following walk. Sparse merge rows use bounded, immutable Git tree
+comparisons and literal path metadata; unresolved lineage remains an explicit
+failure instead of an invented deletion. Real inherited/nested rename fixtures,
+Unicode/raw paths, CRLF, deletion, pagination, cancellation and unavailable-object
+checks cover this narrowly necessary engine correction. Selecting another parent
+requests that parent's changed files and rename endpoints again. Pages keep the
+reviewed history tip until explicit refresh. Controlled Git remains unchanged.
+
+Revision documents and literal repository/path labels keep their physical source
+direction under RTL chrome. The surrounding controls and role labels retain the
+host locale. Actual saved conflict-marker blocks determine local acceptance;
+adjacent preview suggestions cannot overwrite a larger Git-created result block.

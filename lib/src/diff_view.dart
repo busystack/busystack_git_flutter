@@ -1856,13 +1856,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
     if (!_canInvokeReview(expectedGeneration)) return;
     await widget.session.host.present<void>(
       context,
-      gitString(
-        context,
+      widget.session.host.message(
         GitMessages.editStagedContentArg0,
         values: {'arg0': widget.comparison.path.display},
       ),
       GitIndexEditor(session: widget.session, path: widget.comparison.path),
       expanded: true,
+      localizeTitle: false,
     );
     if (_canInvokeReview(expectedGeneration)) await _load();
   }
@@ -2351,9 +2351,12 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         },
         child: Column(
           children: [
-            Text(
-              '${_snapshot!.repository.root} · ${_reviewPath!.display}',
-              maxLines: 2,
+            Directionality(
+              textDirection: TextDirection.ltr,
+              child: Text(
+                '${_snapshot!.repository.root} · ${_reviewPath!.display}',
+                maxLines: 2,
+              ),
             ),
             if (_saving)
               LinearProgressIndicator(

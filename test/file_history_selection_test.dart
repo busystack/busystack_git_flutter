@@ -8,7 +8,7 @@ import 'support/presentation_fixture.dart';
 
 final class _Client extends FixtureClient implements GitWorkflowClient {
   _Client({this.head});
-  final GitOid? head;
+  GitOid? head;
   final reads = <(GitInspection, Completer<Json>)>[];
 
   @override
@@ -63,9 +63,10 @@ Json _row(String oid, String path, String subject) => {
   'deleted': false,
 };
 
-Json _page(List<Json> entries, {bool hasMore = false}) => {
+Json _page(List<Json> entries, {bool hasMore = false, String? revision}) => {
   'entries': entries,
   'hasMore': hasMore,
+  'revision': revision ?? 'f' * 40,
 };
 
 Future<(GitSession, ValueNotifier<RepoPath>, List<Widget>)> _mount(
@@ -117,6 +118,109 @@ TextButton _blame(WidgetTester tester) =>
     tester.widget<TextButton>(find.widgetWithText(TextButton, 'Blame…'));
 
 void main() {
+  testWidgets(
+    'file history pages keep the reviewed tip until explicit refresh',
+    (tester) async {
+      final client = _Client(head: GitOid('a' * 40));
+      final (session, _, _) = await _mount(tester, client);
+      expect(client.reads.single.$1.revision, isNull);
+      client.reads.single.$2.complete(
+        _page(
+          [_row('a', 'new/chapter.md', 'Reviewed A')],
+          hasMore: true,
+          revision: 'a' * 40,
+        ),
+      );
+      await tester.pump();
+      client.head = GitOid('b' * 40);
+      await session.refresh();
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Next page'));
+      expect(client.reads.last.$1.offset, 100);
+      expect(client.reads.last.$1.revision, GitOid('a' * 40));
+      client.reads.last.$2.complete(
+        _page([_row('c', 'old/chapter.md', 'Older A')], revision: 'a' * 40),
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('Refresh').first);
+      expect(client.reads.last.$1.offset, 0);
+      expect(client.reads.last.$1.revision, isNull);
+      client.reads.last.$2.complete(
+        _page(
+          [_row('b', 'new/chapter.md', 'Current B')],
+          hasMore: true,
+          revision: 'b' * 40,
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Next page'));
+      expect(client.reads.last.$1.revision, GitOid('b' * 40));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'a retired page completion cannot bind a replacement history tip',
+    (tester) async {
+      final client = _Client(head: GitOid('a' * 40));
+      final (_, path, _) = await _mount(tester, client);
+      client.reads.single.$2.complete(
+        _page(
+          [_row('a', 'new/chapter.md', 'A')],
+          hasMore: true,
+          revision: 'a' * 40,
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Next page'));
+      final retired = client.reads.last.$2;
+      path.value = RepoPath.text('different.md');
+      await tester.pump();
+      expect(client.reads.last.$1.offset, 0);
+      expect(client.reads.last.$1.revision, isNull);
+      client.reads.last.$2.complete(
+        _page(
+          [_row('b', 'different.md', 'B')],
+          hasMore: true,
+          revision: 'b' * 40,
+        ),
+      );
+      await tester.pump();
+      retired.complete(
+        _page([_row('c', 'obsolete.md', 'Retired')], revision: 'a' * 40),
+      );
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Next page'));
+      expect(client.reads.last.$1.revision, GitOid('b' * 40));
+      expect(find.text('Retired'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a page response cannot replace its requested immutable tip', (
+    tester,
+  ) async {
+    final client = _Client(head: GitOid('a' * 40));
+    await _mount(tester, client);
+    client.reads.single.$2.complete(
+      _page(
+        [_row('a', 'new/chapter.md', 'A')],
+        hasMore: true,
+        revision: 'a' * 40,
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Next page'));
+    client.reads.last.$2.complete(
+      _page([_row('b', 'wrong.md', 'Wrong tip')], revision: 'b' * 40),
+    );
+    await tester.pump();
+    expect(find.byType(GitFailurePanel), findsOneWidget);
+    expect(find.byType(GitDiffView), findsNothing);
+    expect(find.text('Wrong tip'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('successful empty unborn history has no Blame target', (
     tester,
   ) async {

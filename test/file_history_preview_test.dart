@@ -17,6 +17,7 @@ final class _HistoryClient extends FixtureClient implements GitWorkflowClient {
     GitCancellation? cancellation,
     void Function(GitProgress)? onProgress,
   }) async => {
+    'revision': request.revision?.value ?? commit.value,
     'entries': [
       {
         'commit': GitCommit(

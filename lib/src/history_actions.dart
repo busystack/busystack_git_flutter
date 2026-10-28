@@ -584,6 +584,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
   late final GitSession _session;
   int _reviewGeneration = 0;
   int offset = 0;
+  GitOid? _historyTip;
   GitOid? selectedRevision;
   final _parents = <GitOid, GitOid>{};
   @override
@@ -616,17 +617,59 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
   }
 
   Future<void> refresh() {
+    offset = 0;
+    _historyTip = null;
+    return _loadPage();
+  }
+
+  Future<void> _loadPage() async {
     if (widget.session != _session) return Future<void>.value();
     // Retire actions immediately, before the next widget rebuild or read.
-    _reviewGeneration++;
-    return load(
+    final review = ++_reviewGeneration;
+    final requestedTip = _historyTip ?? widget.revision;
+    // A rejected inspection cannot relabel an old page with the new offset.
+    data = null;
+    await load(
       GitInspection(
         GitInspectionKind.fileHistory,
         path: widget.path,
-        revision: widget.revision,
+        revision: requestedTip,
         offset: offset,
       ),
     );
+    if (!mounted ||
+        review != _reviewGeneration ||
+        widget.session != _session ||
+        error != null ||
+        data == null)
+      return;
+    try {
+      final value = data!['revision'];
+      if (!data!.containsKey('revision') ||
+          value is! String &&
+              (value != null ||
+                  (data!['entries'] as List).isNotEmpty ||
+                  data!['hasMore'] == true)) {
+        throw const GitException(
+          GitErrorCode.commandFailed,
+          diagnostic: 'The history response has no reviewed revision.',
+        );
+      }
+      final tip = value == null ? null : GitOid(value as String);
+      if (requestedTip != null && requestedTip != tip) {
+        throw const GitException(GitErrorCode.staleReview);
+      }
+      setState(() => _historyTip = tip);
+    } on Object catch (failure) {
+      setState(
+        () => error = failure is GitException
+            ? failure
+            : GitException(
+                GitErrorCode.commandFailed,
+                diagnostic: sanitizeGitDiagnostic('$failure'),
+              ),
+      );
+    }
   }
 
   Widget _comparison(Json row) {
@@ -693,6 +736,16 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                   values: {'arg0': widget.path.display},
                 ),
               ),
+            ),
+            GitIconButton(
+              icon: const GitIcon(GitGlyph.refresh),
+              tooltip: GitMessages.refresh,
+              onPressed: loading
+                  ? null
+                  : () {
+                      if (!current()) return;
+                      unawaited(refresh());
+                    },
             ),
             TextButton(
               onPressed: selected == null || selected['deleted'] == true
@@ -854,22 +907,27 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         Row(
           children: [
             TextButton(
-              onPressed: loading || error != null || offset == 0
+              onPressed:
+                  loading || error != null || offset == 0 || _historyTip == null
                   ? null
                   : () {
                       if (!current()) return;
                       offset = (offset - 100).clamp(0, 1000000);
-                      unawaited(refresh());
+                      unawaited(_loadPage());
                     },
               child: const GitLabel(GitMessages.previousPage),
             ),
             TextButton(
-              onPressed: loading || error != null || data?['hasMore'] != true
+              onPressed:
+                  loading ||
+                      error != null ||
+                      data?['hasMore'] != true ||
+                      _historyTip == null
                   ? null
                   : () {
                       if (!current()) return;
                       offset += 100;
-                      unawaited(refresh());
+                      unawaited(_loadPage());
                     },
               child: const GitLabel(GitMessages.nextPage),
             ),

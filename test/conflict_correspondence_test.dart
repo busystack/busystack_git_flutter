@@ -108,6 +108,14 @@ final class _InvalidEncodingClient extends _MixedClient {
   }
 }
 
+// Git merge normally groups nearby edits into one working-file marker block,
+// while the independently requested diff3 preview may expose two regions.
+final class _GroupedClient extends _MixedClient {
+  @override
+  String get working =>
+      '$context${block('Left one\nBetween\nLeft two', 'Right one\nBetween\nRight two')}Saved custom Tail\n';
+}
+
 final class _RepeatedClient extends _MixedClient {
   @override
   String get left =>
@@ -203,6 +211,121 @@ Future<void> _mapped(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('actual grouped result block owns one local source transfer', (
+    tester,
+  ) async {
+    final client = _GroupedClient();
+    await _mount(tester, client);
+    await _until(
+      tester,
+      () =>
+          tester
+              .widget<GitRevisionPanes>(find.byType(GitRevisionPanes))
+              .mapOffset!(0, 1, 0) !=
+          null,
+    );
+    final result = _pane(tester, 1).controller!;
+    expect(result.text, client.working);
+    final leftActions = _pane(
+      tester,
+      0,
+    ).regionActions.where((a) => a.label == 'Accept left region').toList();
+    expect(leftActions, hasLength(1));
+    expect(find.text('Region 1/1 · 0 reviewed'), findsOneWidget);
+    expect(
+      find.text('Result regions with conflict markers: 1'),
+      findsOneWidget,
+    );
+    expect(leftActions.single.start, client.left.indexOf('Left one'));
+    expect(leftActions.single.end, client.left.indexOf('Tail'));
+    _pane(tester, 0).regionActions
+        .firstWhere((a) => a.label == 'Ignore left suggestion')
+        .onInvoke!();
+    await tester.pump();
+    expect(result.text, client.working);
+    final source = find.byType(GitTextPane).at(0);
+    await tester.tap(
+      find.descendant(
+        of: source,
+        matching: find.byTooltip('Accept left region'),
+      ),
+    );
+    await _until(
+      tester,
+      () => find
+          .text('Result regions with conflict markers: 0')
+          .evaluate()
+          .isNotEmpty,
+    );
+    expect(
+      result.text,
+      'Prelude\nLeft one\nBetween\nLeft two\nSaved custom Tail\n',
+    );
+    expect(result.text, isNot(contains('Git preview Tail')));
+    expect(client.mutations, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('new grouped callback can safely act before debounce', (
+    tester,
+  ) async {
+    final client = _GroupedClient();
+    await _mount(tester, client);
+    await _mapped(tester);
+    final result = _pane(tester, 1).controller!;
+    final obsolete = _pane(tester, 0).regionActions.first.onInvoke!;
+    result.value = TextEditingValue(
+      text: 'manual prefix\n${result.text}',
+      selection: const TextSelection(baseOffset: 1, extentOffset: 5),
+      composing: const TextRange(start: 0, end: 6),
+    );
+    final edited = result.value;
+    obsolete();
+    expect(result.value, edited);
+    await tester.pump(); // No debounce time passes before the new action.
+    tester
+        .widget<TextButton>(
+          find.widgetWithText(TextButton, 'Accept left region'),
+        )
+        .onPressed!();
+    expect(
+      result.text,
+      'manual prefix\nPrelude\nLeft one\nBetween\nLeft two\nSaved custom Tail\n',
+    );
+    expect(result.selection, edited.selection);
+    expect(result.value.composing, edited.composing);
+    obsolete();
+    expect(result.text, startsWith('manual prefix\nPrelude\nLeft one\n'));
+    expect(client.mutations, isEmpty);
+  });
+
+  testWidgets('copied member block cannot share grouped source ownership', (
+    tester,
+  ) async {
+    final client = _GroupedClient();
+    await _mount(tester, client);
+    await _mapped(tester);
+    final result = _pane(tester, 1).controller!;
+    result.text += client.block('Left two', 'Right two');
+    final edited = result.text;
+    await _until(
+      tester,
+      () =>
+          tester
+              .widget<GitRevisionPanes>(find.byType(GitRevisionPanes))
+              .mapOffset!(0, 1, 0) !=
+          null,
+    );
+    expect(_pane(tester, 0).regionActions, isEmpty);
+    expect(_pane(tester, 2).regionActions, isEmpty);
+    expect(
+      find.text('Result regions with conflict markers: 2'),
+      findsOneWidget,
+    );
+    expect(result.text, edited);
+    expect(client.mutations, isEmpty);
+  });
+
   testWidgets(
     'local conflict controls align with source and preserve saved manual content',
     (tester) async {
@@ -312,6 +435,9 @@ void main() {
       final client = _MixedClient();
       await _mount(tester, client, direction: TextDirection.rtl, scale: 1.6);
       await _mapped(tester);
+      final path = find.text('/fixture/repo · prose.md');
+      expect(path, findsOneWidget);
+      expect(Directionality.of(tester.element(path)), TextDirection.ltr);
       final panes = find.byType(GitTextPane);
       expect(
         tester.getRect(panes.at(0)).right,
@@ -346,6 +472,13 @@ void main() {
               find.descendant(of: pane, matching: find.byType(EditableText)),
             )
             .renderEditable;
+        expect(editable.textDirection, TextDirection.ltr);
+        final field = find.descendant(
+          of: pane,
+          matching: find.byType(TextField),
+        );
+        expect(acceptRect.right, lessThanOrEqualTo(tester.getRect(field).left));
+        expect(ignoreRect.right, lessThanOrEqualTo(tester.getRect(field).left));
         final caret = editable.localToGlobal(
           editable
               .getLocalRectForCaret(TextPosition(offset: action.start))
