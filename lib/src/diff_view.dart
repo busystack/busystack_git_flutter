@@ -8,6 +8,7 @@ import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart';
 import 'host.dart';
 import 'session.dart';
 import 'text_pane.dart';
@@ -20,6 +21,27 @@ export 'text_pane.dart';
 Future<TextDiff> _backgroundDiff(String left, String right) =>
     Isolate.run(() => computeTextDiff(left, right));
 
+// Search indexes bounded content off the UI isolate. The extra sentinel match
+// reports truncation explicitly without retaining unbounded match metadata.
+Future<List<(int, int, int)>> _backgroundSearch(
+  List<String> lines,
+  String query,
+) => Isolate.run(() {
+  final matches = <(int, int, int)>[], needle = query.toLowerCase();
+  for (var line = 0; line < lines.length; line++) {
+    final text = lines[line].toLowerCase();
+    var start = 0;
+    while (start < text.length) {
+      final match = text.indexOf(needle, start);
+      if (match < 0) break;
+      matches.add((line, match, match + needle.length));
+      if (matches.length > 10000) return matches;
+      start = match + needle.length;
+    }
+  }
+  return matches;
+});
+
 final class GitDiffView extends StatefulWidget {
   const GitDiffView({
     super.key,
@@ -28,7 +50,10 @@ final class GitDiffView extends StatefulWidget {
     this.preview = false,
     this.onPreviousFile,
     this.onNextFile,
+    @visibleForTesting this.searchMatches,
   });
+  final Future<List<(int, int, int)>> Function(List<String>, String)?
+  searchMatches;
   final GitSession session;
   final GitComparison comparison;
   final bool preview;
@@ -55,15 +80,25 @@ final class _GitDiffViewState extends State<GitDiffView> {
   String? _rowSettings;
   List<(int?, int?)>? _rowCache;
   final _selected = <int>{};
+  final _lineFocus = <int, FocusNode>{};
+  final _searchMatches = <(int, int, int)>[];
+  int _activeSearchMatch = -1, _searchQueryGeneration = 0;
+  bool _searchLoading = false, _matchesLimited = false;
+  GitException? _searchFailure;
+  Timer? _searchTimer;
   int? _selectionAnchor;
   final _rowKeys = <int, GlobalKey>{};
+  final _textKeys = <(int, bool), GlobalKey>{};
   final _scroll = ScrollController(),
       _horizontalScroll = ScrollController(),
       _rightHorizontalScroll = ScrollController(),
       _search = TextEditingController();
   final _searchFocus = FocusNode();
   bool _searchVisible = false;
-  var _generation = 0, _difference = -1, _revealGeneration = 0;
+  var _generation = 0,
+      _difference = -1,
+      _revealGeneration = 0,
+      _searchNavigationGeneration = 0;
   @override
   void initState() {
     super.initState();
@@ -73,6 +108,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     _collapse = widget.session.option('diffCollapse', true);
     _ignoreWhitespace = widget.session.option('diffIgnoreWhitespace', false);
     widget.session.addListener(_repositoryChanged);
+    _search.addListener(_searchChanged);
     unawaited(_load());
   }
 
@@ -97,12 +133,24 @@ final class _GitDiffViewState extends State<GitDiffView> {
   @override
   void didUpdateWidget(covariant GitDiffView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.comparison != widget.comparison) unawaited(_load());
+    if (oldWidget.session != widget.session) {
+      oldWidget.session.removeListener(_repositoryChanged);
+      widget.session.addListener(_repositoryChanged);
+    }
+    if (oldWidget.comparison != widget.comparison ||
+        oldWidget.session != widget.session)
+      unawaited(_load());
   }
 
   @override
   void dispose() {
+    _searchTimer?.cancel();
+    _searchQueryGeneration++;
     _searchFocus.dispose();
+    for (final focus in _lineFocus.values) {
+      focus.dispose();
+    }
+    _search.removeListener(_searchChanged);
     _generation++;
     _readCancellation?.cancel();
     widget.session.removeListener(_repositoryChanged);
@@ -115,6 +163,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
 
   Future<void> _load({bool refreshStatus = false}) async {
     final generation = ++_generation;
+    _searchTimer?.cancel();
     setState(() {
       _loading = true;
       _error = null;
@@ -122,7 +171,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
       _selected.clear();
       _selectionAnchor = null;
       _rowKeys.clear();
+      _textKeys.clear();
       _difference = -1;
+      _searchMatches.clear();
+      _activeSearchMatch = -1;
+      _searchLoading = false;
     });
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
@@ -183,6 +236,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
         _stale =
             session.snapshot != null && session.snapshot!.token != before.token;
       });
+      if (_search.text.isNotEmpty) _searchChanged();
     } on GitException catch (error) {
       if (mounted && generation == _generation)
         setState(() {
@@ -227,6 +281,170 @@ final class _GitDiffViewState extends State<GitDiffView> {
     widget.session.setViewState(key, value);
   }
 
+  void _searchChanged() {
+    if (!mounted) return;
+    final request = ++_searchQueryGeneration;
+    _searchTimer?.cancel();
+    _revealGeneration++;
+    final query = _search.text;
+    setState(() {
+      _searchMatches.clear();
+      _activeSearchMatch = -1;
+      _matchesLimited = false;
+      _searchFailure = null;
+      _searchLoading = query.isNotEmpty && _diff != null;
+      _rowKeys.clear();
+    });
+    if (_searchLoading) {
+      _searchTimer = Timer(
+        const Duration(milliseconds: 100),
+        () =>
+            unawaited(_findSearchMatches(request, _generation, query, _diff!)),
+      );
+    }
+  }
+
+  Future<void> _findSearchMatches(
+    int request,
+    int generation,
+    String query,
+    TextDiff diff,
+  ) async {
+    bool current() =>
+        mounted &&
+        request == _searchQueryGeneration &&
+        generation == _generation &&
+        identical(diff, _diff) &&
+        query == _search.text;
+    try {
+      final search = widget.searchMatches ?? _backgroundSearch;
+      final matches = await search(
+        diff.edits.map((line) => line.text).toList(),
+        query,
+      );
+      if (!current()) return;
+      setState(() {
+        _searchMatches.addAll(matches.take(10000));
+        _matchesLimited = matches.length > 10000;
+        _activeSearchMatch = _searchMatches.isEmpty ? -1 : 0;
+        _searchLoading = false;
+      });
+      if (_activeSearchMatch >= 0) _revealSearchMatch();
+    } on Object catch (error) {
+      if (!current()) return;
+      setState(() {
+        _searchLoading = false;
+        _searchFailure = error is GitException
+            ? error
+            : GitException(
+                GitErrorCode.commandFailed,
+                diagnostic: sanitizeGitDiagnostic('$error'),
+              );
+      });
+    }
+  }
+
+  void _stepSearch(int delta) {
+    if (_searchMatches.isEmpty) return;
+    setState(
+      () => _activeSearchMatch =
+          (_activeSearchMatch + delta) % _searchMatches.length,
+    );
+    _revealSearchMatch();
+  }
+
+  void _revealSearchMatch() {
+    final match = _searchMatches[_activeSearchMatch], line = match.$1;
+    final generation = _generation, request = ++_searchNavigationGeneration;
+    final rows = _alignedRows();
+    final row = rows.indexWhere((pair) => pair.$1 == line || pair.$2 == line);
+    if (row < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      bool current() =>
+          mounted &&
+          generation == _generation &&
+          request == _searchNavigationGeneration;
+      if (!current()) return;
+      await _scrollToRenderedRow(row, generation);
+      if (!current()) return;
+      final edit = _diff!.edits[line];
+      final sides = _unified
+          ? [false]
+          : [if (edit.oldLine != null) false, if (edit.newLine != null) true];
+      for (final right in sides) {
+        final render = _textKeys[(line, right)]?.currentContext
+            ?.findRenderObject();
+        RenderParagraph? paragraph;
+        void visit(RenderObject node) {
+          if (node is RenderParagraph) {
+            paragraph = node;
+          } else if (paragraph == null) {
+            node.visitChildren(visit);
+          }
+        }
+
+        if (render != null) visit(render);
+        final target = paragraph;
+        if (target == null || !target.attached) continue;
+        final boxes = target.getBoxesForSelection(
+          TextSelection(baseOffset: match.$2, extentOffset: match.$3),
+        );
+        if (boxes.isEmpty) continue;
+        final box = boxes.first.toRect();
+        if (!_wrap) {
+          final horizontal = right ? _rightHorizontalScroll : _horizontalScroll;
+          if (horizontal.hasClients) {
+            final available = math.max(
+              1.0,
+              horizontal.position.viewportDimension - (_unified ? 128 : 96),
+            );
+            horizontal.jumpTo(
+              (box.left - available / 2).clamp(
+                0.0,
+                horizontal.position.maxScrollExtent,
+              ),
+            );
+          }
+        }
+        // Reveal the match inside a wrapped paragraph, rather than assuming
+        // the logical line's top is the match's rendered vertical location.
+        final viewport = RenderAbstractViewport.maybeOf(target);
+        if (viewport != null && _scroll.hasClients) {
+          final offset = viewport
+              .getOffsetToReveal(target, .18, rect: box, axis: Axis.vertical)
+              .offset;
+          await _scroll.animateTo(
+            offset.clamp(0.0, _scroll.position.maxScrollExtent),
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+          );
+          if (!current()) return;
+        }
+      }
+    });
+  }
+
+  bool get _canOpenSource =>
+      !_stale &&
+      _right?.availability == ContentAvailability.present &&
+      {
+        ContentKind.workingTree,
+        ContentKind.normalizedWorking,
+      }.contains(_right?.version.kind);
+
+  bool _canInvokeReview(int generation) =>
+      mounted && !_loading && generation == _generation;
+
+  void _openSource(int expectedGeneration) {
+    if (!_canInvokeReview(expectedGeneration) || !_canOpenSource) return;
+    final session = widget.session, path = widget.comparison.path;
+    unawaited(
+      session.host
+          .openDocument(session.repository, path)
+          .catchError((Object error) => session.reportFailure(error)),
+    );
+  }
+
   void _openSearch() {
     setState(() => _searchVisible = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -251,6 +469,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
         onRefresh: () => unawaited(_load(refreshStatus: true)),
       );
     final comparison = widget.comparison, host = widget.session.host;
+    final generation = _generation;
     final label = TextPainter(
       text: TextSpan(
         text: gitString(context, GitMessages.editHEADIndexWorkingTree),
@@ -267,6 +486,21 @@ final class _GitDiffViewState extends State<GitDiffView> {
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, control: true):
             _openSearch,
+        if (_canOpenSource)
+          const SingleActivator(LogicalKeyboardKey.f4): () =>
+              _openSource(generation),
+        const SingleActivator(LogicalKeyboardKey.f7): () => _jump(1),
+        const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
+            _jump(-1),
+        const SingleActivator(LogicalKeyboardKey.f3): () => _stepSearch(1),
+        const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
+            _stepSearch(-1),
+        if (widget.onPreviousFile != null)
+          const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+              widget.onPreviousFile!,
+        if (widget.onNextFile != null)
+          const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
+              widget.onNextFile!,
       },
       child: Column(
         children: [
@@ -457,6 +691,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
                         onPressed: _openSearch,
                         icon: const GitIcon(GitGlyph.search),
                       ),
+                      if (_canOpenSource)
+                        TextButton(
+                          key: const ValueKey('git-diff-open-source'),
+                          onPressed: () => _openSource(generation),
+                          child: const GitLabel(GitMessages.openCurrentFile),
+                        ),
                     ],
                   ),
                   if (_searchVisible)
@@ -480,8 +720,60 @@ final class _GitDiffViewState extends State<GitDiffView> {
                             icon: const GitIcon(GitGlyph.close),
                           ),
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) => _stepSearch(
+                          HardwareKeyboard.instance.isShiftPressed ? -1 : 1,
+                        ),
                       ),
+                    ),
+                  if (_searchVisible)
+                    Row(
+                      children: [
+                        GitIconButton(
+                          tooltip: gitString(
+                            context,
+                            GitMessages.previousSearchMatch,
+                          ),
+                          onPressed: _searchMatches.isEmpty
+                              ? null
+                              : () => _stepSearch(-1),
+                          icon: const GitIcon(GitGlyph.up),
+                        ),
+                        GitIconButton(
+                          tooltip: gitString(
+                            context,
+                            GitMessages.nextSearchMatch,
+                          ),
+                          onPressed: _searchMatches.isEmpty
+                              ? null
+                              : () => _stepSearch(1),
+                          icon: const GitIcon(GitGlyph.down),
+                        ),
+                        if (_searchLoading)
+                          const SizedBox(
+                            key: ValueKey('git-diff-search-loading'),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          GitLabel(
+                            GitMessages.searchMatchPosition,
+                            values: {
+                              'current': _activeSearchMatch + 1,
+                              'count': _searchMatches.length,
+                            },
+                          ),
+                      ],
+                    ),
+                  if (_searchVisible && _matchesLimited)
+                    GitLabel(
+                      GitMessages.searchResultsLimited,
+                      values: {'count': _searchMatches.length},
+                    ),
+                  if (_searchVisible && _searchFailure != null)
+                    GitFailurePanel(
+                      error: _searchFailure!,
+                      onRefresh: _searchChanged,
                     ),
                   if (_canStage && compact)
                     Align(
@@ -512,11 +804,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
                         onSelected: (value) {
                           switch (value) {
                             case 'lines':
-                              unawaited(_applySelection());
+                              unawaited(_applySelection(generation));
                             case 'index':
-                              unawaited(_indexEditor());
+                              unawaited(_indexEditor(generation));
                             case 'file':
-                              unawaited(_wholeFile());
+                              unawaited(_wholeFile(generation));
                           }
                         },
                       ),
@@ -528,7 +820,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                         FilledButton(
                           onPressed: _selected.isEmpty
                               ? null
-                              : () => unawaited(_applySelection()),
+                              : () => unawaited(_applySelection(generation)),
                           child: Text(
                             _unstage
                                 ? gitString(
@@ -542,13 +834,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
                           ),
                         ),
                         OutlinedButton(
-                          onPressed: () => unawaited(_indexEditor()),
+                          onPressed: () => unawaited(_indexEditor(generation)),
                           child: const GitLabel(
                             GitMessages.editHEADIndexWorkingTree,
                           ),
                         ),
                         TextButton(
-                          onPressed: () => unawaited(_wholeFile()),
+                          onPressed: () => unawaited(_wholeFile(generation)),
                           child: Text(
                             _unstage
                                 ? gitString(
@@ -631,48 +923,53 @@ final class _GitDiffViewState extends State<GitDiffView> {
       overflow: TextOverflow.ellipsis,
     ),
   );
-  Widget _nonText() => Center(
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${gitEnumLabel(context, _left!.availability)} → ${gitEnumLabel(context, _right!.availability)}',
-        ),
-        Text(
-          _displayLimit == null
-              ? gitString(
-                  context,
-                  GitMessages.textComparisonIsUnavailableForTheseContents,
-                )
-              : gitString(
-                  context,
-                  GitMessages
-                      .thisComparisonExceedsTheBoundedTextReviewLimitTheContents,
-                ),
-        ),
-        if (_stagingComparison)
-          TextButton(
-            onPressed:
-                widget.session.running ||
-                    _stale ||
-                    !widget.session.canWriteMetadata
-                ? null
-                : () => unawaited(_wholeFile()),
-            child: Text(
-              _unstage
-                  ? gitString(context, GitMessages.unstageWholeFile)
-                  : gitString(context, GitMessages.stageWholeFile),
-            ),
+  Widget _nonText() {
+    final generation = _generation;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${gitEnumLabel(context, _left!.availability)} → ${gitEnumLabel(context, _right!.availability)}',
           ),
-      ],
-    ),
-  );
+          Text(
+            _displayLimit == null
+                ? gitString(
+                    context,
+                    GitMessages.textComparisonIsUnavailableForTheseContents,
+                  )
+                : gitString(
+                    context,
+                    GitMessages
+                        .thisComparisonExceedsTheBoundedTextReviewLimitTheContents,
+                  ),
+          ),
+          if (_stagingComparison)
+            TextButton(
+              onPressed:
+                  widget.session.running ||
+                      _stale ||
+                      !widget.session.canWriteMetadata
+                  ? null
+                  : () => unawaited(_wholeFile(generation)),
+              child: Text(
+                _unstage
+                    ? gitString(context, GitMessages.unstageWholeFile)
+                    : gitString(context, GitMessages.stageWholeFile),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   List<int> _visible() {
     final edits = _diff!.edits, visible = <int>[];
     final ignored = _ignoreWhitespace ? _ignoredWhitespace() : <int>{};
     for (var i = 0; i < edits.length; i++) {
       if (ignored.contains(i)) continue;
       if (!_collapse ||
+          _search.text.isNotEmpty ||
           edits[i].kind != TextEditKind.equal ||
           edits
               .skip((i - 3).clamp(0, edits.length))
@@ -728,7 +1025,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
   }
 
   List<(int?, int?)> _alignedRows() {
-    final settings = '$_collapse:$_unified:$_ignoreWhitespace';
+    final settings =
+        '$_collapse:$_unified:$_ignoreWhitespace:${_search.text.isNotEmpty}';
     if (identical(_rowSource, _diff) &&
         _rowSettings == settings &&
         _rowCache != null)
@@ -777,6 +1075,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
 
   Widget _reviewRows(BuildContext context) {
     final rows = _alignedRows(), edits = _diff!.edits;
+    final generation = _generation;
     if (_diff!.changedIndices.isEmpty)
       return const Center(
         child: GitLabel(GitMessages.theComparedContentsAreIdentical),
@@ -805,26 +1104,21 @@ final class _GitDiffViewState extends State<GitDiffView> {
                 },
               )
             : gitString(context, GitMessages.context),
-        child: InkWell(
-          canRequestFocus: changed && _canStage,
-          onTap: !changed || !_canStage
-              ? null
-              : () => _selectChangedLine(index!),
-          child: ColoredBox(
-            color: _lineColor(index),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: host.rowHeight(context)),
-              child: _line(
-                text,
-                number,
-                kind,
-                _words && changed
-                    ? counterpart == null
-                          ? ''
-                          : edits[counterpart].text
-                    : null,
-                horizontal: right ? _rightHorizontalScroll : _horizontalScroll,
-              ),
+        child: ColoredBox(
+          color: _lineColor(index),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: host.rowHeight(context)),
+            child: _line(
+              text,
+              number,
+              kind,
+              _words && changed
+                  ? counterpart == null
+                        ? ''
+                        : edits[counterpart].text
+                  : null,
+              horizontal: right ? _rightHorizontalScroll : _horizontalScroll,
+              editIndex: index,
             ),
           ),
         ),
@@ -849,6 +1143,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   ..sort();
         final gap = row == 0 ? first > 0 : first > previous.last + 1;
         final changed = indices.any((i) => edits[i].kind != TextEditKind.equal);
+        final hunk = changed ? _hunk(first) : <int>{};
         return Column(
           key: _rowKeys.putIfAbsent(row, GlobalKey.new),
           children: [
@@ -863,7 +1158,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
-                  onPressed: () => unawaited(_applySelection(_hunk(first))),
+                  onPressed: () => unawaited(_applySelection(generation, hunk)),
                   child: Text(
                     _unstage
                         ? gitString(context, GitMessages.unstageThisHunk)
@@ -964,13 +1259,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
     );
   }
 
-  void _selectChangedLine(int index) {
+  void _selectChangedLine(int index, int generation) {
+    if (!_canInvokeReview(generation) || !_canStage) return;
+    _lineFocus[index]?.requestFocus();
     final edits = _diff!.edits;
     setState(() {
       if (HardwareKeyboard.instance.isShiftPressed &&
           _selectionAnchor != null) {
         final first = math.min(_selectionAnchor!, index);
         final last = math.max(_selectionAnchor!, index);
+        _selected.clear();
         for (var i = first; i <= last; i++) {
           if (edits[i].kind != TextEditKind.equal) _selected.add(i);
         }
@@ -979,6 +1277,35 @@ final class _GitDiffViewState extends State<GitDiffView> {
         _selectionAnchor = index;
       }
     });
+  }
+
+  Future<void> _moveChangedLine(
+    int current,
+    int delta, {
+    required bool extend,
+    required int expectedGeneration,
+  }) async {
+    if (!_canInvokeReview(expectedGeneration) || !_canStage) return;
+    final generation = _generation;
+    final changed = _diff?.changedIndices ?? <int>[];
+    final position = changed.indexOf(current);
+    if (position < 0) return;
+    final next = changed[(position + delta).clamp(0, changed.length - 1)];
+    setState(() {
+      if (extend) {
+        _selectionAnchor ??= current;
+        _selected.clear();
+        final low = math.min(_selectionAnchor!, next),
+            high = math.max(_selectionAnchor!, next);
+        _selected.addAll(changed.where((line) => line >= low && line <= high));
+      } else {
+        _selectionAnchor = next;
+      }
+    });
+    final rows = _alignedRows();
+    final row = rows.indexWhere((pair) => pair.$1 == next || pair.$2 == next);
+    if (row >= 0) await _scrollToRenderedRow(row, _generation);
+    if (mounted && generation == _generation) _lineFocus[next]?.requestFocus();
   }
 
   int? _counterpartIndex(int index) {
@@ -1028,7 +1355,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
     TextEditKind kind,
     String? counterpart, {
     required ScrollController horizontal,
+    required int? editIndex,
   }) {
+    final generation = _generation;
     final shown = text.endsWith('\n')
         ? text.substring(0, text.length - 1)
         : text;
@@ -1036,12 +1365,18 @@ final class _GitDiffViewState extends State<GitDiffView> {
       context,
     ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
     final content = Text.rich(
-      TextSpan(children: _wordSpans(shown, counterpart, kind)),
+      key: editIndex == null
+          ? null
+          : _textKeys.putIfAbsent((
+              editIndex,
+              identical(horizontal, _rightHorizontalScroll),
+            ), GlobalKey.new),
+      TextSpan(children: _wordSpans(shown, counterpart, kind, editIndex)),
       style: style,
       softWrap: _wrap,
     );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    Widget gutter = Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         SizedBox(
           width: _unified ? 82 : 48,
@@ -1061,6 +1396,73 @@ final class _GitDiffViewState extends State<GitDiffView> {
           style: style,
         ),
         const SizedBox(width: 4),
+      ],
+    );
+    if (editIndex != null && kind != TextEditKind.equal && _canStage) {
+      final index = editIndex;
+      gutter = CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.arrowDown): () => unawaited(
+            _moveChangedLine(
+              index,
+              1,
+              extend: false,
+              expectedGeneration: generation,
+            ),
+          ),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): () => unawaited(
+            _moveChangedLine(
+              index,
+              -1,
+              extend: false,
+              expectedGeneration: generation,
+            ),
+          ),
+          const SingleActivator(
+            LogicalKeyboardKey.arrowDown,
+            shift: true,
+          ): () => unawaited(
+            _moveChangedLine(
+              index,
+              1,
+              extend: true,
+              expectedGeneration: generation,
+            ),
+          ),
+          const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true): () =>
+              unawaited(
+                _moveChangedLine(
+                  index,
+                  -1,
+                  extend: true,
+                  expectedGeneration: generation,
+                ),
+              ),
+        },
+        child: Tooltip(
+          message: gitString(
+            context,
+            GitMessages.arg0ChangedLine,
+            values: {
+              'arg0': gitString(
+                context,
+                _unstage ? GitMessages.unstage : GitMessages.stage,
+              ),
+            },
+          ),
+          child: InkWell(
+            key: ValueKey('git-diff-stage-line-$index'),
+            focusNode: _lineFocus.putIfAbsent(index, FocusNode.new),
+            onTap: () => _selectChangedLine(index, generation),
+            child: gutter,
+          ),
+        ),
+      );
+    }
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        gutter,
         Expanded(
           child: _wrap
               ? content
@@ -1112,20 +1514,22 @@ final class _GitDiffViewState extends State<GitDiffView> {
     String value,
     String? counterpart,
     TextEditKind kind,
+    int? editIndex,
   ) {
     if (!_words ||
         counterpart == null ||
         kind == TextEditKind.equal ||
         _search.text.isNotEmpty ||
         value.length > 16000)
-      return _highlight(value, null);
+      return _highlight(value, null, editIndex);
     final words = RegExp(
       r'\s+|[^\s]+',
     ).allMatches(value).map((m) => m.group(0)!).toList();
     final other = RegExp(
       r'\s+|[^\s]+',
     ).allMatches(counterpart.trimRight()).map((m) => m.group(0)!).toList();
-    if (words.length + other.length > 4000) return _highlight(value, null);
+    if (words.length + other.length > 4000)
+      return _highlight(value, null, editIndex);
     Set<int> changed;
     try {
       changed = computeTokenDiff(words, other, maximumWork: 20000).edits
@@ -1150,7 +1554,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     ];
   }
 
-  List<InlineSpan> _highlight(String value, TextStyle? style) {
+  List<InlineSpan> _highlight(String value, TextStyle? style, int? editIndex) {
     final search = _search.text;
     if (search.isEmpty) return [TextSpan(text: value)];
     final spans = <InlineSpan>[];
@@ -1162,14 +1566,23 @@ final class _GitDiffViewState extends State<GitDiffView> {
         break;
       }
       spans.add(TextSpan(text: value.substring(start, index)));
+      final active =
+          _activeSearchMatch >= 0 &&
+          _searchMatches[_activeSearchMatch].$1 == editIndex &&
+          _searchMatches[_activeSearchMatch].$2 == index;
       spans.add(
         TextSpan(
           text: value.substring(index, index + search.length),
           style: TextStyle(
-            backgroundColor: Theme.of(context).colorScheme.tertiaryContainer,
+            backgroundColor: active
+                ? Theme.of(context).colorScheme.secondaryContainer
+                : Theme.of(context).colorScheme.tertiaryContainer,
+            decoration: active ? TextDecoration.underline : null,
+            fontWeight: active ? FontWeight.bold : null,
           ),
         ),
       );
+
       start = index + search.length;
     }
     return spans;
@@ -1278,14 +1691,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
     }
   }
 
-  Future<void> _wholeFile() async {
-    if (!_stagingComparison ||
+  Future<void> _wholeFile(int expectedGeneration) async {
+    if (!_canInvokeReview(expectedGeneration) ||
+        !_stagingComparison ||
         widget.session.running ||
         _stale ||
         !widget.session.canWriteMetadata)
       return;
     final snapshot = _review ?? widget.session.snapshot;
     if (snapshot == null) return;
+    final generation = _generation;
     await widget.session.mutate(
       StagePaths(
         [
@@ -1305,13 +1720,15 @@ final class _GitDiffViewState extends State<GitDiffView> {
         },
       ),
     );
-    if (mounted) await _load();
+    if (mounted && generation == _generation) await _load();
   }
 
-  Future<void> _applySelection([Set<int>? hunk]) async {
+  Future<void> _applySelection(int expectedGeneration, [Set<int>? hunk]) async {
+    if (!_canInvokeReview(expectedGeneration)) return;
     final selection = hunk ?? _selected;
     if (!_canStage || selection.isEmpty) return;
     final path = widget.comparison.path, session = widget.session;
+    final generation = _generation;
     final index = _unstage ? _right! : _left!;
     final bytes = _diff!.select(selection, exclude: _unstage);
     final result = await session.mutate(
@@ -1335,7 +1752,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
             : index.mode,
       ),
     );
-    if (mounted) {
+    if (mounted && generation == _generation) {
       if (result?.error case final error?)
         setState(() => _error = error);
       else
@@ -1343,7 +1760,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
     }
   }
 
-  Future<void> _indexEditor() async {
+  Future<void> _indexEditor(int expectedGeneration) async {
+    if (!_canInvokeReview(expectedGeneration)) return;
     await widget.session.host.present<void>(
       context,
       gitString(
@@ -1354,7 +1772,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       GitIndexEditor(session: widget.session, path: widget.comparison.path),
       expanded: true,
     );
-    if (mounted) await _load();
+    if (_canInvokeReview(expectedGeneration)) await _load();
   }
 }
 
