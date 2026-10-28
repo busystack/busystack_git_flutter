@@ -92,10 +92,12 @@ final class GitHost {
     this.writeViewState,
     this.revokeRepositoryTrust,
     this.presentMenu,
+    this.registerDismissalGuard,
   }) : _present = present,
        _notify = notify;
   final GitPresentSurface _present;
   final GitPresentMenu? presentMenu;
+  final VoidCallback Function(Future<bool> Function())? registerDismissalGuard;
   Future<T?> present<T>(
     BuildContext context,
     String title,

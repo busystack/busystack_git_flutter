@@ -10,6 +10,7 @@ import 'diff_view.dart';
 import 'host.dart';
 import 'session.dart';
 import 'text_encoding.dart';
+import 'dismissal.dart';
 import 'workflow_ui.dart';
 
 final class GitOperationView extends StatefulWidget {
@@ -228,7 +229,10 @@ final class GitConflictView extends StatefulWidget {
 
 final class _ConflictState extends GitDialogState<GitConflictView> {
   @override
-  GitSession get session => widget.session;
+  GitSession get session => _ownerSession;
+  late final GitSession _ownerSession = widget.session;
+  late final RepoPath _ownerPath = widget.path;
+  bool _bindingChanged = false;
   final result = _ConflictResultController();
   final _leftTextController = GitHighlightedTextController();
   final _rightTextController = GitHighlightedTextController();
@@ -240,14 +244,43 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   List<_MergeRegion> regions = [];
   int activeRegion = 0;
   bool saved = false, _draftDirty = false, _readingVersions = false;
-  int _versionGeneration = 0;
+  int _versionGeneration = 0, _draftRevision = 0;
+  String _lastDraftText = '';
   bool get _busy => loading || _readingVersions || session.running;
   int _anchorRevision = 0;
   int? _resultAnchor;
   @override
   void initState() {
     super.initState();
+    result.addListener(_resultChanged);
     unawaited(refresh());
+  }
+
+  @override
+  void didUpdateWidget(covariant GitConflictView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(widget.session, _ownerSession) && widget.path == _ownerPath)
+      return;
+    // State and base-class subscriptions retain the originating worktree. A
+    // host must guard disposal; replacing a widget cannot retarget its draft.
+    _bindingChanged = true;
+    _versionGeneration++;
+    generation++;
+    cancellation?.cancel();
+    _readingVersions = false;
+    loading = false;
+    error = const GitException(GitErrorCode.staleReview);
+  }
+
+  void _resultChanged() {
+    if (_lastDraftText == result.text) return;
+    _lastDraftText = result.text;
+    _draftRevision++;
+    if (mounted)
+      setState(() {
+        saved = false;
+        _draftDirty = result.text != (working?.text ?? '');
+      });
   }
 
   @override
@@ -255,6 +288,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     _versionGeneration++;
     _leftTextController.dispose();
     _rightTextController.dispose();
+    result.removeListener(_resultChanged);
     result.dispose();
     undo.dispose();
     resultFocus.dispose();
@@ -262,6 +296,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
   }
 
   Future<void> refresh({bool replaceSavedDraft = false}) async {
+    if (_bindingChanged) return;
     if (_draftDirty &&
         !replaceSavedDraft &&
         !await gitConfirm(
@@ -277,7 +312,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     final previousData = data;
     setState(() => _readingVersions = true);
     try {
-      await load(GitInspection(GitInspectionKind.conflict, path: widget.path));
+      await load(GitInspection(GitInspectionKind.conflict, path: _ownerPath));
       if (!mounted ||
           current != _versionGeneration ||
           data == null ||
@@ -293,19 +328,19 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         for (final stage in [2, 1, 3])
           session.client.content(
             session.repository,
-            widget.path,
+            _ownerPath,
             ContentVersion(ContentKind.conflictStage, stage: stage),
             cancellation: token,
           ),
         session.client.content(
           session.repository,
-          widget.path,
+          _ownerPath,
           const ContentVersion.working(),
           cancellation: token,
         ),
         session.client.content(
           session.repository,
-          widget.path,
+          _ownerPath,
           const ContentVersion(ContentKind.mergePreview),
           cancellation: token,
         ),
@@ -384,6 +419,8 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
         result.regions = regions;
         result.activeRegion = 0;
         final savedText = working!.text ?? '';
+        _lastDraftText = savedText;
+        _draftRevision++;
         if (result.text != savedText) result.text = savedText;
         reviewedRegions.clear();
         saved = false;
@@ -452,202 +489,232 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             ContentAvailability.absent,
           }.contains(e.availability),
         );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        states(refresh: () => unawaited(refresh())),
-        if (_readingVersions && !loading)
-          LinearProgressIndicator(
-            semanticsLabel: gitString(
-              context,
-              GitMessages.loadingConflictVersions,
+    return GitDraftGuard(
+      host: session.host,
+      canDismiss: !_draftDirty && !_busy,
+      confirmDiscard: _confirmDiscard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          states(refresh: () => unawaited(refresh())),
+          if (_readingVersions && !loading)
+            LinearProgressIndicator(
+              semanticsLabel: gitString(
+                context,
+                GitMessages.loadingConflictVersions,
+              ),
             ),
+          Text(
+            '${session.repository.root} · ${_ownerPath.display} · ${_kindLabel()}',
           ),
-        Text('${widget.path.display} · ${_kindLabel()}'),
-        if (data != null)
-          Wrap(
-            spacing: session.host.spacing,
-            children: [
-              if (data!['baseAvailable'] == true)
-                TextButton(
-                  onPressed: () => compareBase(2),
-                  child: const GitLabel(GitMessages.baseLeft),
-                ),
-              if (data!['baseAvailable'] == true)
-                TextButton(
-                  onPressed: () => compareBase(3),
-                  child: const GitLabel(GitMessages.baseRight),
-                ),
-              if (data!['baseAvailable'] != true)
-                const GitLabel(GitMessages.noBaseEntryForThisConflict),
-              if (text)
-                TextButton(
-                  onPressed: _busy
+          if (data != null)
+            Wrap(
+              spacing: session.host.spacing,
+              children: [
+                if (data!['baseAvailable'] == true)
+                  TextButton(
+                    onPressed: () => compareBase(2),
+                    child: const GitLabel(GitMessages.baseLeft),
+                  ),
+                if (data!['baseAvailable'] == true)
+                  TextButton(
+                    onPressed: () => compareBase(3),
+                    child: const GitLabel(GitMessages.baseRight),
+                  ),
+                if (data!['baseAvailable'] != true)
+                  const GitLabel(GitMessages.noBaseEntryForThisConflict),
+                if (text)
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => unawaited(acceptWhole(ConflictChoice.left)),
+                    child: const GitLabel(GitMessages.acceptEntireLeftFile),
+                  ),
+                if (text)
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => unawaited(acceptWhole(ConflictChoice.right)),
+                    child: const GitLabel(GitMessages.acceptEntireRightFile),
+                  ),
+              ],
+            ),
+          if (text) ...[
+            Wrap(
+              spacing: session.host.spacing,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                GitIconButton(
+                  tooltip: gitString(
+                    context,
+                    GitMessages.previousConflictRegion,
+                  ),
+                  onPressed: _busy || regions.isEmpty
                       ? null
-                      : () => unawaited(acceptWhole(ConflictChoice.left)),
-                  child: const GitLabel(GitMessages.acceptEntireLeftFile),
+                      : () => navigate(-1),
+                  icon: const GitIcon(GitGlyph.up),
                 ),
-              if (text)
-                TextButton(
-                  onPressed: _busy
+                GitIconButton(
+                  tooltip: gitString(context, GitMessages.nextConflictRegion),
+                  onPressed: _busy || regions.isEmpty
                       ? null
-                      : () => unawaited(acceptWhole(ConflictChoice.right)),
-                  child: const GitLabel(GitMessages.acceptEntireRightFile),
+                      : () => navigate(1),
+                  icon: const GitIcon(GitGlyph.down),
                 ),
-            ],
-          ),
-        if (text) ...[
-          Wrap(
-            spacing: session.host.spacing,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              GitIconButton(
-                tooltip: gitString(context, GitMessages.previousConflictRegion),
-                onPressed: _busy || regions.isEmpty ? null : () => navigate(-1),
-                icon: const GitIcon(GitGlyph.up),
-              ),
-              GitIconButton(
-                tooltip: gitString(context, GitMessages.nextConflictRegion),
-                onPressed: _busy || regions.isEmpty ? null : () => navigate(1),
-                icon: const GitIcon(GitGlyph.down),
-              ),
-              Text(
-                regions.isEmpty
-                    ? gitString(context, GitMessages.manualResolution)
-                    : gitString(
-                        context,
-                        GitMessages.regionArg0Arg1Arg2Reviewed,
-                        values: {
-                          'arg0': activeRegion + 1,
-                          'arg1': regions.length,
-                          'arg2': reviewedRegions.length,
-                        },
-                      ),
-              ),
-              if (regions.any(
-                (r) => r.leftOffset == null || r.rightOffset == null,
-              ))
-                const GitLabel(
-                  GitMessages
-                      .sourceAlignmentExceededTheTextComparisonLimitSourcePanesRemain,
-                ),
-              TextButton(
-                onPressed: _busy || regions.isEmpty
-                    ? null
-                    : () => acceptRegion(true),
-                child: const GitLabel(GitMessages.acceptLeftRegion),
-              ),
-              TextButton(
-                onPressed: _busy || regions.isEmpty
-                    ? null
-                    : () => acceptRegion(false),
-                child: const GitLabel(GitMessages.acceptRightRegion),
-              ),
-              TextButton(
-                onPressed: _busy || regions.isEmpty
-                    ? null
-                    : () => setState(() => reviewedRegions.add(activeRegion)),
-                child: const GitLabel(GitMessages.keepManualResultForRegion),
-              ),
-              TextButton(
-                onPressed: _busy || preview?.text == null
-                    ? null
-                    : () async {
-                        if (!await gitConfirm(
+                Text(
+                  regions.isEmpty
+                      ? gitString(context, GitMessages.manualResolution)
+                      : gitString(
                           context,
-                          session,
-                          GitMessages.applyGitSNonConflictingChanges,
-                          GitMessages
-                              .replaceTheCurrentResultDraftWithGitSMergePreview,
-                          action: GitMessages.useMergePreview,
-                        ))
-                          return;
-                        result.value = TextEditingValue(text: preview!.text!);
-                        setState(() {
-                          saved = false;
-                          _draftDirty = true;
-                        });
-                      },
-                child: const GitLabel(GitMessages.applyNonConflictingChanges),
-              ),
-            ],
-          ),
-          Expanded(
-            child: GitRevisionPanes(
-              labels: const [
-                GitMessages.leftSource,
-                GitMessages.result,
-                GitMessages.rightSource,
-              ],
-              anchorRevision: _anchorRevision,
-              panes: [
-                (scroll) => GitTextPane(
-                  label: _sourceLabel(leftSource: true),
-                  controller: _leftTextController,
-                  readOnly: true,
-                  semanticLabel: GitMessages.readOnlyRevisionContent,
-                  scrollController: scroll,
-                  revealRevision: _anchorRevision,
-                  revealOffset: regions.isEmpty
-                      ? null
-                      : regions[activeRegion].leftOffset,
+                          GitMessages.regionArg0Arg1Arg2Reviewed,
+                          values: {
+                            'arg0': activeRegion + 1,
+                            'arg1': regions.length,
+                            'arg2': reviewedRegions.length,
+                          },
+                        ),
                 ),
-                (scroll) => resultPane(scroll),
-                (scroll) => GitTextPane(
-                  label: _sourceLabel(leftSource: false),
-                  controller: _rightTextController,
-                  readOnly: true,
-                  semanticLabel: GitMessages.readOnlyRevisionContent,
-                  scrollController: scroll,
-                  revealRevision: _anchorRevision,
-                  revealOffset: regions.isEmpty
+                if (regions.any(
+                  (r) => r.leftOffset == null || r.rightOffset == null,
+                ))
+                  const GitLabel(
+                    GitMessages
+                        .sourceAlignmentExceededTheTextComparisonLimitSourcePanesRemain,
+                  ),
+                TextButton(
+                  onPressed: _busy || regions.isEmpty
                       ? null
-                      : regions[activeRegion].rightOffset,
+                      : _regionAction(true),
+                  child: const GitLabel(GitMessages.acceptLeftRegion),
+                ),
+                TextButton(
+                  onPressed: _busy || regions.isEmpty
+                      ? null
+                      : _regionAction(false),
+                  child: const GitLabel(GitMessages.acceptRightRegion),
+                ),
+                TextButton(
+                  onPressed: _busy || regions.isEmpty
+                      ? null
+                      : () => setState(() => reviewedRegions.add(activeRegion)),
+                  child: const GitLabel(GitMessages.keepManualResultForRegion),
+                ),
+                TextButton(
+                  onPressed: _busy || preview?.text == null
+                      ? null
+                      : () async {
+                          if (!await gitConfirm(
+                            context,
+                            session,
+                            GitMessages.applyGitSNonConflictingChanges,
+                            GitMessages
+                                .replaceTheCurrentResultDraftWithGitSMergePreview,
+                            action: GitMessages.useMergePreview,
+                          ))
+                            return;
+                          result.value = TextEditingValue(text: preview!.text!);
+                          setState(() {
+                            saved = false;
+                            _draftDirty = true;
+                          });
+                        },
+                  child: const GitLabel(GitMessages.applyNonConflictingChanges),
                 ),
               ],
             ),
-          ),
-        ] else
-          Expanded(
-            child: left == null
-                ? error == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : const Center(
-                          child: GitLabel(
-                            GitMessages
-                                .conflictVersionsAreUnavailableRefreshToReviewTheirCurrentState,
-                          ),
-                        )
-                : nonText(),
-          ),
-        if (saved)
-          const GitLabel(
-            GitMessages.resultSavedToDiskTheIndexStillDeterminesWhetherThis,
-          ),
-        if (text) GitLabel(gitTextFormatLabel(result.text, context: context)),
-        if (text)
-          Wrap(
-            alignment: WrapAlignment.end,
-            spacing: session.host.spacing,
-            children: [
-              OutlinedButton(
-                onPressed: _busy || error != null || reviewed == null
-                    ? null
-                    : () => unawaited(save(false)),
-                child: const GitLabel(GitMessages.saveResultDraft),
+            Expanded(
+              child: GitRevisionPanes(
+                labels: const [
+                  GitMessages.leftSource,
+                  GitMessages.result,
+                  GitMessages.rightSource,
+                ],
+                anchorRevision: _anchorRevision,
+                panes: [
+                  (scroll) => GitTextPane(
+                    label: _sourceLabel(leftSource: true),
+                    controller: _leftTextController,
+                    readOnly: true,
+                    semanticLabel: GitMessages.readOnlyRevisionContent,
+                    scrollController: scroll,
+                    revealRevision: _anchorRevision,
+                    revealOffset: regions.isEmpty
+                        ? null
+                        : regions[activeRegion].leftOffset,
+                  ),
+                  (scroll) => resultPane(scroll),
+                  (scroll) => GitTextPane(
+                    label: _sourceLabel(leftSource: false),
+                    controller: _rightTextController,
+                    readOnly: true,
+                    semanticLabel: GitMessages.readOnlyRevisionContent,
+                    scrollController: scroll,
+                    revealRevision: _anchorRevision,
+                    revealOffset: regions.isEmpty
+                        ? null
+                        : regions[activeRegion].rightOffset,
+                  ),
+                ],
               ),
-              FilledButton(
-                onPressed: _busy || error != null || reviewed == null
-                    ? null
-                    : () => unawaited(save(true)),
-                child: const GitLabel(
-                  GitMessages.applyResultAndStageResolution,
+            ),
+          ] else
+            Expanded(
+              child: left == null
+                  ? error == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : const Center(
+                            child: GitLabel(
+                              GitMessages
+                                  .conflictVersionsAreUnavailableRefreshToReviewTheirCurrentState,
+                            ),
+                          )
+                  : nonText(),
+            ),
+          if (saved)
+            const GitLabel(
+              GitMessages.resultSavedToDiskTheIndexStillDeterminesWhetherThis,
+            ),
+          if (text) GitLabel(gitTextFormatLabel(result.text, context: context)),
+          if (text)
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: session.host.spacing,
+              children: [
+                OutlinedButton(
+                  onPressed: _busy || error != null || reviewed == null
+                      ? null
+                      : () => unawaited(save(false)),
+                  child: const GitLabel(GitMessages.saveResultDraft),
                 ),
-              ),
-            ],
-          ),
-      ],
+                FilledButton(
+                  onPressed: _busy || error != null || reviewed == null
+                      ? null
+                      : () => unawaited(save(true)),
+                  child: const GitLabel(
+                    GitMessages.applyResultAndStageResolution,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
     );
+  }
+
+  Future<bool> _confirmDiscard() async {
+    if (_busy) return false;
+    final revision = _draftRevision, versions = _versionGeneration;
+    final approved = await gitConfirm(
+      context,
+      session,
+      GitMessages.discardUnsavedConflictDraft,
+      GitMessages.closingTheConflictEditorDiscardsOnlyItsDraft,
+      action: GitMessages.discardConflictDraft,
+    );
+    return mounted &&
+        approved &&
+        revision == _draftRevision &&
+        versions == _versionGeneration;
   }
 
   Widget resultPane(ScrollController scroll) => GitTextPane(
@@ -660,10 +727,6 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     scrollController: scroll,
     revealOffset: _resultAnchor,
     revealRevision: _anchorRevision,
-    onChanged: (_) => setState(() {
-      saved = false;
-      _draftDirty = true;
-    }),
   );
   Widget nonText() => SingleChildScrollView(
     child: Column(
@@ -740,7 +803,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     GitDiffView(
       session: session,
       comparison: GitComparison(
-        widget.path,
+        _ownerPath,
         const ContentVersion(ContentKind.conflictStage, stage: 1),
         ContentVersion(ContentKind.conflictStage, stage: stage),
       ),
@@ -765,9 +828,33 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     }
   }
 
-  void acceptRegion(bool useLeft) {
-    final region = regions[activeRegion],
-        block = matchingResultRegion(result.text, regions[activeRegion]);
+  VoidCallback _regionAction(bool useLeft) {
+    final revision = _draftRevision,
+        generation = _versionGeneration,
+        region = regions[activeRegion],
+        index = activeRegion,
+        owner = session,
+        path = _ownerPath;
+    return () {
+      if (!mounted ||
+          _bindingChanged ||
+          _busy ||
+          revision != _draftRevision ||
+          generation != _versionGeneration ||
+          !identical(owner, session) ||
+          path != _ownerPath ||
+          index != activeRegion ||
+          !identical(regions[activeRegion], region) ||
+          reviewed?.token != session.snapshot?.token)
+        return;
+      acceptRegion(useLeft, region, index);
+    };
+  }
+
+  void acceptRegion(bool useLeft, _MergeRegion region, int index) {
+    // Matching is against the current exact draft, never an old offset. The
+    // caller additionally binds the action to its source and draft generation.
+    final block = matchingResultRegion(result.text, region);
     final offset = block == null ? -1 : result.text.indexOf(block);
     if (offset < 0) {
       session.host.notify(
@@ -785,7 +872,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       selection: TextSelection.collapsed(offset: offset + replacement.length),
     );
     setState(() {
-      reviewedRegions.add(activeRegion);
+      reviewedRegions.add(index);
       saved = false;
       _draftDirty = true;
     });
@@ -805,7 +892,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           : gitString(
               context,
               GitMessages.replacesTheEntireWorkingPathArg0AndStagesTheDecision,
-              values: {'arg0': widget.path.display},
+              values: {'arg0': _ownerPath.display},
             ),
       action: GitMessages.applyEntireFileDecision,
     ))
@@ -829,7 +916,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             context,
             GitMessages.useTheEntireEditedResultAsArg0GitRecordsThe,
             values: {
-              'arg0': widget.path.display,
+              'arg0': _ownerPath.display,
               'arg1': formatChange == null ? '' : '\n\n$formatChange',
             },
           ),
@@ -870,11 +957,12 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
     GitOid? gitlink,
     bool stage = true,
   }) async {
-    if (reviewed == null || working == null || data == null) return;
+    if (_bindingChanged || reviewed == null || working == null || data == null)
+      return;
     final stages = data!['stages'] as Json;
     final outcome = await apply(
       ResolveConflict(
-        widget.path,
+        _ownerPath,
         choice,
         expectedHead: reviewed!.head,
         expectedIndex: reviewed!.indexToken,

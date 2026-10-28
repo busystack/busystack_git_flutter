@@ -96,6 +96,136 @@ final class ConflictClient extends FixtureClient implements GitWorkflowClient {
 
 void main() {
   testWidgets(
+    'replacing conflict widget identity preserves its originating manual draft',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = ConflictClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitConflictView(session: session, path: client.path),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+      final field = find.widgetWithText(TextField, 'Editable conflict result');
+      final controller = tester.widget<TextField>(field).controller!;
+      controller.value = const TextEditingValue(
+        text: 'manual conflict draft\n',
+        selection: TextSelection(baseOffset: 2, extentOffset: 7),
+      );
+      final value = controller.value;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitConflictView(
+              session: session,
+              path: RepoPath.text('different.md'),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(controller.value, value);
+      expect(find.textContaining('/fixture/repo · prose.md'), findsOneWidget);
+      expect(find.textContaining('/fixture/repo · different.md'), findsNothing);
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(
+                FilledButton,
+                'Apply result and stage resolution',
+              ),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(client.mutations, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
+    'mounted conflict actions are bound to their exact draft revision',
+    (tester) async {
+      tester.view.physicalSize = const Size(1440, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = ConflictClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GitConflictView(session: session, path: client.path),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pumpAndSettle();
+      final field = find.widgetWithText(TextField, 'Editable conflict result');
+      final controller = tester.widget<TextField>(field).controller!;
+      final oldAction = tester
+          .widget<TextButton>(
+            find.widgetWithText(TextButton, 'Accept left region'),
+          )
+          .onPressed!;
+      final original = controller.value;
+      controller.value = TextEditingValue(
+        text: 'manual prefix\n${controller.text}',
+        selection: const TextSelection.collapsed(offset: 6),
+        composing: const TextRange(start: 0, end: 6),
+      );
+      final edited = controller.value;
+      oldAction();
+      expect(controller.value, edited);
+      controller.value =
+          original; // Undo/redo returning to the old bytes cannot revive it.
+      oldAction();
+      expect(controller.value, original);
+      controller.value = edited;
+      await tester.pump();
+      tester
+          .widget<TextButton>(
+            find.widgetWithText(TextButton, 'Accept left region'),
+          )
+          .onPressed!();
+      expect(
+        controller.text,
+        'manual prefix\nIntroduction\nCurrent prose\nConclusion\n',
+      );
+      oldAction();
+      expect(
+        controller.text,
+        'manual prefix\nIntroduction\nCurrent prose\nConclusion\n',
+      );
+      expect(client.mutations, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
+
+  testWidgets(
     'conflict draft reviews line-ending conversion before saving working bytes',
     (tester) async {
       tester.view.physicalSize = const Size(1440, 900);

@@ -2,6 +2,7 @@ library;
 
 export 'package:busystack_git/busystack_git.dart';
 export 'src/host.dart';
+export 'src/dismissal.dart';
 export 'src/session.dart';
 export 'src/commit_view.dart';
 export 'src/diff_view.dart';

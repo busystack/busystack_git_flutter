@@ -753,5 +753,12 @@
   "symlinkConflict": "Symbolic-link conflict",
   "addAddConflict": "Added on both sides",
   "modifyDeleteConflict": "Modified/deleted or renamed/deleted",
-  "conflictIdentity": "{path} · {kind}"
+  "conflictIdentity": "{path} · {kind}",
+  "discardUnsavedConflictDraft": "Discard unsaved conflict result?",
+  "closingTheConflictEditorDiscardsOnlyItsDraft": "Closing the conflict editor discards only its unsaved result draft. Saved working content and the index remain unchanged.",
+  "discardConflictDraft": "Discard conflict draft",
+  "revealRevisionWithoutFilters": "Reveal revision without filters",
+  "restoreHistoryFilters": "Restore history filters",
+  "showAllAffectedFiles": "Show All Affected Files",
+  "graphLanes": "Graph lanes"
 }

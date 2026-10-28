@@ -218,6 +218,10 @@ abstract final class GitMessages {
   static const author2 = "Author";
   static const path2 = "Path";
   static const dateFilter = "Date filter…";
+  static const revealRevisionWithoutFilters = "Reveal revision without filters";
+  static const restoreHistoryFilters = "Restore history filters";
+  static const graphLanes = "Graph lanes";
+  static const showAllAffectedFiles = "Show All Affected Files";
   static const resetFilters = "Reset filters";
   static const refreshLog = "Refresh Log";
   static const goToCommitReference = "Go to commit/reference…";
@@ -608,6 +612,10 @@ abstract final class GitMessages {
   static const forgetThisOperationSBookkeepingWhileRetainingTheCurrentFiles =
       "Forget this operation’s bookkeeping while retaining the current files and index.";
   static const continueArg0 = "Continue {arg0}";
+  static const discardUnsavedConflictDraft = "Discard unsaved conflict result?";
+  static const closingTheConflictEditorDiscardsOnlyItsDraft =
+      "Closing the conflict editor discards only its unsaved result draft. Saved working content and the index remain unchanged.";
+  static const discardConflictDraft = "Discard conflict draft";
   static const reloadConflictVersions = "Reload conflict versions?";
   static const replaceTheUnsavedResultDraftWithTheCurrentWorkingFile =
       "Replace the unsaved Result draft with the current working file. Saved working content is retained.";
@@ -1706,5 +1714,12 @@ abstract final class GitMessages {
     addAddConflict,
     modifyDeleteConflict,
     conflictIdentity,
+    discardUnsavedConflictDraft,
+    closingTheConflictEditorDiscardsOnlyItsDraft,
+    discardConflictDraft,
+    revealRevisionWithoutFilters,
+    restoreHistoryFilters,
+    showAllAffectedFiles,
+    graphLanes,
   ];
 }

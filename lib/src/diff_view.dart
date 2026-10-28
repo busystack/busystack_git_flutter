@@ -7,11 +7,13 @@ import 'dart:math' as math;
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'host.dart';
 import 'session.dart';
 import 'text_pane.dart';
 import 'text_encoding.dart';
 import 'text_undo.dart';
+import 'dismissal.dart';
 import 'workflow_ui.dart' show gitConfirm;
 export 'text_pane.dart';
 
@@ -57,10 +59,11 @@ final class _GitDiffViewState extends State<GitDiffView> {
   final _rowKeys = <int, GlobalKey>{};
   final _scroll = ScrollController(),
       _horizontalScroll = ScrollController(),
+      _rightHorizontalScroll = ScrollController(),
       _search = TextEditingController();
   final _searchFocus = FocusNode();
   bool _searchVisible = false;
-  var _generation = 0, _difference = -1;
+  var _generation = 0, _difference = -1, _revealGeneration = 0;
   @override
   void initState() {
     super.initState();
@@ -105,6 +108,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     widget.session.removeListener(_repositoryChanged);
     _scroll.dispose();
     _horizontalScroll.dispose();
+    _rightHorizontalScroll.dispose();
     _search.dispose();
     super.dispose();
   }
@@ -214,7 +218,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
       !_stale &&
       widget.session.canWriteMetadata;
   void _display(String key, bool value, VoidCallback update) {
-    setState(update);
+    _revealGeneration++;
+    setState(() {
+      update();
+      _rowKeys.clear();
+      _difference = -1;
+    });
     widget.session.setViewState(key, value);
   }
 
@@ -814,6 +823,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                           ? ''
                           : edits[counterpart].text
                     : null,
+                horizontal: right ? _rightHorizontalScroll : _horizontalScroll,
               ),
             ),
           ),
@@ -879,41 +889,78 @@ final class _GitDiffViewState extends State<GitDiffView> {
       },
     );
     if (_wrap) return SelectionArea(child: list);
-    final style = Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
-    final painter = TextPainter(
-      text: TextSpan(text: '界', style: style),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
-    final unit = painter.width;
-    painter.dispose();
-    var oldLength = 0, newLength = 0;
-    for (final edit in edits) {
-      final length = edit.text.length + 8;
-      if (edit.oldLine != null && length > oldLength) oldLength = length;
-      if (edit.newLine != null && length > newLength) newLength = length;
+    // The vertical list remains bounded and row-aligned. Each fixed pane has
+    // one document scrollbar; its offset is used by every visible content row.
+    // Neither the divider nor the opposite viewport is part of that surface.
+    double contentWidth(bool right) {
+      final style = Theme.of(
+        context,
+      ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
+      final painter = TextPainter(
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      );
+      var width = 0.0;
+      for (final edit in edits) {
+        if (!_unified && (right ? edit.newLine : edit.oldLine) == null)
+          continue;
+        painter.text = TextSpan(text: edit.text.trimRight(), style: style);
+        painter.layout();
+        width = math.max(width, painter.width);
+      }
+      painter.dispose();
+      return width + (_unified ? 128 : 96);
     }
-    return LayoutBuilder(
-      builder: (context, bounds) {
-        final needed = _unified
-            ? (oldLength > newLength ? oldLength : newLength) * unit
-            : (oldLength + newLength) * unit;
-        final width = needed > bounds.maxWidth ? needed : bounds.maxWidth;
-        return Scrollbar(
-          controller: _horizontalScroll,
-          child: SingleChildScrollView(
-            controller: _horizontalScroll,
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: width,
-              height: bounds.maxHeight,
-              child: SelectionArea(child: list),
+
+    Widget scrollbar(ScrollController controller, double width, Key key) =>
+        LayoutBuilder(
+          builder: (context, bounds) => SizedBox(
+            key: key,
+            height: 18,
+            child: Scrollbar(
+              controller: controller,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: controller,
+                scrollDirection: Axis.horizontal,
+                child: SizedBox(
+                  width: math.max(width, bounds.maxWidth),
+                  height: 1,
+                ),
+              ),
             ),
           ),
         );
-      },
+    return Column(
+      children: [
+        Expanded(child: SelectionArea(child: list)),
+        if (_unified)
+          scrollbar(
+            _horizontalScroll,
+            contentWidth(false),
+            const ValueKey('git-diff-unified-horizontal'),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: scrollbar(
+                  _horizontalScroll,
+                  contentWidth(false),
+                  const ValueKey('git-diff-left-horizontal'),
+                ),
+              ),
+              const VerticalDivider(width: 6),
+              Expanded(
+                child: scrollbar(
+                  _rightHorizontalScroll,
+                  contentWidth(true),
+                  const ValueKey('git-diff-right-horizontal'),
+                ),
+              ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -979,8 +1026,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
     String text,
     String number,
     TextEditKind kind,
-    String? counterpart,
-  ) {
+    String? counterpart, {
+    required ScrollController horizontal,
+  }) {
     final shown = text.endsWith('\n')
         ? text.substring(0, text.length - 1)
         : text;
@@ -1013,7 +1061,49 @@ final class _GitDiffViewState extends State<GitDiffView> {
           style: style,
         ),
         const SizedBox(width: 4),
-        Expanded(child: content),
+        Expanded(
+          child: _wrap
+              ? content
+              : Listener(
+                  onPointerSignal: (event) {
+                    if (event is! PointerScrollEvent || !horizontal.hasClients)
+                      return;
+                    final delta = event.scrollDelta.dx != 0
+                        ? event.scrollDelta.dx
+                        : HardwareKeyboard.instance.isShiftPressed
+                        ? event.scrollDelta.dy
+                        : 0.0;
+                    if (delta == 0) return;
+                    GestureBinding.instance.pointerSignalResolver.register(
+                      event,
+                      (_) {
+                        horizontal.jumpTo(
+                          (horizontal.offset + delta).clamp(
+                            0.0,
+                            horizontal.position.maxScrollExtent,
+                          ),
+                        );
+                      },
+                    );
+                  },
+                  child: ClipRect(
+                    child: AnimatedBuilder(
+                      animation: horizontal,
+                      builder: (context, _) => Transform.translate(
+                        offset: Offset(
+                          horizontal.hasClients ? -horizontal.offset : 0,
+                          0,
+                        ),
+                        child: OverflowBox(
+                          alignment: Alignment.topLeft,
+                          maxWidth: double.infinity,
+                          child: content,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
       ],
     );
   }
@@ -1107,8 +1197,14 @@ final class _GitDiffViewState extends State<GitDiffView> {
   }
 
   Future<void> _scrollToRenderedRow(int row, int generation) async {
-    for (var attempt = 0; attempt < 14; attempt++) {
-      if (!mounted || generation != _generation || !_scroll.hasClients) return;
+    final request = ++_revealGeneration;
+    double lower = 0, upper = double.infinity;
+    for (var attempt = 0; attempt < 40; attempt++) {
+      if (!mounted ||
+          generation != _generation ||
+          request != _revealGeneration ||
+          !_scroll.hasClients)
+        return;
       final target = _rowKeys[row]?.currentContext;
       if (target != null) {
         await Scrollable.ensureVisible(
@@ -1117,6 +1213,17 @@ final class _GitDiffViewState extends State<GitDiffView> {
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
         );
+        // Geometry can change during a theme/font/splitter relayout. Confirm
+        // against the rendered row on the next frame, rather than retaining an
+        // estimated line height as the final destination.
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted ||
+            generation != _generation ||
+            request != _revealGeneration)
+          return;
+        final settled = _rowKeys[row]?.currentContext;
+        if (settled != null)
+          await Scrollable.ensureVisible(settled, alignment: .18);
         return;
       }
       final mountedRows =
@@ -1138,13 +1245,34 @@ final class _GitDiffViewState extends State<GitDiffView> {
           : (lastBox.localToGlobal(Offset.zero).dy -
                     firstBox.localToGlobal(Offset.zero).dy) /
                 (last.key - first.key);
-      final rowHeight = widget.session.host.rowHeight(context);
-      final estimate = measured.clamp(rowHeight, rowHeight * 18);
-      final desired = (_scroll.offset + (row - nearest.key) * estimate).clamp(
-        0.0,
-        _scroll.position.maxScrollExtent,
-      );
-      if ((desired - _scroll.offset).abs() < 1) return;
+      if (row < first.key) {
+        upper = math.min(upper, _scroll.offset);
+      } else if (row > last.key) {
+        lower = math.max(lower, _scroll.offset);
+      }
+      final maximum = _scroll.position.maxScrollExtent;
+      var desired =
+          (_scroll.offset + (row - nearest.key) * math.max(1, measured)).clamp(
+            0.0,
+            maximum,
+          );
+      final high = math.min(upper, maximum);
+      // Estimates accelerate normal navigation. Bracketed bisection prevents
+      // oscillation across strongly asymmetric wrapping or newly measured rows.
+      if (desired <= lower ||
+          desired >= high ||
+          (desired - _scroll.offset).abs() < 1) {
+        desired = upper.isFinite
+            ? (lower + high) / 2
+            : math.min(
+                maximum,
+                math.max(
+                  desired,
+                  _scroll.offset + _scroll.position.viewportDimension,
+                ),
+              );
+      }
+      if ((desired - _scroll.offset).abs() < .1) return;
       _scroll.jumpTo(desired);
       await WidgetsBinding.instance.endOfFrame;
     }
@@ -1231,7 +1359,15 @@ final class _GitDiffViewState extends State<GitDiffView> {
 }
 
 final class GitIndexEditor extends StatefulWidget {
-  const GitIndexEditor({super.key, required this.session, required this.path});
+  const GitIndexEditor({
+    super.key,
+    required this.session,
+    required this.path,
+    @visibleForTesting this.computeDiff,
+  });
+
+  /// Override background scheduling to exercise obsolete completions in tests.
+  final Future<TextDiff> Function(String, String)? computeDiff;
   final GitSession session;
   final RepoPath path;
   @override
@@ -1240,6 +1376,7 @@ final class GitIndexEditor extends StatefulWidget {
 
 final class _GitIndexEditorState extends State<GitIndexEditor> {
   GitSnapshot? _snapshot;
+  RepoPath? _reviewPath;
   GitContent? _head, _index, _working;
   GitException? _failure;
   final _headText = GitHighlightedTextController();
@@ -1249,7 +1386,8 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   final _regions = <_IndexRegion>[];
   Timer? _regionTimer;
   int _loadGeneration = 0, _regionGeneration = 0, _activeRegion = 0;
-  int _anchorRevision = 0;
+  int _anchorRevision = 0, _draftRevision = 0;
+  _IndexRegionReview? _regionReview;
   String? _lastResultText;
   bool _saving = false, _dirty = false, _regionsLoading = false;
   bool _stale = false, _allowClose = false;
@@ -1261,6 +1399,24 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     unawaited(_load());
   }
 
+  @override
+  void didUpdateWidget(covariant GitIndexEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session == widget.session && oldWidget.path == widget.path)
+      return;
+    oldWidget.session.removeListener(_repositoryChanged);
+    widget.session.addListener(_repositoryChanged);
+    _loadGeneration++;
+    _invalidateRegions();
+    if (_dirty) {
+      // Hosts guard identity changes before disposing a draft. If a caller does
+      // replace the binding, retain the text and refuse every write/transfer.
+      _stale = true;
+    } else {
+      unawaited(_load());
+    }
+  }
+
   void _repositoryChanged() {
     final current = widget.session.snapshot;
     if (mounted &&
@@ -1268,6 +1424,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         current != null &&
         current.token != _snapshot!.token &&
         !_stale) {
+      _invalidateRegions();
       setState(() => _stale = true);
     }
   }
@@ -1287,30 +1444,69 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   }
 
   void _resultChanged() {
-    if (_snapshot == null || _saving || _result.text == _lastResultText) return;
+    if (_snapshot == null || _result.text == _lastResultText) return;
     _lastResultText = _result.text;
-    final dirty = _result.text != (_index?.text ?? '');
-    if (_dirty != dirty) setState(() => _dirty = dirty);
-    _regionTimer?.cancel();
+    _draftRevision++;
+    // Controller notifications are synchronous. Invalidate offsets before even
+    // an already-mounted button callback can observe the new draft.
+    _invalidateRegions();
+    setState(() => _dirty = _result.text != (_index?.text ?? ''));
     _regionTimer = Timer(
       const Duration(milliseconds: 120),
       () => unawaited(_computeRegions()),
     );
   }
 
+  void _invalidateRegions() {
+    _regionTimer?.cancel();
+    _regionGeneration++;
+    _regionReview = null;
+    _regions.clear();
+    _regionsLoading = true;
+    _headText.setHighlights(const []);
+    _result.setHighlights(const []);
+    _workingText.setHighlights(const []);
+  }
+
+  bool _isCurrentRegionReview(_IndexRegionReview review) =>
+      mounted &&
+      identical(review.session, widget.session) &&
+      review.path == widget.path &&
+      review.load == _loadGeneration &&
+      review.generation == _regionGeneration &&
+      review.draftRevision == _draftRevision &&
+      review.snapshot == _snapshot?.token &&
+      review.head == _head?.token &&
+      review.index == _index?.token &&
+      review.working == _working?.token &&
+      review.text == _result.text &&
+      !_stale;
+
   Future<void> _computeRegions() async {
     final generation = ++_regionGeneration;
     final head = _head?.text ?? '',
         index = _result.text,
         working = _working?.text ?? '';
+    final review = _IndexRegionReview(
+      widget.session,
+      widget.path,
+      _loadGeneration,
+      generation,
+      _draftRevision,
+      _snapshot?.token,
+      _head?.token,
+      _index?.token,
+      _working?.token,
+      index,
+    );
     setState(() => _regionsLoading = true);
     try {
+      final compute = widget.computeDiff ?? _backgroundDiff;
       final diffs = await Future.wait([
-        _backgroundDiff(head, index),
-        _backgroundDiff(index, working),
+        compute(head, index),
+        compute(index, working),
       ]);
-      if (!mounted || generation != _regionGeneration || index != _result.text)
-        return;
+      if (!_isCurrentRegionReview(review)) return;
       final staged = _indexRegions(
         diffs[0],
         head,
@@ -1324,6 +1520,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         GitHighlightKind.unstaged,
       );
       setState(() {
+        _regionReview = review;
         _regions
           ..clear()
           ..addAll(
@@ -1378,10 +1575,13 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     });
   }
 
-  void _transferRegion(GitHighlightKind kind) {
-    if (_saving || _regionsLoading || _regions.isEmpty) return;
-    final region = _regions[_activeRegion];
-    if (region.kind != kind) return;
+  void _transferRegion(_IndexRegionReview review, _IndexRegion region) {
+    if (_saving ||
+        _regionsLoading ||
+        !identical(review, _regionReview) ||
+        !_isCurrentRegionReview(review) ||
+        !_regions.contains(region))
+      return;
     final next = _result.text.replaceRange(
       region.indexStart,
       region.indexEnd,
@@ -1396,17 +1596,25 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     _anchorRevision++;
   }
 
+  VoidCallback? _regionAction(_IndexRegion region) {
+    final review = _regionReview;
+    return review == null ? null : () => _transferRegion(review, region);
+  }
+
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    _invalidateRegions();
+    _draftRevision++;
+    final session = widget.session, path = widget.path;
     try {
-      final session = widget.session,
-          snapshot = await widget.session.readStatus();
+      final snapshot = await session.readStatus();
+      if (!mounted || generation != _loadGeneration) return;
       final headPath =
           snapshot.changes
-              .where((e) => e.path == widget.path && e.index == 'R')
+              .where((e) => e.path == path && e.index == 'R')
               .firstOrNull
               ?.originalPath ??
-          widget.path;
+          path;
       final values = await Future.wait([
         session.client.content(
           session.repository,
@@ -1417,12 +1625,12 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         ),
         session.client.content(
           session.repository,
-          widget.path,
+          path,
           const ContentVersion.index(),
         ),
         session.client.content(
           session.repository,
-          widget.path,
+          path,
           const ContentVersion(ContentKind.normalizedWorking),
         ),
       ]);
@@ -1440,6 +1648,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       }
       setState(() {
         _snapshot = snapshot;
+        _reviewPath = path;
         _head = values[0];
         _index = values[1];
         _working = values[2];
@@ -1473,14 +1682,16 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       );
     if (_snapshot == null)
       return const Center(child: CircularProgressIndicator());
-    return PopScope<void>(
-      canPop: _allowClose || !_dirty,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop || _saving || !_dirty) return;
-        unawaited(_confirmClose());
-      },
+    return GitDraftGuard(
+      host: widget.session.host,
+      canDismiss: _allowClose || (!_dirty && !_saving),
+      confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
       child: Column(
         children: [
+          Text(
+            '${_snapshot!.repository.root} · ${_reviewPath!.display}',
+            maxLines: 2,
+          ),
           if (_saving)
             LinearProgressIndicator(
               semanticsLabel: gitString(
@@ -1539,7 +1750,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                         _regionsLoading ||
                         _regions[_activeRegion].kind != GitHighlightKind.staged
                     ? null
-                    : () => _transferRegion(GitHighlightKind.staged),
+                    : _regionAction(_regions[_activeRegion]),
                 child: const GitLabel(GitMessages.unstageThisHunk),
               ),
               TextButton(
@@ -1550,7 +1761,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                         _regions[_activeRegion].kind !=
                             GitHighlightKind.unstaged
                     ? null
-                    : () => _transferRegion(GitHighlightKind.unstaged),
+                    : _regionAction(_regions[_activeRegion]),
                 child: const GitLabel(GitMessages.stageThisHunk),
               ),
             ],
@@ -1700,24 +1911,27 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     );
   }
 
-  Future<void> _confirmClose() async {
-    if (!await gitConfirm(
+  Future<bool> _confirmClose() async {
+    final revision = _draftRevision, snapshot = _snapshot;
+    final approved = await gitConfirm(
       context,
       widget.session,
       GitMessages.discardUnsavedIndexDraft,
       GitMessages.closingTheIndexEditorDiscardsOnlyItsDraft,
       action: GitMessages.discardIndexDraft,
-    ))
-      return;
-    if (!mounted) return;
-    setState(() => _allowClose = true);
-    await WidgetsBinding.instance.endOfFrame;
-    if (mounted) gitCompleteSurface(context);
+    );
+    // A queued input-method update or programmatic edit is a newer draft; the
+    // previous confirmation does not authorize discarding it.
+    return mounted &&
+        approved &&
+        revision == _draftRevision &&
+        identical(snapshot, _snapshot);
   }
 
   Future<void> _apply() async {
     if (_stale || !_dirty) return;
-    final text = _result.text;
+    final text = _result.text, session = widget.session, path = widget.path;
+    final snapshot = _snapshot!, index = _index!, working = _working!;
     final formatChange = gitTextFormatChange(
       _index!.text ?? '',
       text,
@@ -1737,7 +1951,11 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         ))
       return;
     if (!mounted) return;
-    if (_result.text != text) {
+    if (_result.text != text ||
+        _stale ||
+        !identical(session, widget.session) ||
+        path != widget.path ||
+        !identical(snapshot, _snapshot)) {
       setState(
         () => _failure = const GitException(
           GitErrorCode.staleReview,
@@ -1748,16 +1966,16 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       return;
     }
     setState(() => _saving = true);
-    final result = await widget.session.mutate(
+    final result = await session.mutate(
       WriteIndex(
-        widget.path,
+        path,
         Uint8List.fromList(utf8.encode(text)),
-        expectedHead: _snapshot!.head,
-        expectedIndex: _snapshot!.indexToken,
-        expectedContent: _index!.token,
-        expectedWorktree: _working!.sourceToken.isEmpty
-            ? _working!.token
-            : _working!.sourceToken,
+        expectedHead: snapshot.head,
+        expectedIndex: snapshot.indexToken,
+        expectedContent: index.token,
+        expectedWorktree: working.sourceToken.isEmpty
+            ? working.token
+            : working.sourceToken,
         mode: _index!.mode == '000000'
             ? (_working!.mode == '000000' ? '100644' : _working!.mode)
             : _index!.mode,
@@ -1774,6 +1992,27 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         _saving = false;
       });
   }
+}
+
+/// A calculated offset belongs to one immutable source review and draft.
+final class _IndexRegionReview {
+  const _IndexRegionReview(
+    this.session,
+    this.path,
+    this.load,
+    this.generation,
+    this.draftRevision,
+    this.snapshot,
+    this.head,
+    this.index,
+    this.working,
+    this.text,
+  );
+  final GitSession session;
+  final RepoPath path;
+  final int load, generation, draftRevision;
+  final String? snapshot, head, index, working;
+  final String text;
 }
 
 final class _IndexRegion {

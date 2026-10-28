@@ -43,6 +43,74 @@ final class _WrappedClient extends FixtureClient {
 }
 
 void main() {
+  for (final collapsed in [false, true]) {
+    testWidgets(
+      'unbuilt navigation survives scaled relayout collapse=$collapsed',
+      (tester) async {
+        tester.view.physicalSize = const Size(1100, 850);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final client = _WrappedClient();
+        final session = GitSession(
+          client: client,
+          repository: repo,
+          host: host(),
+        );
+        await session.start();
+        session.setViewState('diffCollapse', collapsed);
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(1.6)),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: GitDiffView(
+                session: session,
+                comparison: GitComparison(
+                  RepoPath.text('chapter/notes.md'),
+                  const ContentVersion.index(),
+                  const ContentVersion.working(),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 120)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('target-new line'), findsNothing);
+        await tester.tap(find.byTooltip('Next difference'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Next difference'));
+        // Relayout while the request is seeking a row outside the built viewport.
+        tester.view.physicalSize = const Size(720, 850);
+        await tester.pumpAndSettle();
+        final target = find.textContaining('target-new line');
+        expect(target, findsOneWidget);
+        final box = tester.getRect(target),
+            viewport = tester.getRect(find.byType(ListView));
+        expect(box.top, greaterThanOrEqualTo(viewport.top));
+        expect(box.bottom, lessThanOrEqualTo(viewport.bottom));
+        expect(
+          tester.widgetList(find.byType(Text)).length,
+          lessThan(160),
+          reason: 'Navigation must retain bounded virtual row rendering.',
+        );
+        await tester.tap(find.byTooltip('Previous difference'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('early-new line'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        session.dispose();
+      },
+    );
+  }
+
   testWidgets('difference navigation reveals the rendered wrapped region', (
     tester,
   ) async {
