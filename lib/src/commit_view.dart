@@ -250,6 +250,8 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
               host: host,
               canDismiss: !session.hasUnpersistedMessageDrafts,
               isDismissible: () => !session.hasUnpersistedMessageDrafts,
+              revisionChanges: session,
+              revisionIdentity: () => session.messageDraftRevisions,
               confirmDiscard: () => _confirmMessageClose(context),
               child: _build(context),
             ),

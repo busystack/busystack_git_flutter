@@ -781,6 +781,8 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       host: session.host,
       canDismiss: !_draftDirty && !_busy,
       isDismissible: () => !_draftDirty && !_busy,
+      revisionChanges: result,
+      revisionIdentity: () => (_draftRevision, _versionGeneration),
       confirmDiscard: _confirmDiscard,
       child: CallbackShortcuts(
         bindings: {

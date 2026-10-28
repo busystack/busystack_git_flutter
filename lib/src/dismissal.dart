@@ -46,6 +46,8 @@ class GitDraftGuard extends StatefulWidget {
     required this.host,
     required this.canDismiss,
     this.isDismissible,
+    this.revisionChanges,
+    this.revisionIdentity,
     required this.confirmDiscard,
     required this.child,
   });
@@ -54,6 +56,14 @@ class GitDraftGuard extends StatefulWidget {
 
   /// Read current draft state for host requests that arrive before a rebuild.
   final bool Function()? isDismissible;
+
+  /// Text/session changes update the route predicate synchronously, before the
+  /// next frame. The current-state callback must observe this same revision.
+  final Listenable? revisionChanges;
+
+  /// Immutable draft/source identity reviewed by the discard confirmation.
+  /// A map snapshot is compared by its entries; other values use equality.
+  final Object? Function()? revisionIdentity;
   final Future<bool> Function() confirmDiscard;
   final Widget child;
 
@@ -61,13 +71,32 @@ class GitDraftGuard extends StatefulWidget {
   State<GitDraftGuard> createState() => _GitDraftGuardState();
 }
 
+final class _GitDraftPopEntry extends PopEntry<Object?> {
+  _GitDraftPopEntry(bool canPop, this.onBlocked)
+    : canPopNotifier = ValueNotifier(canPop);
+  @override
+  final ValueNotifier<bool> canPopNotifier;
+  final VoidCallback onBlocked;
+  @override
+  void onPopInvokedWithResult(bool didPop, Object? result) {
+    if (!didPop && !canPopNotifier.value) onBlocked();
+  }
+}
+
 class _GitDraftGuardState extends State<GitDraftGuard> {
   VoidCallback? _unregister;
   Future<bool>? _pending;
+  Future<void>? _closing;
+  int _inputRevision = 0;
+  ModalRoute<Object?>? _route;
+  late final _GitDraftPopEntry _entry;
+  bool get _canDismiss => widget.isDismissible?.call() ?? widget.canDismiss;
 
   @override
   void initState() {
     super.initState();
+    _entry = _GitDraftPopEntry(_canDismiss, () => unawaited(_requestClose()));
+    widget.revisionChanges?.addListener(_revisionChanged);
     _register();
   }
 
@@ -75,20 +104,45 @@ class _GitDraftGuardState extends State<GitDraftGuard> {
     _unregister = widget.host.registerDismissalGuard?.call(_mayDismiss);
   }
 
+  void _synchronizeRoute() => _entry.canPopNotifier.value = _canDismiss;
+  void _revisionChanged() {
+    _inputRevision++;
+    _synchronizeRoute();
+  }
+
+  Object? get _identity => widget.revisionIdentity?.call() ?? _inputRevision;
+  bool _sameIdentity(Object? before, Object? after) =>
+      before is Map && after is Map
+      ? mapEquals(before, after)
+      : before == after;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of<Object?>(context);
+    if (_route != route) {
+      _route?.unregisterPopEntry(_entry);
+      _route = route;
+      route?.registerPopEntry(_entry);
+    }
+  }
+
   @override
   void didUpdateWidget(GitDraftGuard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.revisionChanges != widget.revisionChanges) {
+      oldWidget.revisionChanges?.removeListener(_revisionChanged);
+      widget.revisionChanges?.addListener(_revisionChanged);
+    }
     if (oldWidget.host != widget.host) {
       _unregister?.call();
       _register();
     }
+    _synchronizeRoute();
   }
 
   Future<bool> _mayDismiss() {
-    if (!mounted) return Future.value(true);
-    if (widget.isDismissible?.call() ?? widget.canDismiss) {
-      return Future.value(true);
-    }
+    if (!mounted || _canDismiss) return Future.value(true);
     return _pending ??= widget
         .confirmDiscard()
         .then((approved) {
@@ -97,28 +151,48 @@ class _GitDraftGuardState extends State<GitDraftGuard> {
         .whenComplete(() => _pending = null);
   }
 
-  Future<void> _requestClose() async {
-    final route = ModalRoute.of(context);
+  Future<void> _requestClose() =>
+      _closing ??= _closeRoute().whenComplete(() => _closing = null);
+
+  Future<void> _closeRoute() async {
+    final route = _route;
     if (route?.isCurrent != true) return;
-    if (await _mayDismiss() && mounted && route?.isCurrent == true) {
-      gitCompleteSurface(context);
+    final revision = _identity;
+    if (!await _mayDismiss() ||
+        !mounted ||
+        route != _route ||
+        route?.isCurrent != true)
+      return;
+    if (!_sameIdentity(revision, _identity) && !_canDismiss) return;
+    // Authorize only this entry for this request. Other guards retain their
+    // veto. A newer input notification revokes this authorization immediately.
+    final navigator = Navigator.of(context);
+    _entry.canPopNotifier.value = true;
+    try {
+      if (!mounted ||
+          !navigator.mounted ||
+          route != _route ||
+          route?.isCurrent != true)
+        return;
+      await navigator.maybePop();
+    } finally {
+      // maybePop may be handled but vetoed; never assume the route disappeared,
+      // retry against its parent, or leave this draft authorized for later.
+      if (mounted && route == _route) _synchronizeRoute();
     }
   }
 
   @override
   void dispose() {
+    widget.revisionChanges?.removeListener(_revisionChanged);
+    _route?.unregisterPopEntry(_entry);
+    _entry.canPopNotifier.dispose();
     _unregister?.call();
     super.dispose();
   }
 
   @override
-  Widget build(BuildContext context) => PopScope<Object?>(
-    canPop: widget.canDismiss,
-    onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) unawaited(_requestClose());
-    },
-    child: widget.child,
-  );
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// A host window keeps this guard alive when Commit is hidden or unmounted.

@@ -2330,6 +2330,8 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       host: widget.session.host,
       canDismiss: _allowClose || (!_dirty && !_saving),
       isDismissible: () => _allowClose || (!_dirty && !_saving),
+      revisionChanges: _result,
+      revisionIdentity: () => (_draftRevision, _loadGeneration, _snapshot),
       confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
       child: CallbackShortcuts(
         bindings: {

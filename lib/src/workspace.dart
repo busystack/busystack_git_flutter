@@ -81,6 +81,8 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                 canDismiss: !widget.session.hasUnpersistedMessageDrafts,
                 isDismissible: () =>
                     !widget.session.hasUnpersistedMessageDrafts,
+                revisionChanges: widget.session,
+                revisionIdentity: () => widget.session.messageDraftRevisions,
                 confirmDiscard: () =>
                     gitMayDismissMessageDrafts(context, () => [widget.session]),
                 child: _build(context),

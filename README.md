@@ -205,3 +205,12 @@ local guard by default. Hosts drain session queues before checking dismissal and
 `GitFlushableDraftStore.flush` before normal native teardown. Draft I/O runs in
 background isolates; Linux uses public libc `flock` on separate open descriptions
 because Dart's POSIX file locks are process-scoped. No upstream code is modified.
+
+`GitDraftGuard` binds the route's public `PopEntry.canPopNotifier` directly to
+controller/session revision notifications. An edit therefore blocks Close,
+Escape, Back and barrier requests before the next widget frame. Discard consent
+belongs to its exact draft/source identity. A confirmed request authorizes only
+that guard and asks `Navigator.maybePop`; another guard may still veto it, so a
+handled request never implies that a route disappeared. Explicit successful
+operation completion keeps its separate owning-route completion path. The SDK,
+its `PopScope` implementation and its navigator remain unmodified.
