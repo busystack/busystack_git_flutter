@@ -63,6 +63,8 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _navigationOutsideFilters = false;
   bool _loading = true, _more = true, _branches = true, _details = true;
   int _generation = 0;
+  int _interactionEpoch = 0, _dialogRequest = 0;
+  ModalRoute<dynamic>? _presentationRoute;
   int _historyRevision = 0;
   int _selectionGeneration = 0;
   GitCancellation? _readCancellation;
@@ -80,8 +82,25 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (!identical(route, _presentationRoute)) {
+      _presentationRoute = route;
+      _interactionEpoch++;
+      _dialogRequest++;
+    }
+  }
+
+  @override
   void didUpdateWidget(GitLogView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session ||
+        oldWidget.path != widget.path ||
+        oldWidget.active != widget.active) {
+      _interactionEpoch++;
+      _dialogRequest++;
+    }
     if (oldWidget.session != widget.session || oldWidget.path != widget.path) {
       oldWidget.session.removeListener(_repositoryChanged);
       widget.session.addListener(_repositoryChanged);
@@ -151,6 +170,8 @@ final class _GitLogViewState extends State<GitLogView> {
 
   @override
   void dispose() {
+    _interactionEpoch++;
+    _dialogRequest++;
     _generation++;
     _selectionGeneration++;
     _readCancellation?.cancel();
@@ -356,6 +377,7 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   void _resetFilters() {
+    _dialogRequest++;
     _message.clear();
     _author.clear();
     _path.clear();
@@ -370,20 +392,35 @@ final class _GitLogViewState extends State<GitLogView> {
     TextEditingController controller,
     String title,
   ) async {
+    if (!mounted || !widget.active || _presentationRoute?.isActive == false)
+      return;
+    final session = widget.session, epoch = _interactionEpoch;
+    final request = ++_dialogRequest;
     final value = await gitTextInput(
       context,
-      widget.session,
+      session,
       title,
       initial: controller.text,
     );
-    if (!mounted || value == null) return;
+    if (!_ownsDialogRequest(session, epoch, request) || value == null) return;
     controller.text = value;
     await _load();
   }
 
+  bool _ownsInteraction(GitSession session, int epoch) =>
+      mounted &&
+      widget.active &&
+      (_presentationRoute?.isActive ?? true) &&
+      widget.session == session &&
+      epoch == _interactionEpoch;
+
+  bool _ownsDialogRequest(GitSession session, int epoch, int request) =>
+      _ownsInteraction(session, epoch) && request == _dialogRequest;
+
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
       final host = widget.session.host;
+      final menuSession = widget.session, menuEpoch = _interactionEpoch;
       final tableMinimum = _textWidth('MMMMMMMMMMMMMMMMMMMMMMMM') + 40;
       final detailMinimum =
           _textWidth('MMMMMMMMMMMMMMMMMMMMMM') + host.spacing * 2;
@@ -482,6 +519,7 @@ final class _GitLogViewState extends State<GitLogView> {
                           GitMenuEntry('date', GitMessages.date),
                         ],
                         onSelected: (value) {
+                          if (!_ownsInteraction(menuSession, menuEpoch)) return;
                           switch (value) {
                             case 'message':
                               unawaited(
@@ -735,155 +773,98 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     },
   );
-  Future<void> _showBranchFilter() => widget.session.host.present<void>(
-    context,
-    GitMessages.filterBranchesAndTags,
-    Builder(
-      builder: (dialogContext) => SizedBox(
+  Future<void> _showBranchFilter() async {
+    if (!mounted || !widget.active || _presentationRoute?.isActive == false)
+      return;
+    final session = widget.session, epoch = _interactionEpoch;
+    final request = ++_dialogRequest, revision = _historyRevision;
+    final references = List<GitReference>.unmodifiable(_references);
+    final height = (MediaQuery.sizeOf(context).height * .6).clamp(180.0, 500.0);
+    bool current() => _ownsDialogRequest(session, epoch, request);
+    bool referenceCurrent(GitReference ref) =>
+        current() &&
+        revision == _historyRevision &&
+        _references.any((r) => r.name == ref.name && r.oid == ref.oid);
+    final choice = await session.host.present<_LogReferenceChoice>(
+      context,
+      GitMessages.filterBranchesAndTags,
+      SizedBox(
         width: 420,
-        height: (MediaQuery.sizeOf(context).height * .6).clamp(180, 500),
-        child: ListenableBuilder(
-          listenable: _referenceSearch,
-          builder: (_, _) =>
-              _branchPane(onChosen: () => Navigator.of(dialogContext).pop()),
+        height: height,
+        child: _LogBranchFilterDialog(
+          session: session,
+          references: references,
+          selected: _reference,
+          initialSearch: _referenceSearch.text,
+          chooseOnly: widget.onChooseCommit != null,
+          isCurrent: current,
+          referenceCurrent: referenceCurrent,
+          onFailure: (failure) {
+            if (current()) setState(() => _failure = failure);
+          },
+          onSearchChanged: (value) {
+            if (current()) setState(() => _referenceSearch.text = value);
+          },
+          refresh: () => current()
+              ? _load(preserveNavigation: true)
+              : Future<void>.value(),
         ),
       ),
-    ),
-    expanded: false,
-  );
+      expanded: false,
+    );
+    if (!current() || choice == null) return;
+    _reference = choice.reference;
+    await _load();
+  }
 
-  Widget _branchPane({VoidCallback? onChosen}) {
-    final filter = _referenceSearch.text.toLowerCase();
-    return Column(
-      children: [
-        TextField(
-          controller: _referenceSearch,
-          decoration: InputDecoration(
-            labelText: gitString(context, GitMessages.branchOrTag),
-            prefixIcon: GitIcon(GitGlyph.search),
-          ),
-          onChanged: (_) => setState(() {}),
-        ),
-        Expanded(
-          child: ListView(
-            children: [
-              ListTile(
-                dense: true,
-                title: const GitLabel(GitMessages.allReferences),
-                selected: _reference == null,
-                onTap: () {
-                  _reference = null;
-                  onChosen?.call();
-                  unawaited(_load());
-                },
-              ),
-              for (final group in [
-                GitMessages.local,
-                GitMessages.remote,
-                GitMessages.tags,
-              ])
-                ExpansionTile(
-                  initiallyExpanded: true,
-                  title: Text(group),
-                  children: [
-                    for (final ref in _references.where(
-                      (ref) =>
-                          ref.name.startsWith(
-                            group == GitMessages.local
-                                ? 'refs/heads/'
-                                : group == GitMessages.remote
-                                ? 'refs/remotes/'
-                                : 'refs/tags/',
-                          ) &&
-                          ref.shortName.toLowerCase().contains(filter),
-                    ))
-                      _branchReference(ref, group, onChosen),
-                  ],
-                ),
-            ],
-          ),
-        ),
-      ],
+  Widget _branchPane() {
+    final session = widget.session, epoch = _interactionEpoch;
+    return _logBranches(
+      context,
+      search: _referenceSearch,
+      references: _references,
+      selected: _reference,
+      onSearchChanged: () {
+        if (_ownsInteraction(session, epoch)) setState(() {});
+      },
+      onChoose: (reference) {
+        if (!_ownsInteraction(session, epoch)) return;
+        _dialogRequest++;
+        _reference = reference;
+        unawaited(_load());
+      },
+      referenceBuilder: (ref, group) => _branchReference(ref, group),
     );
   }
 
-  Widget _branchReference(
-    GitReference ref,
-    String group,
-    VoidCallback? onChosen,
-  ) {
+  Widget _branchReference(GitReference ref, String group) {
     final session = widget.session, revision = _historyRevision;
+    final epoch = _interactionEpoch;
     bool current() =>
-        mounted &&
-        widget.session == session &&
+        _ownsInteraction(session, epoch) &&
         revision == _historyRevision &&
         _references.any((r) => r.name == ref.name && r.oid == ref.oid);
-    final actions = GitBranchActions(
+    return _logBranchReference(
       context,
-      session,
-      reviewed: session.snapshot,
+      session: session,
       references: _references,
+      ref: ref,
+      group: group,
+      selected: _reference,
+      chooseOnly: widget.onChooseCommit != null,
       isCurrent: current,
-      apply: (request) async {
-        final outcome = await session.mutate(request);
-        final failure = outcome?.error ?? session.failure;
-        if (current() && failure != null) setState(() => _failure = failure);
-        return outcome;
+      onChoose: (reference) {
+        if (!current()) return;
+        _dialogRequest++;
+        _reference = reference;
+        unawaited(_load());
       },
-      refresh: () => mounted && widget.session == session
+      onFailure: (failure) {
+        if (current()) setState(() => _failure = failure);
+      },
+      refresh: () => _ownsInteraction(session, epoch)
           ? _load(preserveNavigation: true)
           : Future<void>.value(),
-    );
-    Future<void> menu(Offset position) async {
-      if (!current() || widget.onChooseCommit != null) return;
-      final action = await session.host.menu(
-        context,
-        ref.shortName,
-        actions.entries(ref),
-        position: position,
-        localizeTitle: false,
-      );
-      if (action != null && current()) await actions.act(ref, action);
-    }
-
-    return GestureDetector(
-      onSecondaryTapUp: widget.onChooseCommit != null
-          ? null
-          : (details) => unawaited(menu(details.globalPosition)),
-      child: ListTile(
-        dense: true,
-        leading: GitIcon(
-          ref.current
-              ? GitGlyph.check
-              : group == GitMessages.tags
-              ? GitGlyph.tag
-              : GitGlyph.branch,
-          size: 16,
-        ),
-        title: Text(
-          ref.shortName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        selected: _reference == ref.name,
-        trailing: widget.onChooseCommit != null
-            ? null
-            : GitMenuButton(
-                host: session.host,
-                tooltip: gitString(
-                  context,
-                  GitMessages.actionsForArg0,
-                  values: {'arg0': ref.name},
-                ),
-                entries: actions.entries(ref),
-                onSelected: (action) => unawaited(actions.act(ref, action)),
-              ),
-        onTap: () {
-          _reference = ref.name;
-          onChosen?.call();
-          unawaited(_load());
-        },
-      ),
     );
   }
 
@@ -1692,8 +1673,13 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Future<void> _menu(GitCommit commit, {Offset? position}) async {
-    if (widget.onChooseCommit != null) return;
+    if (!mounted ||
+        !widget.active ||
+        _presentationRoute?.isActive == false ||
+        widget.onChooseCommit != null)
+      return;
     final session = widget.session;
+    final epoch = _interactionEpoch;
     final generation = _generation;
     final historyRevision = _historyRevision;
     final onCommitAction = widget.onCommitAction;
@@ -1735,9 +1721,7 @@ final class _GitLogViewState extends State<GitLogView> {
       position: position,
       localizeTitle: false,
     );
-    if (!mounted ||
-        !widget.active ||
-        widget.session != session ||
+    if (!_ownsInteraction(session, epoch) ||
         generation != _generation ||
         historyRevision != _historyRevision)
       return;
@@ -1755,8 +1739,10 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Future<void> _goto() async {
+    if (!mounted || !widget.active || _presentationRoute?.isActive == false)
+      return;
     final session = widget.session;
-    final generation = _generation;
+    final epoch = _interactionEpoch, request = ++_dialogRequest;
     final value = await gitTextInput(
       context,
       session,
@@ -1765,15 +1751,13 @@ final class _GitLogViewState extends State<GitLogView> {
     );
     if (value == null ||
         value.isEmpty ||
-        !mounted ||
-        !widget.active ||
-        widget.session != session ||
-        generation != _generation)
+        !_ownsDialogRequest(session, epoch, request))
       return;
     await _navigate(value);
   }
 
   Future<void> _navigate(String value, {bool reload = false}) async {
+    _dialogRequest++;
     final generation = ++_generation;
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
@@ -1870,17 +1854,239 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Future<void> _dates() async {
+    if (!mounted || !widget.active || _presentationRoute?.isActive == false)
+      return;
+    final session = widget.session, epoch = _interactionEpoch;
+    final request = ++_dialogRequest;
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(1970),
       lastDate: DateTime.now().add(const Duration(days: 1)),
     );
-    if (range != null) {
+    if (_ownsDialogRequest(session, epoch, request) && range != null) {
       _since = range.start;
       _until = range.end.add(const Duration(days: 1));
       await _load();
     }
   }
+}
+
+final class _LogReferenceChoice {
+  const _LogReferenceChoice(this.reference);
+  final String? reference;
+}
+
+// The popup owns its controller until its route actually unmounts. It uses
+// immutable reviewed data and never reads a retired Log State's context.
+final class _LogBranchFilterDialog extends StatefulWidget {
+  const _LogBranchFilterDialog({
+    required this.session,
+    required this.references,
+    required this.selected,
+    required this.initialSearch,
+    required this.chooseOnly,
+    required this.isCurrent,
+    required this.referenceCurrent,
+    required this.onFailure,
+    required this.onSearchChanged,
+    required this.refresh,
+  });
+  final GitSession session;
+  final List<GitReference> references;
+  final String? selected;
+  final String initialSearch;
+  final bool chooseOnly;
+  final bool Function() isCurrent;
+  final bool Function(GitReference) referenceCurrent;
+  final ValueChanged<GitException> onFailure;
+  final ValueChanged<String> onSearchChanged;
+  final Future<void> Function() refresh;
+  @override
+  State<_LogBranchFilterDialog> createState() => _LogBranchFilterDialogState();
+}
+
+final class _LogBranchFilterDialogState extends State<_LogBranchFilterDialog> {
+  late final _search = TextEditingController(text: widget.initialSearch);
+  ModalRoute<dynamic>? _route;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _route = ModalRoute.of(context);
+  }
+
+  bool _current() =>
+      mounted && (_route?.isActive ?? true) && widget.isCurrent();
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _choose(String? reference) {
+    if (!mounted) return;
+    gitCompleteSurface(
+      context,
+      _current() ? _LogReferenceChoice(reference) : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => _logBranches(
+    context,
+    search: _search,
+    references: widget.references,
+    selected: widget.selected,
+    onSearchChanged: () {
+      if (!_current()) return;
+      setState(() {});
+      widget.onSearchChanged(_search.text);
+    },
+    onChoose: _choose,
+    referenceBuilder: (ref, group) => _logBranchReference(
+      context,
+      session: widget.session,
+      references: widget.references,
+      ref: ref,
+      group: group,
+      selected: widget.selected,
+      chooseOnly: widget.chooseOnly,
+      isCurrent: () => _current() && widget.referenceCurrent(ref),
+      onChoose: _choose,
+      onFailure: widget.onFailure,
+      refresh: () => _current() ? widget.refresh() : Future<void>.value(),
+    ),
+  );
+}
+
+Widget _logBranches(
+  BuildContext context, {
+  required TextEditingController search,
+  required List<GitReference> references,
+  required String? selected,
+  required VoidCallback onSearchChanged,
+  required ValueChanged<String?> onChoose,
+  required Widget Function(GitReference, String) referenceBuilder,
+}) {
+  final filter = search.text.toLowerCase();
+  return Column(
+    children: [
+      TextField(
+        controller: search,
+        decoration: InputDecoration(
+          labelText: gitString(context, GitMessages.branchOrTag),
+          prefixIcon: GitIcon(GitGlyph.search),
+        ),
+        onChanged: (_) => onSearchChanged(),
+      ),
+      Expanded(
+        child: ListView(
+          children: [
+            ListTile(
+              dense: true,
+              title: const GitLabel(GitMessages.allReferences),
+              selected: selected == null,
+              onTap: () => onChoose(null),
+            ),
+            for (final group in [
+              GitMessages.local,
+              GitMessages.remote,
+              GitMessages.tags,
+            ])
+              ExpansionTile(
+                initiallyExpanded: true,
+                title: GitLabel(group),
+                children: [
+                  for (final ref in references.where(
+                    (ref) =>
+                        ref.name.startsWith(
+                          group == GitMessages.local
+                              ? 'refs/heads/'
+                              : group == GitMessages.remote
+                              ? 'refs/remotes/'
+                              : 'refs/tags/',
+                        ) &&
+                        ref.shortName.toLowerCase().contains(filter),
+                  ))
+                    referenceBuilder(ref, group),
+                ],
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _logBranchReference(
+  BuildContext context, {
+  required GitSession session,
+  required List<GitReference> references,
+  required GitReference ref,
+  required String group,
+  required String? selected,
+  required bool chooseOnly,
+  required bool Function() isCurrent,
+  required ValueChanged<String> onChoose,
+  required ValueChanged<GitException> onFailure,
+  required Future<void> Function() refresh,
+}) {
+  final actions = GitBranchActions(
+    context,
+    session,
+    reviewed: session.snapshot,
+    references: references,
+    isCurrent: isCurrent,
+    apply: (request) async {
+      final outcome = await session.mutate(request);
+      final failure = outcome?.error ?? session.failure;
+      if (isCurrent() && failure != null) onFailure(failure);
+      return outcome;
+    },
+    refresh: refresh,
+  );
+  Future<void> menu(Offset position) async {
+    if (!isCurrent() || chooseOnly) return;
+    final action = await session.host.menu(
+      context,
+      ref.shortName,
+      actions.entries(ref),
+      position: position,
+      localizeTitle: false,
+    );
+    if (action != null && isCurrent()) await actions.act(ref, action);
+  }
+
+  return GestureDetector(
+    onSecondaryTapUp: chooseOnly
+        ? null
+        : (details) => unawaited(menu(details.globalPosition)),
+    child: ListTile(
+      dense: true,
+      leading: GitIcon(
+        ref.current
+            ? GitGlyph.check
+            : group == GitMessages.tags
+            ? GitGlyph.tag
+            : GitGlyph.branch,
+        size: 16,
+      ),
+      title: Text(ref.shortName, maxLines: 1, overflow: TextOverflow.ellipsis),
+      selected: selected == ref.name,
+      trailing: chooseOnly
+          ? null
+          : GitMenuButton(
+              host: session.host,
+              tooltip: gitString(
+                context,
+                GitMessages.actionsForArg0,
+                values: {'arg0': ref.name},
+              ),
+              entries: actions.entries(ref),
+              onSelected: (action) => unawaited(actions.act(ref, action)),
+            ),
+      onTap: () => onChoose(ref.name),
+    ),
+  );
 }
 
 final class GitGraphRow {
