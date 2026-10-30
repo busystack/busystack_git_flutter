@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -132,16 +134,20 @@ final class _Documents {
     activeRight = right;
     registrationPending = true;
     final generation = ++_registrationGeneration;
-    for (final proxy in proxies.toList()) {
-      proxy.updateRegistration();
-    }
-    // Registrar additions become laid-out selectable children after this frame.
-    // Retain and replay actual selection requests through the supported pending
-    // result, rather than making mouse correctness depend on an event delay.
+    // A new pointer gesture also clears the enclosing SelectionArea. Removing
+    // its descendants here can mutate a delegate still dispatching that clear.
+    // Update registrations after the event stack has unwound, then replay real
+    // requests after the registrars' scheduled updates in this frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (disposed || generation != _registrationGeneration) return;
-      registrationPending = false;
-      selection.flushPending();
+      for (final proxy in proxies.toList()) {
+        proxy.updateRegistration();
+      }
+      scheduleMicrotask(() {
+        if (disposed || generation != _registrationGeneration) return;
+        registrationPending = false;
+        selection.flushPending();
+      });
     });
     WidgetsBinding.instance.scheduleFrame();
   }

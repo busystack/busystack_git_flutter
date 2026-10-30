@@ -39,6 +39,95 @@ final class _CopyClient extends FixtureClient {
 }
 
 void main() {
+  testWidgets('alternating pane selection clears before another frame', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = GitSession(
+      client: _CopyClient(),
+      repository: repo,
+      host: host(),
+    );
+    await session.start();
+    session.setViewState('diffCollapse', false);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GitDiffView(
+            session: session,
+            comparison: GitComparison(
+              RepoPath.text('prose.md'),
+              const ContentVersion.index(),
+              const ContentVersion.working(),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 120)),
+    );
+    await tester.pumpAndSettle();
+    final left = tester.getCenter(find.text('LEFT ONE'));
+    final right = tester.getCenter(find.text('RIGHT ONE'));
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    for (var pass = 0; pass < 12; pass++) {
+      await tester.tapAt(
+        pass.isEven ? left : right,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      // Another mouse selection starts before the pending pane registration frame.
+      await tester.tapAt(
+        pass.isEven ? right : left,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.tapAt(
+        pass.isEven ? left : right,
+        kind: PointerDeviceKind.mouse,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyA);
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyC);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump();
+      expect(
+        copied,
+        (pass.isEven
+                ? 'LEFT ONE\nshared middle\n\nLEFT THREE\nLEFT FOUR'
+                : 'RIGHT ONE\nshared middle\nRIGHT ONLY\nRIGHT THREE\nRIGHT FOUR')
+            .replaceAll('shared middle', _CopyClient.contextLine),
+      );
+    }
+    // Retiring the view also retires any pending registration callback.
+    await tester.tapAt(left, kind: PointerDeviceKind.mouse);
+    await tester.pumpWidget(const SizedBox());
+    expect(tester.takeException(), isNull);
+    session.dispose();
+  });
   for (final right in [false, true]) {
     testWidgets(
       'copy full ${right ? 'right' : 'left'} source without building its tail',

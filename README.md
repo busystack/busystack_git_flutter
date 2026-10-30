@@ -217,3 +217,12 @@ that guard and asks `Navigator.maybePop`; another guard may still veto it, so a
 handled request never implies that a route disappeared. Explicit successful
 operation completion keeps its separate owning-route completion path. The SDK,
 its `PopScope` implementation and its navigator remain unmodified.
+
+Diff document selection defers pane registrar changes until the pointer event
+stack has unwound, then replays pending selection requests after the upstream
+registrars' scheduled updates. This prevents an enclosing selection clear from
+iterating descendants while a pane switch removes them. Generation checks retire
+callbacks when the source or view changes. Rapid alternating pane selection is
+covered before the next frame, including exact copying and closing with a
+pending registration; the existing wrapped, CRLF, RTL and bounded-tail cases
+remain covered.
