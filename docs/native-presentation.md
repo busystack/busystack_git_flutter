@@ -74,3 +74,8 @@ both prompt kinds through each application's actual adapter in light/dark
 modes; fixture requests cannot authorize mutation. Existing tests retain the
 transaction, editor, graph, history and dismissal assertions. Runtime captures
 and native interaction acceptance remain separate from static compliance.
+
+Font-family assignments in Git sources must reference the existing host catalog
+(`BusyMarkTypography.monoFontFamily` / `monoFontFamilyFallback` in the approved
+design module); shared views use `GitPresentation.codeStyle`. The analyzer
+resolves those exact symbols. A newly named feature constant is not an exception.

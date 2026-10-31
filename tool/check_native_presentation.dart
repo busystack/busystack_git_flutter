@@ -151,9 +151,26 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
       'fontFamily',
       'fontFamilyFallback',
     }.contains(node.name.label.name)) {
-      violations.add(
-        NativeUiViolation(path, node.offset, 'feature-owned font family'),
-      );
+      final token = switch (node.expression) {
+        PrefixedIdentifier(:final identifier) => identifier.element,
+        PropertyAccess(:final propertyName) => propertyName.element,
+        SimpleIdentifier(:final element) => element,
+        _ => null,
+      };
+      final nativeCatalog =
+          token?.library?.uri.toString().endsWith(
+                '/src/app/busymark_design.dart',
+              ) ==
+              true &&
+          token?.enclosingElement?.name == 'BusyMarkTypography' &&
+          const {
+            'monoFontFamily',
+            'monoFontFamilyFallback',
+          }.contains(token?.name);
+      if (!nativeCatalog)
+        violations.add(
+          NativeUiViolation(path, node.offset, 'feature-owned font family'),
+        );
     }
     super.visitNamedExpression(node);
   }

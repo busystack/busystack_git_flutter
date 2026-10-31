@@ -41,6 +41,7 @@ Future<void> main() async {
     design.writeAsStringSync('''
 class BusyMarkHeaderPopupMenuButton { const BusyMarkHeaderPopupMenuButton(); const BusyMarkHeaderPopupMenuButton.native(); }
 void showBusyMarkMenu() {}
+class BusyMarkTypography { static const monoFontFamily = 'Native mono'; }
 ''');
     for (final source in [
       "import 'lib/src/app/busymark_design.dart' as host; final button = host.BusyMarkHeaderPopupMenuButton();",
@@ -57,6 +58,12 @@ void showBusyMarkMenu() {}
       );
     if ((await auditNativeGitSources([nativeMenu.path])).isNotEmpty)
       throw StateError('Rejected required native menu');
+    final nativeFont = File('${temp.path}/native_font.dart')
+      ..writeAsStringSync(
+        "import 'package:flutter/painting.dart'; import 'lib/src/app/busymark_design.dart' as native; final style = TextStyle(fontFamily: native.BusyMarkTypography.monoFontFamily);",
+      );
+    if ((await auditNativeGitSources([nativeFont.path])).isNotEmpty)
+      throw StateError('Rejected the approved native typography catalog');
     final approved = File('${temp.path}/approved.dart')
       ..writeAsStringSync("""
 import 'package:flutter/widgets.dart';
