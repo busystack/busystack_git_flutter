@@ -226,3 +226,14 @@ callbacks when the source or view changes. Rapid alternating pane selection is
 covered before the next frame, including exact copying and closing with a
 pending registration; the existing wrapped, CRLF, RTL and bounded-tail cases
 remain covered.
+
+Ordinary Index Reload versions binds replacement to the exact editing revision
+at the start of its reads. Typing, undo/redo, caret or composition changes during
+those reads retain the full current editing value and undo history; refreshed
+sources become its new review baseline. Discard approval expires if that draft,
+repository/file binding or load changes before reload starts. Highlight refresh
+alone does not count as an edit. Deterministic gated-content regressions cover
+clean reload, approved discard, input-method composition, selection, undo/redo,
+obsolete consent after identical text returns, and unchanged-draft replacement.
+The bundled engine is pinned to `07cf4a1`, including prompt-directory validation,
+matching both applications; standalone CI materializes that same engine.

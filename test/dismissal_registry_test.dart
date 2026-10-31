@@ -22,19 +22,22 @@ void main() {
     expect([firstRequests, newerRequests], [1, 1]);
   });
 
-  test('a retired editor is excluded without discarding another draft', () async {
-    final registry = GitDismissalRegistry();
-    final answer = Completer<bool>();
-    var retiredRequests = 0;
-    final unregister = registry.register(() async {
-      retiredRequests++;
-      return false;
-    });
-    registry.register(() => answer.future);
-    final request = registry.mayDismiss();
-    unregister();
-    answer.complete(true);
-    expect(await request, isTrue);
-    expect(retiredRequests, 0);
-  });
+  test(
+    'a retired editor is excluded without discarding another draft',
+    () async {
+      final registry = GitDismissalRegistry();
+      final answer = Completer<bool>();
+      var retiredRequests = 0;
+      final unregister = registry.register(() async {
+        retiredRequests++;
+        return false;
+      });
+      registry.register(() => answer.future);
+      final request = registry.mayDismiss();
+      unregister();
+      answer.complete(true);
+      expect(await request, isTrue);
+      expect(retiredRequests, 0);
+    },
+  );
 }

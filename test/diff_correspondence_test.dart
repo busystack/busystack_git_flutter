@@ -69,10 +69,7 @@ void main() {
                   context,
                 ).copyWith(textScaler: TextScaler.linear(scale)),
                 child: Scaffold(
-                  body: GitDiffView(
-                    session: session,
-                    comparison: comparison,
-                  ),
+                  body: GitDiffView(session: session, comparison: comparison),
                 ),
               );
             },
