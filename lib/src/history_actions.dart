@@ -1207,8 +1207,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                         number <= lines.length
                             ? lines[number - 1].trimRight()
                             : '',
-                        style: GitTheme.of(context).textTheme.bodyMedium
-                            ?.copyWith(fontFamily: 'monospace'),
+                        style: gitPresentation(context).codeStyle(context),
                       ),
                     ),
                   ],

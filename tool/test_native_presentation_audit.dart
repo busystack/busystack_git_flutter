@@ -27,6 +27,7 @@ Future<void> main() async {
       "import 'package:flutter/material.dart' as m; final construct = m.Color.new;",
       "import 'package:flutter/material.dart' as m; m.Widget surface() => m.Scrollbar(child: m.SizedBox());",
       "import 'package:flutter/material.dart' as m; m.Widget surface() => m.SearchBar();",
+      "import 'package:flutter/painting.dart' as p; final style = p.TextStyle(fontFamily: 'unapproved');",
     ];
     for (var i = 0; i < forbidden.length; i++) {
       final fixture = File('${temp.path}/forbidden_$i.dart')

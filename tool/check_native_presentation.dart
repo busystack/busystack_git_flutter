@@ -146,6 +146,19 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
   }
 
   @override
+  void visitNamedExpression(NamedExpression node) {
+    if (const {
+      'fontFamily',
+      'fontFamilyFallback',
+    }.contains(node.name.label.name)) {
+      violations.add(
+        NativeUiViolation(path, node.offset, 'feature-owned font family'),
+      );
+    }
+    super.visitNamedExpression(node);
+  }
+
+  @override
   void visitSimpleIdentifier(SimpleIdentifier node) {
     check(node, node.element);
     super.visitSimpleIdentifier(node);
