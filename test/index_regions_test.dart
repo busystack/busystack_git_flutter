@@ -131,6 +131,152 @@ VoidCallback _localAction(WidgetTester tester, String label) => tester
     .onPressed!;
 
 void main() {
+  for (final discard in [false, true]) {
+    testWidgets(
+      'ordinary reload preserves edits during reads after discard=$discard',
+      (tester) async {
+        final (session, draft) = await _mountIndex(tester);
+        final client = session.client as _IndexClient;
+        final input = find.widgetWithText(TextField, 'Editable index content');
+        if (discard) draft.text = 'previous draft\n';
+        await tester.showKeyboard(input);
+        await tester.pump();
+        final previousText = draft.text;
+        final reads = client.contentReads;
+        client.contentGate = Completer<void>();
+        await tester.tap(find.text('Reload versions…'));
+        await tester.pump();
+        if (discard) {
+          await tester.tap(find.text('Replace draft and reload'));
+          await tester.pump();
+        }
+        expect(client.contentReads, reads + 3);
+        expect(tester.widget<TextField>(input).readOnly, isFalse);
+        await tester.showKeyboard(input);
+        const newer = TextEditingValue(
+          text: 'one\nstaged\nend\nnewer\n',
+          selection: TextSelection(baseOffset: 16, extentOffset: 19),
+          composing: TextRange(start: 15, end: 20),
+        );
+        tester.testTextInput.updateEditingValue(newer);
+        await tester.pump();
+        expect(draft.value, newer);
+
+        client.contentGate!.complete();
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(input).controller, same(draft));
+        expect(draft.value, newer);
+        expect(client.mutations, isEmpty);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.widgetWithText(
+                  FilledButton,
+                  'Write edited result to this index entry',
+                ),
+              )
+              .onPressed,
+          isNotNull,
+        );
+        // End preedit only after verifying reload retained it. Undo must still
+        // reach the preceding draft, and Redo must recover the newer typing.
+        draft.value = draft.value.copyWith(composing: TextRange.empty);
+        await tester.pump();
+        await tester.tap(find.widgetWithText(TextButton, 'Undo'));
+        await tester.pump();
+        expect(draft.text, previousText);
+        await tester.tap(find.widgetWithText(TextButton, 'Redo'));
+        await tester.pump();
+        expect(draft.text, newer.text);
+        await tester.pump(const Duration(milliseconds: 120));
+        await tester.pump();
+      },
+    );
+  }
+
+  testWidgets('ordinary reload preserves a newer selection and composition', (
+    tester,
+  ) async {
+    final (session, draft) = await _mountIndex(tester);
+    final client = session.client as _IndexClient;
+    client.indexText = 'externally changed index\n';
+    client.statusToken = 'new index';
+    client.contentGate = Completer<void>();
+    final reads = client.contentReads;
+    await tester.tap(find.text('Reload versions…'));
+    await tester.pump();
+    expect(client.contentReads, reads + 3);
+    final newer = draft.value.copyWith(
+      selection: const TextSelection(baseOffset: 4, extentOffset: 8),
+      composing: const TextRange(start: 4, end: 10),
+    );
+    draft.value = newer;
+    client.contentGate!.complete();
+    await tester.pumpAndSettle();
+    expect(draft.value, newer);
+    expect(client.mutations, isEmpty);
+  });
+
+  testWidgets(
+    'reload discard consent expires even after identical text returns',
+    (tester) async {
+      final (session, draft) = await _mountIndex(tester);
+      final client = session.client as _IndexClient;
+      draft.text = 'reviewed draft\n';
+      await tester.pump();
+      final reviewed = draft.value;
+      final reads = client.contentReads;
+      await tester.tap(find.text('Reload versions…'));
+      await tester.pumpAndSettle();
+      expect(find.text('Replace draft and reload'), findsOneWidget);
+      draft.text = 'newer draft\n';
+      draft.value = reviewed;
+      await tester.tap(find.text('Replace draft and reload'));
+      await tester.pumpAndSettle();
+      expect(draft.value, reviewed);
+      expect(client.contentReads, reads);
+      expect(client.mutations, isEmpty);
+    },
+  );
+
+  for (final discard in [false, true]) {
+    testWidgets(
+      'ordinary reload replaces its unchanged draft discard=$discard',
+      (tester) async {
+        final (session, draft) = await _mountIndex(tester);
+        final client = session.client as _IndexClient;
+        if (discard) draft.text = 'explicitly discarded draft\n';
+        await tester.pump();
+        client.indexText = 'new reviewed index\n';
+        client.statusToken = 'new index';
+        client.contentGate = Completer<void>();
+        final reads = client.contentReads;
+        await tester.tap(find.text('Reload versions…'));
+        await tester.pump();
+        if (discard) {
+          await tester.tap(find.text('Replace draft and reload'));
+          await tester.pump();
+        }
+        expect(client.contentReads, reads + 3);
+        client.contentGate!.complete();
+        await tester.pumpAndSettle();
+        expect(draft.text, client.indexText);
+        expect(
+          tester
+              .widget<FilledButton>(
+                find.widgetWithText(
+                  FilledButton,
+                  'Write edited result to this index entry',
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+        expect(client.mutations, isEmpty);
+      },
+    );
+  }
+
   testWidgets(
     'local source controls are beside the real region and rapid old actions cannot repeat',
     (tester) async {

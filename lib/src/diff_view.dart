@@ -1900,6 +1900,8 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   Timer? _regionTimer;
   int _loadGeneration = 0, _regionGeneration = 0, _activeRegion = 0;
   int _anchorRevision = 0, _draftRevision = 0, _correspondenceRevision = 0;
+  int _editingRevision = 0;
+  TextEditingValue _lastEditingValue = TextEditingValue.empty;
   _IndexRegionReview? _regionReview;
   _AppliedIndexReview? _appliedReview;
   bool _reviewingSavedIndex = false;
@@ -1963,6 +1965,10 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
   }
 
   void _resultChanged() {
+    if (_result.value != _lastEditingValue) {
+      _lastEditingValue = _result.value;
+      _editingRevision++;
+    }
     if (_snapshot == null || _result.text == _lastResultText) return;
     _lastResultText = _result.text;
     _draftRevision++;
@@ -2213,6 +2219,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
 
   Future<void> _load({_AppliedIndexReview? applied}) async {
     final generation = ++_loadGeneration;
+    final editingRevision = _editingRevision;
     _invalidateRegions();
     _draftRevision++;
     final session = widget.session, path = widget.path;
@@ -2285,11 +2292,12 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         _headText.text = _head!.text ?? '';
         _workingText.text = _working!.text ?? '';
         _draftBaseline = _index!.text ?? '';
-        // Only an explicit reload replaces text. Reviewing our own completed
-        // Apply keeps the current editing value, Undo history and composition,
-        // including text entered while these source reads were outstanding.
+        // Reload may replace only the editing revision it started with. Keep
+        // newer input (including selection/composition and Undo history) while
+        // refreshing its reviewed sources and baseline. Highlight-only
+        // notifications do not advance the editing revision.
         _regionTimer?.cancel();
-        if (applied == null) {
+        if (applied == null && editingRevision == _editingRevision) {
           _lastResultText = _draftBaseline;
           _result.text = _draftBaseline;
         } else {
@@ -2331,7 +2339,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       canDismiss: _allowClose || (!_dirty && !_saving),
       isDismissible: () => _allowClose || (!_dirty && !_saving),
       revisionChanges: _result,
-      revisionIdentity: () => (_draftRevision, _loadGeneration, _snapshot),
+      revisionIdentity: () => _draftIdentity,
       confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
       child: CallbackShortcuts(
         bindings: {
@@ -2545,6 +2553,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                         ? null
                         : () async {
                             if (_saving || _reviewingSavedIndex) return;
+                            final draftIdentity = _draftIdentity;
                             if (_result.text != (_index!.text ?? '') &&
                                 await widget.session.host.present<bool>(
                                       context,
@@ -2569,7 +2578,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                                     ) !=
                                     true)
                               return;
-                            if (mounted) {
+                            if (mounted && draftIdentity == _draftIdentity) {
                               setState(() => _failure = null);
                               await _load();
                             }
@@ -2603,8 +2612,16 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     );
   }
 
+  (GitSession, RepoPath, int, int, GitSnapshot?) get _draftIdentity => (
+    widget.session,
+    widget.path,
+    _loadGeneration,
+    _editingRevision,
+    _snapshot,
+  );
+
   Future<bool> _confirmClose() async {
-    final revision = _draftRevision, snapshot = _snapshot;
+    final draftIdentity = _draftIdentity;
     final approved = await gitConfirm(
       context,
       widget.session,
@@ -2614,10 +2631,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
     );
     // A queued input-method update or programmatic edit is a newer draft; the
     // previous confirmation does not authorize discarding it.
-    return mounted &&
-        approved &&
-        revision == _draftRevision &&
-        identical(snapshot, _snapshot);
+    return mounted && approved && draftIdentity == _draftIdentity;
   }
 
   Future<void> _apply() async {
