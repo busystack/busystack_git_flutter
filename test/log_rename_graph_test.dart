@@ -70,7 +70,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(body: GitLogView(session: session)),
       ),
     );

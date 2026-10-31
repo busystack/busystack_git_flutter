@@ -54,7 +54,7 @@ void main() {
     await session.start();
     session.setViewState('diffCollapse', false);
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitDiffView(
             session: session,
@@ -147,7 +147,7 @@ void main() {
         session.setViewState('diffWrap', false);
         session.setViewState('diffCollapse', false);
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: GitDiffView(
                 session: session,
@@ -247,7 +247,7 @@ void main() {
         session.setViewState('diffWrap', wrap);
         session.setViewState('diffCollapse', false);
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             builder: (context, child) => Directionality(
               textDirection: scenario.rtl
                   ? TextDirection.rtl

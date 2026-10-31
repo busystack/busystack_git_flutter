@@ -60,7 +60,7 @@ void main() {
         await session.start();
         session.setViewState('diffCollapse', collapsed);
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             builder: (context, child) => MediaQuery(
               data: MediaQuery.of(
                 context,
@@ -123,7 +123,7 @@ void main() {
     await session.start();
     session.setViewState('diffCollapse', false);
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitDiffView(
             session: session,

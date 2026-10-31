@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -52,10 +53,10 @@ final class _CreationState extends State<GitCreationView> {
       children: [
         if (error != null) GitFailurePanel(error: error!),
         if (!widget.initialize)
-          TextField(
+          GitTextField(
             controller: source,
             enabled: !running,
-            decoration: InputDecoration(
+            decoration: GitFieldDecoration(
               labelText: gitString(
                 context,
                 GitMessages.repositoryURLOrLocalGitSource,
@@ -68,17 +69,17 @@ final class _CreationState extends State<GitCreationView> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: GitTextField(
                 controller: destination,
                 enabled: !running,
-                decoration: InputDecoration(
+                decoration: GitFieldDecoration(
                   labelText: widget.initialize
                       ? gitString(context, GitMessages.folderToInitialize)
                       : gitString(context, GitMessages.finalCloneDestination),
                 ),
               ),
             ),
-            TextButton(
+            GitButton(
               onPressed: running
                   ? null
                   : () async {
@@ -102,13 +103,13 @@ final class _CreationState extends State<GitCreationView> {
                       .theFinalDestinationMustBeAbsentOrEmptyExistingUser,
                 ),
         ),
-        ExpansionTile(
+        GitExpander(
           title: const GitLabel(GitMessages.options),
           children: [
-            TextField(
+            GitTextField(
               controller: branch,
               enabled: !running,
-              decoration: InputDecoration(
+              decoration: GitFieldDecoration(
                 labelText: widget.initialize
                     ? gitString(
                         context,
@@ -118,7 +119,7 @@ final class _CreationState extends State<GitCreationView> {
               ),
             ),
             if (!widget.initialize)
-              CheckboxListTile(
+              GitCheckRow(
                 dense: true,
                 value: recursive,
                 title: const GitLabel(
@@ -133,7 +134,7 @@ final class _CreationState extends State<GitCreationView> {
         if (running)
           Column(
             children: [
-              const LinearProgressIndicator(),
+              const GitLoading(),
               Text(
                 progress?.text ??
                     gitString(context, GitMessages.preparingGitOperation),
@@ -150,7 +151,7 @@ final class _CreationState extends State<GitCreationView> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            TextButton(
+            GitButton(
               onPressed: running
                   ? () => cancellation?.cancel()
                   : () => Navigator.of(context).pop(),
@@ -160,7 +161,7 @@ final class _CreationState extends State<GitCreationView> {
                     : gitString(context, GitMessages.cancel),
               ),
             ),
-            FilledButton(
+            GitButton.primary(
               onPressed: running ? null : () => unawaited(start()),
               child: Text(
                 widget.initialize

@@ -18,6 +18,10 @@ void main() {
       final base = host(), drafts = DelayedDrafts();
       final requested = <String>[];
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: base.present,
         openDocument: base.openDocument,
         prepareMutation: base.prepareMutation,
@@ -51,6 +55,10 @@ void main() {
       final base = host(), drafts = DelayedDrafts();
       var alive = true, calls = 0;
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: base.present,
         openDocument: base.openDocument,
         prepareMutation: base.prepareMutation,

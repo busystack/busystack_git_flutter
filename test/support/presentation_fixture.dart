@@ -1,3 +1,5 @@
+import 'native_presentation_fixture.dart';
+export 'native_presentation_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
@@ -102,9 +104,16 @@ class FixtureClient implements GitClient {
 }
 
 GitHost host() => GitHost(
+  presentation: const TestGitPresentation(),
+  icons: testGitIcons,
+  presentMenu: testGitMenu,
+
   present: <T>(context, title, child, {bool expanded = false}) => showDialog<T>(
     context: context,
-    builder: (_) => Dialog(child: child),
+    builder: (_) => GitHostScope(
+      host: host(),
+      child: Dialog(child: child),
+    ),
   ),
   openDocument: (_, _, {snapshot}) async {},
   prepareMutation: (_, _) async => true,

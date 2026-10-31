@@ -103,7 +103,7 @@ Future<void> _mount(WidgetTester tester, _ChangedFilesClient client) async {
   final session = GitSession(client: client, repository: repo, host: host());
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(body: GitLogView(session: session)),
     ),
   );
@@ -252,7 +252,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -289,8 +289,8 @@ void main() {
     final oldRow = tester
         .widget<ListTile>(find.widgetWithText(ListTile, 'next.md'))
         .onTap!;
-    final picker = tester.widget<DropdownButton<GitOid>>(
-      find.byType(DropdownButton<GitOid>),
+    final picker = tester.widget<GitChoice<GitOid>>(
+      find.byType(GitChoice<GitOid>),
     );
     picker.onChanged!(GitOid('d' * 40));
     await tester.pump();

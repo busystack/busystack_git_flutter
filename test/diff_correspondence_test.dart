@@ -60,7 +60,7 @@ void main() {
       );
       late StateSetter relayout;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: StatefulBuilder(
             builder: (context, setState) {
               relayout = setState;

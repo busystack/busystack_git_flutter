@@ -48,7 +48,7 @@ void main() {
           session.setViewState('diffWrap', wrap);
           session.setViewState('diffCollapse', false);
           await tester.pumpWidget(
-            MaterialApp(
+            GitTestApp(
               builder: (context, child) => MediaQuery(
                 data: MediaQuery.of(
                   context,

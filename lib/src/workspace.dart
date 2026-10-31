@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dismissal.dart';
 import 'dart:async';
@@ -97,9 +98,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
       final measure = TextPainter(
         text: TextSpan(
           text: '000000000000000000000000000000000000',
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace'),
+          style: gitPresentation(context).codeStyle(context),
         ),
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
@@ -130,7 +129,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
             Row(
               children: [
                 if (widget.onReturn != null)
-                  TextButton.icon(
+                  GitButton.icon(
                     onPressed: widget.onReturn,
                     icon: const GitIcon(GitGlyph.back),
                     label: const GitLabel(GitMessages.returnToFiles),
@@ -138,7 +137,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                 Expanded(
                   child: Directionality(
                     textDirection: TextDirection.ltr,
-                    child: Tooltip(
+                    child: GitTooltip(
                       message: widget.session.repository.root,
                       child: Directionality(
                         textDirection: Directionality.of(context),
@@ -151,11 +150,11 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                                     textDirection: TextDirection.ltr,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: Theme.of(
+                                    style: GitTheme.of(
                                       context,
                                     ).textTheme.bodySmall,
                                   ),
-                                  TextButton.icon(
+                                  GitButton.icon(
                                     onPressed:
                                         widget.onBranches ??
                                         () => unawaited(
@@ -178,13 +177,13 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                     ),
                   ),
                 ),
-                SegmentedButton<bool>(
+                GitChoiceBar<bool>(
                   segments: [
-                    ButtonSegment(
+                    GitSegment(
                       value: false,
                       label: GitLabel(gitString(context, GitMessages.commit)),
                     ),
-                    ButtonSegment(
+                    GitSegment(
                       value: true,
                       label: GitLabel(gitString(context, GitMessages.log)),
                     ),
@@ -203,7 +202,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
           ],
         ),
       ),
-      const Divider(height: 1),
+      const GitSeparator(height: 1),
       Expanded(
         child: Stack(
           fit: StackFit.expand,
@@ -241,7 +240,7 @@ final class _GitWorkspaceState extends State<GitWorkspace> {
                                       children: [
                                         Align(
                                           alignment: Alignment.centerLeft,
-                                          child: TextButton.icon(
+                                          child: GitButton.icon(
                                             onPressed: () => setState(
                                               () => _compactReview = false,
                                             ),

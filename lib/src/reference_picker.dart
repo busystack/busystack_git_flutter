@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -190,9 +191,9 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(widget.session.repository.root),
-        TextField(
+        GitTextField(
           autofocus: true,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.searchBranchesAndTags),
             prefixIcon: const GitIcon(GitGlyph.search),
           ),
@@ -200,7 +201,7 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
         ),
         Row(
           children: [
-            TextButton.icon(
+            GitButton.icon(
               onPressed: () {
                 _generation++;
                 _cancellation?.cancel();
@@ -209,13 +210,13 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
               icon: const GitIcon(GitGlyph.history),
               label: const GitLabel(GitMessages.selectCommitInLog),
             ),
-            TextButton(
+            GitButton(
               onPressed: _loading ? null : _load,
               child: const GitLabel(GitMessages.refresh),
             ),
           ],
         ),
-        if (_loading) const LinearProgressIndicator(),
+        if (_loading) const GitLoading(),
         if (_error != null) GitFailurePanel(error: _error!, onRefresh: _load),
         Expanded(
           child: !_loading && matches.isEmpty
@@ -234,7 +235,7 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
                         child: GitLabel(row),
                       );
                     final ref = row as GitReference;
-                    return ListTile(
+                    return GitActionRow(
                       key: ValueKey(ref.name),
                       dense: true,
                       enabled: !_loading,

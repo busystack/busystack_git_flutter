@@ -65,7 +65,7 @@ void main() {
       observedAt: DateTime.utc(2026),
     );
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitHostScope(
             host: session.host,
@@ -120,7 +120,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('staged.md'));
       await tester.tap(find.text('untracked.md'));
-      await tester.tap(find.byType(DropdownButtonFormField<int>));
+      await tester.tap(find.byType(GitChoice<int>));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Stash only staged changes (--staged)').last);
       await tester.pumpAndSettle();
@@ -171,8 +171,8 @@ void main() {
       );
       expect(
         tester
-            .widget<CheckboxListTile>(
-              find.widgetWithText(CheckboxListTile, 'chapter/notes.md'),
+            .widget<GitCheckRow>(
+              find.widgetWithText(GitCheckRow, 'chapter/notes.md'),
             )
             .value,
         isTrue,
@@ -211,7 +211,7 @@ void main() {
       (list.childrenDelegate as SliverChildBuilderDelegate).childCount,
       changes.length,
     );
-    expect(find.byType(CheckboxListTile).evaluate().length, lessThan(30));
+    expect(find.byType(GitCheckRow).evaluate().length, lessThan(30));
     final scroll = tester.state<ScrollableState>(
       find.descendant(
         of: find.byType(ListView),
@@ -221,7 +221,7 @@ void main() {
     scroll.position.jumpTo(scroll.position.maxScrollExtent);
     await tester.pumpAndSettle();
     expect(find.text('notes/09999.md'), findsOneWidget);
-    expect(find.byType(CheckboxListTile).evaluate().length, lessThan(30));
+    expect(find.byType(GitCheckRow).evaluate().length, lessThan(30));
     expect(tester.takeException(), isNull);
   });
 
@@ -236,14 +236,14 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitStashesView(session: session)),
         ),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('On main: Reviewed writing').first);
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(CheckboxListTile));
+      await tester.tap(find.byType(GitCheckRow));
       await tester.tap(find.text('Apply and retain'));
       await tester.pumpAndSettle();
       final request = client.mutations.single as StashMutation;

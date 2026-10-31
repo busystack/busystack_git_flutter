@@ -49,7 +49,7 @@ Future<(GitSession, _ReviewClient)> _review(
   );
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: GitDiffView(
           session: session,
@@ -205,7 +205,7 @@ void main() {
       await session.start();
       session.setViewState('diffWrap', false);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -291,7 +291,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitDiffView(
             session: session,
@@ -392,7 +392,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: Row(
             children: [
@@ -455,7 +455,7 @@ void main() {
         await session.start();
         session.setViewState('diffWrap', wrap);
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: GitDiffView(
                 session: session,
@@ -526,7 +526,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitDiffView(
             session: session,
@@ -628,12 +628,12 @@ void main() {
         _ReviewClient.after,
       ).changedIndices.first;
       final selectLine = tester
-          .widget<InkWell>(
+          .widget<GitActivation>(
             find.byKey(ValueKey('git-diff-stage-line-$firstChanged')),
           )
           .onTap!;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -675,7 +675,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -727,6 +727,10 @@ void main() {
       final opened = <RepoPath>[];
       final base = host();
       final presentationHost = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: base.present,
         openDocument: (repository, path, {snapshot}) async {
           expect(snapshot, isNull);
@@ -744,7 +748,7 @@ void main() {
       await tester.tap(find.text('Open current file'));
       expect(opened, [RepoPath.text('chapter/notes.md')]);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,

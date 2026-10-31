@@ -36,6 +36,10 @@ GitSession _session(_DelayedStore store) {
     client: FixtureClient(),
     repository: repo,
     host: GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+      presentMenu: testGitMenu,
+
       present: base.present,
       openDocument: base.openDocument,
       prepareMutation: base.prepareMutation,

@@ -62,7 +62,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitSubmodulesView(session: session)),
         ),
       );
@@ -92,6 +92,9 @@ void main() {
     (tester) async {
       final client = SubmoduleClient(), original = host();
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+
         present: original.present,
         openDocument: original.openDocument,
         chooseDirectory: original.chooseDirectory,
@@ -107,7 +110,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitSubmodulesView(session: session)),
         ),
       );
@@ -153,13 +156,13 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitSubmodulesView(session: session)),
         ),
       );
       await tester.pumpAndSettle();
       expect(client.inspections, 1);
-      await tester.tap(find.byType(CheckboxListTile));
+      await tester.tap(find.byType(GitCheckRow));
       await tester.pumpAndSettle();
       final originalToken = session.snapshot!.token;
       client.checkedOut = 'c' * 40;
@@ -170,7 +173,7 @@ void main() {
       expect(client.inspections, 2);
       expect(find.textContaining('Checked out: ${'c' * 40}'), findsOneWidget);
       expect(
-        tester.widget<CheckboxListTile>(find.byType(CheckboxListTile)).value,
+        tester.widget<GitCheckRow>(find.byType(GitCheckRow)).value,
         isTrue,
       );
       await tester.tap(find.byTooltip('Refresh'));
@@ -190,6 +193,9 @@ void main() {
         final client = SubmoduleClient(), prepared = <RepositoryId>[];
         final original = host();
         final configured = GitHost(
+          presentation: const TestGitPresentation(),
+          icons: testGitIcons,
+
           present: original.present,
           openDocument: original.openDocument,
           chooseDirectory: original.chooseDirectory,
@@ -209,7 +215,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(body: GitSubmodulesView(session: session)),
           ),
         );

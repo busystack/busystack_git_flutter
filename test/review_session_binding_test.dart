@@ -113,7 +113,7 @@ void main() {
       await session.start();
       final revision = ValueNotifier(0);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: ValueListenableBuilder<int>(
               valueListenable: revision,
@@ -182,7 +182,7 @@ void main() {
     session.setViewState('logDetailsSplit', .57);
     session.setViewState('logPreviewSplit', .68);
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(body: GitLogView(session: session)),
       ),
     );
@@ -252,7 +252,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(body: GitWorkspace(session: session)),
       ),
     );
@@ -322,7 +322,7 @@ void main() {
     var oldPush = 0, newPush = 0;
     final active = ValueNotifier(oldSession);
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: ValueListenableBuilder<GitSession>(
             valueListenable: active,

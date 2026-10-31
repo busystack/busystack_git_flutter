@@ -120,7 +120,7 @@
   "unstageWholeFile": "Unstage whole file",
   "stageWholeFile": "Stage whole file",
   "arg0WhitespaceOnlyChangedLinesHiddenShowExactChanges": "{arg0} whitespace-only changed lines hidden · Show exact changes",
-  "arg0ChangedLinesSelectedDisplaySettingsNeverAlterTheStaged": "{arg0} changed lines selected · Display settings never alter the staged bytes.",
+  "arg0ChangedLinesSelectedDisplaySettingsNeverAlterTheStaged": "{arg0} changed lines selected.",
   "readOnlyComparisonCopyTextOrAdjustDisplaySettings": "Read-only comparison · Copy text or adjust display settings.",
   "noFinalNewline": " · no final newline",
   "arg0Arg1Arg2BytesArg3": "{arg0} · {arg1} · {arg2} bytes{arg3}",
@@ -786,5 +786,8 @@
   "commitDraftChangedInAnotherWindow": "This message changed in another window. Review the saved message before replacing it.",
   "discardUnsavedCommitMessages": "Discard unsaved commit messages?",
   "messagesCouldNotBeSavedStayInThisWindow": "Messages that could not be saved are still in this window. Discarding leaves the saved versions unchanged.",
-  "discardCommitMessages": "Discard messages"
+  "discardCommitMessages": "Discard messages",
+  "removeFilter": "Remove filter",
+  "noCommitsYet": "No commits yet",
+  "nativeMenuUnavailable": "The native menu service is unavailable. Try again."
 }

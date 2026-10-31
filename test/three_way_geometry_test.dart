@@ -86,7 +86,7 @@ Future<(GitSession, List<TextField>)> mount(
   );
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       builder: (context, child) => Directionality(
         textDirection: direction,
         child: MediaQuery(
@@ -163,7 +163,10 @@ void main() {
     'optional independent scrolling resumes correspondence from the last scrolled pane',
     (tester) async {
       final (_, fields) = await mount(tester, 1, TextDirection.ltr);
-      final chip = find.widgetWithText(FilterChip, 'Synchronize scrolling');
+      final chip = find.widgetWithText(
+        GitFilterChoice,
+        'Synchronize scrolling',
+      );
       await tester.tap(chip);
       await tester.pump();
       final work = editable(tester, find.byType(TextField).at(2)),
@@ -309,7 +312,7 @@ void main() {
         final controller = TextEditingController(text: 'a\nb\nc\nd\n');
         var commands = 0;
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             theme: ThemeData(
               textTheme: const TextTheme(
                 bodyMedium: TextStyle(fontSize: 14, height: 1),

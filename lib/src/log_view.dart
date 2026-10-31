@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
@@ -19,6 +20,10 @@ final class GitLogView extends StatefulWidget {
     required this.session,
     this.onCommitAction,
     this.onChooseCommit,
+    this.initialCommit,
+    this.inspector = false,
+    this.preserveActionsWhenChoosing = false,
+    this.onReview,
     this.path,
     this.active = true,
   });
@@ -27,6 +32,10 @@ final class GitLogView extends StatefulWidget {
 
   /// Reuse the real paged, filterable Log as a read-only revision picker.
   final ValueChanged<GitCommit>? onChooseCommit;
+  final GitOid? initialCommit;
+  final bool inspector, preserveActionsWhenChoosing;
+  final void Function(GitComparison comparison, List<GitComparison> files)?
+  onReview;
   final RepoPath? path;
   final bool active;
   @override
@@ -45,16 +54,33 @@ final class _GitLogViewState extends State<GitLogView> {
   GitChange? _selectedFile;
   bool _expandedDiff = false;
   final _selectedIds = <GitOid>{};
-  final _tableScroll = ScrollController();
+  double _savedOffset(String key) {
+    final value = widget.session.viewState[key];
+    return value is num && value.isFinite && value >= 0 ? value.toDouble() : 0;
+  }
+
+  late final _tableScroll = ScrollController(
+    initialScrollOffset: widget.preserveActionsWhenChoosing
+        ? _savedOffset('selectorTableOffset')
+        : 0,
+  );
   final _tableKey = GlobalKey(debugLabel: 'Git Log table');
   final _previewKey = GlobalKey(debugLabel: 'Git Log comparison');
   FocusNode? _previewReturnFocus;
-  final _graphScroll = ScrollController();
+  late final _graphScroll = ScrollController(
+    initialScrollOffset: widget.preserveActionsWhenChoosing
+        ? _savedOffset('selectorGraphOffset')
+        : 0,
+  );
   double _graphOffset = 0;
   final _tableFocus = FocusNode(debugLabel: 'Git commits');
   final _contextMenuKeys = GitContextMenuKeys();
   int _selectionAnchor = 0;
   GitOid? _parent;
+  GitOid? _inspectorOid;
+  bool _choosing = false, _choiceSubmitted = false;
+  bool get _selectionOnly =>
+      widget.onChooseCommit != null && !widget.preserveActionsWhenChoosing;
   String? _reference, _anchor, _navigationReference;
   GitOid? _pendingNavigation;
   DateTime? _since, _until;
@@ -64,7 +90,7 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _loading = true, _more = true, _branches = true, _details = true;
   int _generation = 0;
   int _interactionEpoch = 0, _dialogRequest = 0;
-  ModalRoute<dynamic>? _presentationRoute;
+  ModalRoute<dynamic>? _presentationRoute, _selectorRoute;
   int _historyRevision = 0;
   int _selectionGeneration = 0;
   GitCancellation? _readCancellation;
@@ -78,7 +104,30 @@ final class _GitLogViewState extends State<GitLogView> {
     _observedHead = widget.session.snapshot?.head;
     widget.session.addListener(_repositoryChanged);
     _graphScroll.addListener(_graphScrolled);
-    unawaited(_load());
+    if (widget.inspector) {
+      final saved = widget.session.viewState['inspectorRevision'];
+      _inspectorOid = saved is String
+          ? GitOid(saved)
+          : widget.session.snapshot?.head;
+    }
+    if (widget.onChooseCommit != null && widget.preserveActionsWhenChoosing) {
+      final state = widget.session.viewState;
+      _branches = widget.session.option('selectorBranches', true);
+      _message.text = state['selectorMessage'] as String? ?? '';
+      _author.text = state['selectorAuthor'] as String? ?? '';
+      _path.text = state['selectorPath'] as String? ?? '';
+      _reference = state['selectorReference'] as String?;
+      if (_reference == '') _reference = null;
+      _since = DateTime.tryParse(state['selectorSince'] as String? ?? '');
+      _until = DateTime.tryParse(state['selectorUntil'] as String? ?? '');
+      _pendingNavigation = widget.initialCommit;
+    }
+    unawaited(
+      _load(
+        preserveNavigation: widget.initialCommit != null,
+        reveal: widget.initialCommit,
+      ),
+    );
   }
 
   @override
@@ -98,6 +147,8 @@ final class _GitLogViewState extends State<GitLogView> {
     if (oldWidget.session != widget.session ||
         oldWidget.path != widget.path ||
         oldWidget.active != widget.active) {
+      if (oldWidget.session != widget.session || !widget.active)
+        _dismissSelector();
       _interactionEpoch++;
       _dialogRequest++;
     }
@@ -112,6 +163,12 @@ final class _GitLogViewState extends State<GitLogView> {
       _clearReview();
       _path.text = widget.path?.utf8Path ?? '';
       _observedHead = widget.session.snapshot?.head;
+      if (widget.inspector) {
+        final saved = widget.session.viewState['inspectorRevision'];
+        _inspectorOid = saved is String
+            ? GitOid(saved)
+            : widget.session.snapshot?.head;
+      }
       unawaited(_load());
     } else if (widget.active && !oldWidget.active) {
       _repositoryChanged();
@@ -128,6 +185,25 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Future<void> _checkReferences() async {
+    if (widget.inspector) {
+      if (_selected == null &&
+          _inspectorOid == null &&
+          widget.session.snapshot?.head != null) {
+        _inspectorOid = widget.session.snapshot!.head;
+        await _loadInspector();
+      } else {
+        final session = widget.session, generation = _generation;
+        try {
+          final refs = await session.client.references(session.repository);
+          if (mounted && session == widget.session && generation == _generation)
+            setState(() => _references = refs);
+        } on GitException catch (error) {
+          if (mounted && session == widget.session && generation == _generation)
+            setState(() => _failure = error);
+        }
+      }
+      return;
+    }
     if (_checkingReferences || !mounted || !widget.active) return;
     _checkingReferences = true;
     final session = widget.session;
@@ -170,6 +246,7 @@ final class _GitLogViewState extends State<GitLogView> {
 
   @override
   void dispose() {
+    _dismissSelector();
     _interactionEpoch++;
     _dialogRequest++;
     _generation++;
@@ -177,6 +254,19 @@ final class _GitLogViewState extends State<GitLogView> {
     _readCancellation?.cancel();
     _referenceRefresh?.cancel();
     widget.session.removeListener(_repositoryChanged);
+    if (widget.preserveActionsWhenChoosing) {
+      if (_tableScroll.positions.length == 1)
+        widget.session.setViewState(
+          'selectorTableOffset',
+          _tableScroll.positions.single.pixels,
+        );
+      if (_graphScroll.positions.length == 1)
+        widget.session.setViewState(
+          'selectorGraphOffset',
+          _graphScroll.positions.single.pixels,
+        );
+      widget.session.setViewState('selectorBranches', _branches);
+    }
     _tableScroll.dispose();
     _graphScroll.dispose();
     _contextMenuKeys.clear();
@@ -225,6 +315,21 @@ final class _GitLogViewState extends State<GitLogView> {
     bool preserveNavigation = false,
     GitOid? reveal,
   }) async {
+    if (widget.inspector) return _loadInspector();
+    if (widget.onChooseCommit != null && widget.preserveActionsWhenChoosing) {
+      widget.session.setViewState('selectorMessage', _message.text);
+      widget.session.setViewState('selectorAuthor', _author.text);
+      widget.session.setViewState('selectorPath', _path.text);
+      widget.session.setViewState('selectorReference', _reference ?? '');
+      widget.session.setViewState(
+        'selectorSince',
+        _since?.toIso8601String() ?? '',
+      );
+      widget.session.setViewState(
+        'selectorUntil',
+        _until?.toIso8601String() ?? '',
+      );
+    }
     if (!append && !preserveNavigation) _navigationReference = null;
     final generation = ++_generation;
     final session = widget.session;
@@ -310,8 +415,11 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Future<void> _select(GitCommit commit, {GitOid? parent}) async {
     final generation = ++_selectionGeneration;
-    final previousFile = _selectedFile?.path;
     final comparisonParent = parent ?? commit.parents.firstOrNull;
+    final previousFile =
+        _selected?.oid == commit.oid && _parent == comparisonParent
+        ? _selectedFile?.path
+        : null;
     final retainExpanded =
         _expandedDiff &&
         _selected?.oid == commit.oid &&
@@ -320,6 +428,14 @@ final class _GitLogViewState extends State<GitLogView> {
     setState(() {
       _selected = commit;
       _parent = comparisonParent;
+      if (widget.inspector) {
+        _inspectorOid = commit.oid;
+        widget.session.setViewState('inspectorRevision', commit.oid.value);
+        widget.session.setViewState(
+          'inspectorParent',
+          comparisonParent?.value ?? '',
+        );
+      }
       _files = [];
       _selectedFile = null;
       _expandedDiff = retainExpanded;
@@ -366,7 +482,7 @@ final class _GitLogViewState extends State<GitLogView> {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
-        style: style ?? Theme.of(context).textTheme.bodyMedium,
+        style: style ?? GitTheme.of(context).textTheme.bodyMedium,
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -417,362 +533,419 @@ final class _GitLogViewState extends State<GitLogView> {
   bool _ownsDialogRequest(GitSession session, int epoch, int request) =>
       _ownsInteraction(session, epoch) && request == _dialogRequest;
 
-  Widget _build(BuildContext context) => LayoutBuilder(
-    builder: (context, bounds) {
-      final host = widget.session.host;
-      final menuSession = widget.session, menuEpoch = _interactionEpoch;
-      final tableMinimum = _textWidth('MMMMMMMMMMMMMMMMMMMMMMMM') + 40;
-      final detailMinimum =
-          _textWidth('MMMMMMMMMMMMMMMMMMMMMM') + host.spacing * 2;
-      final branchMinimum = _textWidth('MMMMMMMMMMMMMMMM');
-      final showDetails =
-          _details &&
-          bounds.maxWidth >=
-              (tableMinimum + detailMinimum + 6).clamp(720.0, double.infinity);
-      final canShowBranches =
-          bounds.maxWidth >=
-          (branchMinimum +
-                  tableMinimum +
-                  (showDetails ? detailMinimum : 0) +
-                  12)
-              .clamp(1150.0, double.infinity);
-      final showBranches = _branches && canShowBranches;
-      final compact =
-          bounds.maxWidth <
-              _textWidth(
-                'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
-              ) &&
-          bounds.maxHeight < host.rowHeight(context) * 16;
-      final activeFilters = [
-        _message.text,
-        _author.text,
-        _path.text,
-        if (_since != null || _until != null) 'date',
-      ].where((value) => value.isNotEmpty).length;
-      Widget main = _commitTable();
-      if (showDetails)
-        main = GitSplitter(
-          first: main,
-          second: _detailPane(),
-          initial: .64,
-          minimum: tableMinimum,
-          minimumSecond: detailMinimum,
-          value: widget.session.split('logDetailsSplit', .64),
-          onChanged: (v) => widget.session.setViewState('logDetailsSplit', v),
-        );
-      if (showBranches)
-        main = GitSplitter(
-          first: _branchPane(),
-          second: main,
-          initial: .20,
-          minimum: branchMinimum,
-          minimumSecond: tableMinimum + (showDetails ? detailMinimum : 0),
-          value: widget.session.split('logBranchesSplit', .20),
-          onChanged: (v) => widget.session.setViewState('logBranchesSplit', v),
-        );
-      if (_selectedFile != null) {
-        main = GitSplitter(
-          axis: Axis.vertical,
-          first: main,
-          second: _expandedDiff ? const SizedBox.expand() : _diffPreview(),
-          initial: .67,
-          minimum: 220,
-          minimumSecond: 200,
-          value: widget.session.split('logPreviewSplit', .67),
-          onChanged: (v) => widget.session.setViewState('logPreviewSplit', v),
-        );
-        main = Stack(
-          fit: StackFit.expand,
-          children: [
-            Offstage(
-              offstage: _expandedDiff,
-              child: ExcludeFocus(excluding: _expandedDiff, child: main),
-            ),
-            if (_expandedDiff) _diffPreview(expanded: true),
-          ],
-        );
-      }
-      return Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.all(widget.session.host.spacing),
-            child: Column(
+  Widget _build(BuildContext context) => widget.inspector
+      ? _inspector()
+      : LayoutBuilder(
+          builder: (context, bounds) {
+            final host = widget.session.host;
+            final menuSession = widget.session, menuEpoch = _interactionEpoch;
+            final tableMinimum = _textWidth('MMMMMMMMMMMMMMMMMMMMMMMM') + 40;
+            final detailMinimum =
+                _textWidth('MMMMMMMMMMMMMMMMMMMMMM') + host.spacing * 2;
+            final branchMinimum = _textWidth('MMMMMMMMMMMMMMMM');
+            final showDetails =
+                !widget.preserveActionsWhenChoosing &&
+                _details &&
+                bounds.maxWidth >=
+                    (tableMinimum + detailMinimum + 6).clamp(
+                      720.0,
+                      double.infinity,
+                    );
+            final canShowBranches =
+                bounds.maxWidth >=
+                (branchMinimum +
+                        tableMinimum +
+                        (showDetails ? detailMinimum : 0) +
+                        12)
+                    .clamp(1150.0, double.infinity);
+            final showBranches = _branches && canShowBranches;
+            final compact =
+                bounds.maxWidth <
+                    _textWidth(
+                      'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
+                    ) &&
+                bounds.maxHeight < host.rowHeight(context) * 16;
+            final activeFilters = [
+              _message.text,
+              _author.text,
+              _path.text,
+              if (_since != null || _until != null) 'date',
+            ].where((value) => value.isNotEmpty).length;
+            Widget main = _commitTable();
+            if (showDetails)
+              main = GitSplitter(
+                first: main,
+                second: _detailPane(),
+                initial: .64,
+                minimum: tableMinimum,
+                minimumSecond: detailMinimum,
+                value: widget.session.split('logDetailsSplit', .64),
+                onChanged: (v) =>
+                    widget.session.setViewState('logDetailsSplit', v),
+              );
+            if (showBranches)
+              main = GitSplitter(
+                first: _branchPane(),
+                second: main,
+                initial: .20,
+                minimum: branchMinimum,
+                minimumSecond: tableMinimum + (showDetails ? detailMinimum : 0),
+                value: widget.session.split('logBranchesSplit', .20),
+                onChanged: (v) =>
+                    widget.session.setViewState('logBranchesSplit', v),
+              );
+            if (!widget.preserveActionsWhenChoosing && _selectedFile != null) {
+              main = GitSplitter(
+                axis: Axis.vertical,
+                first: main,
+                second: _expandedDiff
+                    ? const SizedBox.expand()
+                    : _diffPreview(),
+                initial: .67,
+                minimum: 220,
+                minimumSecond: 200,
+                value: widget.session.split('logPreviewSplit', .67),
+                onChanged: (v) =>
+                    widget.session.setViewState('logPreviewSplit', v),
+              );
+              main = Stack(
+                fit: StackFit.expand,
+                children: [
+                  Offstage(
+                    offstage: _expandedDiff,
+                    child: ExcludeFocus(excluding: _expandedDiff, child: main),
+                  ),
+                  if (_expandedDiff) _diffPreview(expanded: true),
+                ],
+              );
+            }
+            return Column(
               children: [
-                Wrap(
-                  spacing: widget.session.host.spacing,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    if (compact)
-                      GitMenuButton(
-                        host: host,
-                        tooltip: gitString(context, GitMessages.filterLog),
-                        child: GitLabel(
-                          activeFilters == 0
-                              ? GitMessages.filters
-                              : GitMessages.filtersCount,
-                          values: {'count': activeFilters},
-                        ),
-                        entries: const [
-                          GitMenuEntry('message', GitMessages.message),
-                          GitMenuEntry('author', GitMessages.author),
-                          GitMenuEntry('path', GitMessages.path),
-                          GitMenuEntry('date', GitMessages.date),
-                        ],
-                        onSelected: (value) {
-                          if (!_ownsInteraction(menuSession, menuEpoch)) return;
-                          switch (value) {
-                            case 'message':
-                              unawaited(
-                                _textFilter(
-                                  _message,
-                                  GitMessages.messageFilter,
-                                ),
-                              );
-                            case 'author':
-                              unawaited(
-                                _textFilter(_author, GitMessages.authorFilter),
-                              );
-                            case 'path':
-                              unawaited(
-                                _textFilter(_path, GitMessages.pathFilter),
-                              );
-                            case 'date':
-                              unawaited(_dates());
-                          }
-                        },
-                      )
-                    else ...[
-                      SizedBox(
-                        width: 200,
-                        child: TextField(
-                          controller: _message,
-                          decoration: InputDecoration(
-                            labelText: gitString(context, GitMessages.message2),
-                            isDense: true,
-                          ),
-                          onSubmitted: (_) => unawaited(_load()),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 160,
-                        child: TextField(
-                          controller: _author,
-                          decoration: InputDecoration(
-                            labelText: gitString(context, GitMessages.author2),
-                            isDense: true,
-                          ),
-                          onSubmitted: (_) => unawaited(_load()),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 180,
-                        child: TextField(
-                          controller: _path,
-                          decoration: InputDecoration(
-                            labelText: gitString(context, GitMessages.path2),
-                            isDense: true,
-                          ),
-                          onSubmitted: (_) => unawaited(_load()),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () => unawaited(_dates()),
-                        child: Text(
-                          _since == null && _until == null
-                              ? gitString(context, GitMessages.date)
-                              : gitString(context, GitMessages.dateFilter),
-                        ),
-                      ),
-                    ],
-                    TextButton(
-                      onPressed: _resetFilters,
-                      child: const GitLabel(GitMessages.resetFilters),
-                    ),
-                    GitIconButton(
-                      tooltip: gitString(context, GitMessages.refreshLog),
-                      onPressed: _loading ? null : () => unawaited(_load()),
-                      icon: const GitIcon(GitGlyph.refresh),
-                    ),
-                    if (compact)
-                      GitIconButton(
-                        tooltip: gitString(
-                          context,
-                          GitMessages.goToCommitReference,
-                        ),
-                        onPressed: () => unawaited(_goto()),
-                        icon: const GitIcon(GitGlyph.search),
-                      )
-                    else
-                      TextButton(
-                        onPressed: () => unawaited(_goto()),
-                        child: const GitLabel(GitMessages.goToCommitReference),
-                      ),
-                    TextButton(
-                      onPressed: () =>
-                          unawaited(_navigate(GitMessages.head, reload: true)),
-                      child: const GitLabel(GitMessages.backToHEAD),
-                    ),
-                    if (widget.onChooseCommit == null &&
-                        _selectedIds.length > 1)
-                      TextButton(
-                        onPressed: () =>
-                            GitWorkflowUi(context, widget.session).present(
-                              GitMessages.orderedCherryPick,
-                              GitCherryPickView(
-                                session: widget.session,
-                                commits: _commits
-                                    .where((e) => _selectedIds.contains(e.oid))
-                                    .toList()
-                                    .reversed
-                                    .toList(),
+                Padding(
+                  padding: EdgeInsets.all(widget.session.host.spacing),
+                  child: Column(
+                    children: [
+                      Wrap(
+                        spacing: widget.session.host.spacing,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          if (compact)
+                            GitMenuButton(
+                              host: host,
+                              tooltip: gitString(
+                                context,
+                                GitMessages.filterLog,
                               ),
-                              expanded: true,
+                              child: GitLabel(
+                                activeFilters == 0
+                                    ? GitMessages.filters
+                                    : GitMessages.filtersCount,
+                                values: {'count': activeFilters},
+                              ),
+                              entries: const [
+                                GitMenuEntry('message', GitMessages.message),
+                                GitMenuEntry('author', GitMessages.author),
+                                GitMenuEntry('path', GitMessages.path),
+                                GitMenuEntry('date', GitMessages.date),
+                              ],
+                              onSelected: (value) {
+                                if (!_ownsInteraction(menuSession, menuEpoch))
+                                  return;
+                                switch (value) {
+                                  case 'message':
+                                    unawaited(
+                                      _textFilter(
+                                        _message,
+                                        GitMessages.messageFilter,
+                                      ),
+                                    );
+                                  case 'author':
+                                    unawaited(
+                                      _textFilter(
+                                        _author,
+                                        GitMessages.authorFilter,
+                                      ),
+                                    );
+                                  case 'path':
+                                    unawaited(
+                                      _textFilter(
+                                        _path,
+                                        GitMessages.pathFilter,
+                                      ),
+                                    );
+                                  case 'date':
+                                    unawaited(_dates());
+                                }
+                              },
+                            )
+                          else ...[
+                            SizedBox(
+                              width: 200,
+                              child: GitTextField(
+                                controller: _message,
+                                decoration: GitFieldDecoration(
+                                  labelText: gitString(
+                                    context,
+                                    GitMessages.message2,
+                                  ),
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => unawaited(_load()),
+                              ),
                             ),
-                        child: Text(
-                          gitString(
-                            context,
-                            GitMessages.reviewCherryPickArg0,
-                            values: {'arg0': _selectedIds.length},
+                            SizedBox(
+                              width: 160,
+                              child: GitTextField(
+                                controller: _author,
+                                decoration: GitFieldDecoration(
+                                  labelText: gitString(
+                                    context,
+                                    GitMessages.author2,
+                                  ),
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => unawaited(_load()),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 180,
+                              child: GitTextField(
+                                controller: _path,
+                                decoration: GitFieldDecoration(
+                                  labelText: gitString(
+                                    context,
+                                    GitMessages.path2,
+                                  ),
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => unawaited(_load()),
+                              ),
+                            ),
+                            GitButton(
+                              onPressed: () => unawaited(_dates()),
+                              child: Text(
+                                _since == null && _until == null
+                                    ? gitString(context, GitMessages.date)
+                                    : gitString(
+                                        context,
+                                        GitMessages.dateFilter,
+                                      ),
+                              ),
+                            ),
+                          ],
+                          GitButton(
+                            onPressed: _resetFilters,
+                            child: const GitLabel(GitMessages.resetFilters),
+                          ),
+                          GitIconButton(
+                            tooltip: gitString(context, GitMessages.refreshLog),
+                            onPressed: _loading
+                                ? null
+                                : () => unawaited(_load()),
+                            icon: const GitIcon(GitGlyph.refresh),
+                          ),
+                          if (compact)
+                            GitIconButton(
+                              tooltip: gitString(
+                                context,
+                                GitMessages.goToCommitReference,
+                              ),
+                              onPressed: () => unawaited(_goto()),
+                              icon: const GitIcon(GitGlyph.search),
+                            )
+                          else
+                            GitButton(
+                              onPressed: () => unawaited(_goto()),
+                              child: const GitLabel(
+                                GitMessages.goToCommitReference,
+                              ),
+                            ),
+                          GitButton(
+                            onPressed: () => unawaited(
+                              _navigate(GitMessages.head, reload: true),
+                            ),
+                            child: const GitLabel(GitMessages.backToHEAD),
+                          ),
+                          if (!_selectionOnly && _selectedIds.length > 1)
+                            GitButton(
+                              onPressed: () =>
+                                  GitWorkflowUi(
+                                    context,
+                                    widget.session,
+                                  ).present(
+                                    GitMessages.orderedCherryPick,
+                                    GitCherryPickView(
+                                      session: widget.session,
+                                      commits: _commits
+                                          .where(
+                                            (e) => _selectedIds.contains(e.oid),
+                                          )
+                                          .toList()
+                                          .reversed
+                                          .toList(),
+                                    ),
+                                    expanded: true,
+                                  ),
+                              child: Text(
+                                gitString(
+                                  context,
+                                  GitMessages.reviewCherryPickArg0,
+                                  values: {'arg0': _selectedIds.length},
+                                ),
+                              ),
+                            ),
+                          if (_selectedIds.length == 2)
+                            GitButton(
+                              onPressed: () {
+                                final ids = _selectedIds.toList();
+                                unawaited(
+                                  GitHistoryActions(
+                                    GitWorkflowUi(context, widget.session),
+                                  ).compare(ids.first, ids.last),
+                                );
+                              },
+                              child: const GitLabel(
+                                GitMessages.compareTwoSelectedRevisions,
+                              ),
+                            ),
+                          GitIconButton(
+                            tooltip: canShowBranches
+                                ? gitString(
+                                    context,
+                                    GitMessages.toggleBranchesPane,
+                                  )
+                                : gitString(
+                                    context,
+                                    GitMessages.filterBranchesAndTags,
+                                  ),
+                            onPressed: canShowBranches
+                                ? () => setState(() => _branches = !_branches)
+                                : () => unawaited(_showBranchFilter()),
+                            icon: const GitIcon(GitGlyph.branch),
+                          ),
+                          if (!showDetails && _selected != null)
+                            GitButton(
+                              onPressed: () =>
+                                  widget.session.host.present<void>(
+                                    context,
+                                    gitString(
+                                      context,
+                                      GitMessages.commitArg0,
+                                      values: {
+                                        'arg0': _selected!.oid.abbreviated,
+                                      },
+                                    ),
+                                    SizedBox(height: 500, child: _detailPane()),
+                                    expanded: true,
+                                  ),
+                              child: const GitLabel(GitMessages.commitDetails),
+                            ),
+                        ],
+                      ),
+                      if (compact && activeFilters > 0)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            [
+                              if (_message.text.isNotEmpty)
+                                '${gitString(context, GitMessages.message2)}: ${_message.text}',
+                              if (_author.text.isNotEmpty)
+                                '${gitString(context, GitMessages.author2)}: ${_author.text}',
+                              if (_path.text.isNotEmpty)
+                                '${gitString(context, GitMessages.path2)}: ${_path.text}',
+                              if (_since != null || _until != null)
+                                gitString(context, GitMessages.dateFilter),
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                      ),
-                    if (_selectedIds.length == 2)
-                      TextButton(
-                        onPressed: () {
-                          final ids = _selectedIds.toList();
-                          unawaited(
-                            GitHistoryActions(
-                              GitWorkflowUi(context, widget.session),
-                            ).compare(ids.first, ids.last),
-                          );
-                        },
-                        child: const GitLabel(
-                          GitMessages.compareTwoSelectedRevisions,
+                      if (_reference != null)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: GitFilterLabel(
+                            label: Text(
+                              gitString(
+                                context,
+                                GitMessages.referenceArg0,
+                                values: {'arg0': _reference},
+                              ),
+                            ),
+                            onDeleted: () {
+                              _reference = null;
+                              unawaited(_load());
+                            },
+                          ),
                         ),
-                      ),
-                    GitIconButton(
-                      tooltip: canShowBranches
-                          ? gitString(context, GitMessages.toggleBranchesPane)
-                          : gitString(
+                      if (_navigationReference != null)
+                        GitButton(
+                          onPressed: () => unawaited(_load()),
+                          child: const GitLabel(
+                            GitMessages.restoreHistoryFilters,
+                          ),
+                        ),
+                      if (_navigationReference != null)
+                        GitFilterLabel(
+                          label: Text(
+                            gitString(
                               context,
-                              GitMessages.filterBranchesAndTags,
+                              GitMessages.referenceArg0,
+                              values: {'arg0': _navigationReference},
                             ),
-                      onPressed: canShowBranches
-                          ? () => setState(() => _branches = !_branches)
-                          : () => unawaited(_showBranchFilter()),
-                      icon: const GitIcon(GitGlyph.branch),
-                    ),
-                    if (!showDetails && _selected != null)
-                      TextButton(
-                        onPressed: () => widget.session.host.present<void>(
-                          context,
-                          gitString(
-                            context,
-                            GitMessages.commitArg0,
-                            values: {'arg0': _selected!.oid.abbreviated},
                           ),
-                          SizedBox(height: 500, child: _detailPane()),
-                          expanded: true,
+                          onDeleted: () => unawaited(_load()),
                         ),
-                        child: const GitLabel(GitMessages.commitDetails),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-                if (compact && activeFilters > 0)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      [
-                        if (_message.text.isNotEmpty)
-                          '${gitString(context, GitMessages.message2)}: ${_message.text}',
-                        if (_author.text.isNotEmpty)
-                          '${gitString(context, GitMessages.author2)}: ${_author.text}',
-                        if (_path.text.isNotEmpty)
-                          '${gitString(context, GitMessages.path2)}: ${_path.text}',
-                        if (_since != null || _until != null)
-                          gitString(context, GitMessages.dateFilter),
-                      ].join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                if (_loading) const GitLoading(),
+                if (_failure != null)
+                  GitFailurePanel(
+                    error: _failure!,
+                    message: _navigationOutsideFilters
+                        ? gitString(
+                            context,
+                            GitMessages
+                                .theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
+                          )
+                        : null,
+                    onRefresh: () => unawaited(_load()),
                   ),
-                if (_reference != null)
+                if (_navigationOutsideFilters && _pendingNavigation != null)
                   Align(
-                    alignment: Alignment.centerLeft,
-                    child: InputChip(
-                      label: Text(
-                        gitString(
-                          context,
-                          GitMessages.referenceArg0,
-                          values: {'arg0': _reference},
-                        ),
-                      ),
-                      onDeleted: () {
-                        _reference = null;
-                        unawaited(_load());
+                    alignment: AlignmentDirectional.centerStart,
+                    child: GitButton(
+                      onPressed: () {
+                        final target = _pendingNavigation!;
+                        _pendingNavigation = null;
+                        _navigationReference = target.value;
+                        unawaited(
+                          _load(preserveNavigation: true, reveal: target),
+                        );
                       },
-                    ),
-                  ),
-                if (_navigationReference != null)
-                  TextButton(
-                    onPressed: () => unawaited(_load()),
-                    child: const GitLabel(GitMessages.restoreHistoryFilters),
-                  ),
-                if (_navigationReference != null)
-                  InputChip(
-                    label: Text(
-                      gitString(
-                        context,
-                        GitMessages.referenceArg0,
-                        values: {'arg0': _navigationReference},
+                      child: const GitLabel(
+                        GitMessages.revealRevisionWithoutFilters,
                       ),
                     ),
-                    onDeleted: () => unawaited(_load()),
+                  ),
+                Expanded(child: main),
+                if (widget.onChooseCommit != null)
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: GitButton.primary(
+                      onPressed:
+                          _loading ||
+                              _selected == null ||
+                              _selectedIds.length > 1
+                          ? null
+                          : _confirmCandidate,
+                      child: const GitLabel(GitMessages.selectThisCommit),
+                    ),
                   ),
               ],
-            ),
-          ),
-          if (_loading) const LinearProgressIndicator(),
-          if (_failure != null)
-            GitFailurePanel(
-              error: _failure!,
-              message: _navigationOutsideFilters
-                  ? gitString(
-                      context,
-                      GitMessages
-                          .theRequestedRevisionIsOutsideTheCurrentFiltersResetFilters,
-                    )
-                  : null,
-              onRefresh: () => unawaited(_load()),
-            ),
-          if (_navigationOutsideFilters && _pendingNavigation != null)
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: TextButton(
-                onPressed: () {
-                  final target = _pendingNavigation!;
-                  _pendingNavigation = null;
-                  _navigationReference = target.value;
-                  unawaited(_load(preserveNavigation: true, reveal: target));
-                },
-                child: const GitLabel(GitMessages.revealRevisionWithoutFilters),
-              ),
-            ),
-          Expanded(child: main),
-          if (widget.onChooseCommit != null)
-            Align(
-              alignment: AlignmentDirectional.centerEnd,
-              child: FilledButton(
-                onPressed: _loading || _selected == null
-                    ? null
-                    : () => widget.onChooseCommit!(_selected!),
-                child: const GitLabel(GitMessages.selectThisCommit),
-              ),
-            ),
-        ],
-      );
-    },
-  );
+            );
+          },
+        );
   Future<void> _showBranchFilter() async {
     if (!mounted || !widget.active || _presentationRoute?.isActive == false)
       return;
@@ -796,7 +969,7 @@ final class _GitLogViewState extends State<GitLogView> {
           references: references,
           selected: _reference,
           initialSearch: _referenceSearch.text,
-          chooseOnly: widget.onChooseCommit != null,
+          chooseOnly: _selectionOnly,
           isCurrent: current,
           referenceCurrent: referenceCurrent,
           onFailure: (failure) {
@@ -851,7 +1024,7 @@ final class _GitLogViewState extends State<GitLogView> {
       ref: ref,
       group: group,
       selected: _reference,
-      chooseOnly: widget.onChooseCommit != null,
+      chooseOnly: _selectionOnly,
       isCurrent: current,
       onChoose: (reference) {
         if (!current()) return;
@@ -878,33 +1051,32 @@ final class _GitLogViewState extends State<GitLogView> {
   }
 
   Widget _commitSubject(GitCommit commit, List<GitReference> references) =>
-      Tooltip(
+      GitTooltip(
         message: references.map(_referenceLabel).join(' · '),
-        child: Text.rich(
-          TextSpan(
+        child: LayoutBuilder(
+          builder: (context, bounds) => Row(
             children: [
-              for (final ref in references) ...[
-                WidgetSpan(
-                  alignment: PlaceholderAlignment.middle,
-                  child: GitIcon(
-                    ref.current
-                        ? GitGlyph.check
-                        : ref.name.startsWith('refs/tags/')
-                        ? GitGlyph.tag
-                        : GitGlyph.branch,
-                    size: 13,
+              Expanded(
+                child: Text(
+                  commit.subject,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (references.isNotEmpty) ...[
+                SizedBox(width: widget.session.host.spacing),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: bounds.maxWidth * .32),
+                  child: Text(
+                    references.map(_referenceLabel).join(' · '),
+                    style: GitTheme.of(context).textTheme.labelSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                TextSpan(
-                  text: ' ${_referenceLabel(ref)}  ',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
               ],
-              TextSpan(text: commit.subject),
             ],
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       );
 
@@ -933,11 +1105,11 @@ final class _GitLogViewState extends State<GitLogView> {
         final subjectMinimum = _textWidth('MMMMMMMMMMMMMMMM') + 40;
         final authorWidth = _textWidth('MMMMMMMMMMMM') + spacing * 2;
         final dateWidth =
-            _textWidth('2000-12-31', Theme.of(context).textTheme.bodySmall) +
+            _textWidth('2000-12-31', GitTheme.of(context).textTheme.bodySmall) +
             spacing * 2;
         final idTextWidth = _textWidth(
           'ffffffffffff',
-          Theme.of(context).textTheme.bodySmall,
+          GitTheme.of(context).textTheme.bodySmall,
         );
         final idTitleWidth = _textWidth(
           gitString(context, GitMessages.objectID),
@@ -1045,6 +1217,11 @@ final class _GitLogViewState extends State<GitLogView> {
               }
               if (event is! KeyDownEvent || _commits.isEmpty)
                 return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.enter &&
+                  widget.onChooseCommit != null) {
+                _confirmCandidate();
+                return KeyEventResult.handled;
+              }
               final index = _commits.indexWhere((e) => e.oid == _selected?.oid);
               if ({
                 LogicalKeyboardKey.arrowUp,
@@ -1100,7 +1277,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                         context,
                                         GitMessages.graphLanes,
                                       ),
-                                      child: Scrollbar(
+                                      child: GitScrollbar(
                                         controller: _graphScroll,
                                         thumbVisibility:
                                             graphContentWidth > graphWidth,
@@ -1188,19 +1365,13 @@ final class _GitLogViewState extends State<GitLogView> {
                             explicitChildNodes: true,
                             selected: selected,
                             onTap: () => _choose(index),
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              excludeFromSemantics: true,
-                              onTap: () => _choose(index),
-                              onSecondaryTapUp: (details) => unawaited(
-                                _menu(commit, position: details.globalPosition),
-                              ),
+                            child: _commitActivation(
+                              index,
+                              commit,
                               child: ColoredBox(
                                 color: selected
-                                    ? Theme.of(
-                                        context,
-                                      ).colorScheme.secondaryContainer
-                                    : Colors.transparent,
+                                    ? GitColors.of(context).selection
+                                    : GitColors.of(context).transparent,
                                 child: Row(
                                   children: [
                                     ExcludeSemantics(
@@ -1214,9 +1385,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                             ),
                                             painter: _GraphPainter(
                                               graph[index],
-                                              Theme.of(
-                                                context,
-                                              ).colorScheme.primary,
+                                              GitColors.of(context).accent,
                                               offset: _graphOffset,
                                             ),
                                           ),
@@ -1264,7 +1433,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                                   .substring(0, 10),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: Theme.of(
+                                              style: GitTheme.of(
                                                 context,
                                               ).textTheme.bodySmall,
                                             ),
@@ -1281,7 +1450,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                               commit.oid.abbreviated,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
-                                              style: Theme.of(
+                                              style: GitTheme.of(
                                                 context,
                                               ).textTheme.bodySmall,
                                             ),
@@ -1302,7 +1471,7 @@ final class _GitLogViewState extends State<GitLogView> {
                 ),
                 if (_more)
                   SliverToBoxAdapter(
-                    child: TextButton(
+                    child: GitButton(
                       onPressed: _loading
                           ? null
                           : () => unawaited(_load(append: true)),
@@ -1368,6 +1537,32 @@ final class _GitLogViewState extends State<GitLogView> {
     }
   }
 
+  Widget _commitActivation(
+    int index,
+    GitCommit commit, {
+    required Widget child,
+  }) => Listener(
+    onPointerDown: widget.onChooseCommit == null
+        ? null
+        : (event) {
+            if (event.buttons == 1) _choose(index);
+          },
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      excludeFromSemantics: true,
+      onTap: widget.onChooseCommit == null ? () => _choose(index) : null,
+      onDoubleTap: widget.onChooseCommit == null
+          ? null
+          : () {
+              _choose(index, keyboardModifiers: false);
+              _confirmCandidate();
+            },
+      onSecondaryTapUp: (details) =>
+          unawaited(_menu(commit, position: details.globalPosition)),
+      child: child,
+    ),
+  );
+
   void _choose(int index, {bool keyboardModifiers = true}) {
     final commit = _commits[index];
     _tableFocus.requestFocus();
@@ -1394,6 +1589,177 @@ final class _GitLogViewState extends State<GitLogView> {
     unawaited(_select(commit));
   }
 
+  GitComparison _comparison(GitCommit commit, GitChange file, GitOid? parent) =>
+      GitComparison(
+        file.path,
+        parent == null
+            ? const ContentVersion.absent()
+            : ContentVersion(ContentKind.commit, revision: parent),
+        ContentVersion(ContentKind.commit, revision: commit.oid),
+        leftPath: file.originalPath,
+      );
+
+  void _confirmCandidate() {
+    if (!mounted ||
+        _loading ||
+        _selected == null ||
+        _selectedIds.length > 1 ||
+        _choiceSubmitted ||
+        widget.onChooseCommit == null ||
+        _presentationRoute?.isCurrent != true)
+      return;
+    _choiceSubmitted = true;
+    widget.onChooseCommit!(_selected!);
+  }
+
+  Future<void> _loadInspector({GitOid? target}) async {
+    final generation = ++_generation, session = widget.session;
+    _readCancellation?.cancel();
+    final cancellation = _readCancellation = GitCancellation();
+    final oid = target ?? _inspectorOid;
+    setState(() {
+      _loading = true;
+      _failure = null;
+    });
+    try {
+      if (oid == null) {
+        if (mounted && generation == _generation)
+          setState(() {
+            _clearReview();
+            _loading = false;
+          });
+        return;
+      }
+      final page = await session.client.history(
+        session.repository,
+        filter: HistoryFilter(reference: oid.value),
+        cancellation: cancellation,
+        limit: 1,
+      );
+      final refs = await session.client.references(session.repository);
+      if (!mounted || generation != _generation || session != widget.session)
+        return;
+      final commit = page.commits
+          .where((value) => value.oid == oid)
+          .firstOrNull;
+      if (commit == null) throw const GitException(GitErrorCode.missingContent);
+      setState(() {
+        _commits = [commit];
+        _references = refs;
+        _loading = false;
+      });
+      final savedParent = session.viewState['inspectorParent'];
+      await _select(
+        commit,
+        parent: commit.parents
+            .where((oid) => oid.value == savedParent)
+            .firstOrNull,
+      );
+      final selectedFile = session.viewState['inspectorFile'];
+      if (mounted && generation == _generation)
+        setState(() {
+          _selectedFile = _files
+              .where((file) => file.path.toJson() == selectedFile)
+              .firstOrNull;
+        });
+    } on Object catch (error) {
+      if (mounted && generation == _generation && session == widget.session)
+        setState(() {
+          _loading = false;
+          _failure = error is GitException
+              ? error
+              : GitException(
+                  GitErrorCode.disconnected,
+                  diagnostic: sanitizeGitDiagnostic('$error'),
+                );
+        });
+    }
+  }
+
+  Future<void> _chooseInspectorCommit() async {
+    if (_choosing || !mounted || !widget.active) return;
+    final session = widget.session, epoch = _interactionEpoch;
+    setState(() => _choosing = true);
+    try {
+      final commit = await session.host.present<GitCommit>(
+        context,
+        GitMessages.log,
+        Builder(
+          builder: (dialogContext) {
+            _selectorRoute = ModalRoute.of(dialogContext);
+            return GitLogView(
+              session: session,
+              initialCommit: _selected?.oid ?? _inspectorOid,
+              preserveActionsWhenChoosing: true,
+              onChooseCommit: (commit) =>
+                  gitCompleteSurface(dialogContext, commit),
+            );
+          },
+        ),
+        expanded: true,
+      );
+      if (!_ownsInteraction(session, epoch) || commit == null) return;
+      // A confirmed candidate owns both history and dependent file reads.
+      // Retire an initial/refresh read that may still resolve the previous OID.
+      _generation++;
+      _readCancellation?.cancel();
+      session.setViewState('inspectorFile', '');
+      setState(() {
+        _loading = false;
+        _failure = null;
+        _commits = [commit];
+      });
+      await _select(commit);
+    } finally {
+      _selectorRoute = null;
+      if (mounted && session == widget.session)
+        setState(() => _choosing = false);
+    }
+  }
+
+  void _dismissSelector() {
+    final route = _selectorRoute;
+    _selectorRoute = null;
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route.isActive && !route.isFirst) route.navigator?.removeRoute(route);
+    });
+  }
+
+  Widget _inspector() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      GitButton(
+        key: const ValueKey('git-selected-commit'),
+        onPressed: _choosing ? null : () => unawaited(_chooseInspectorCommit()),
+        child: Text(
+          _selected == null
+              ? (_inspectorOid?.abbreviated ??
+                    gitString(context, GitMessages.selectACommit))
+              : '${_selected!.subject} · ${_selected!.oid.abbreviated}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      if (_loading) const GitLoading(),
+      if (_failure != null)
+        Flexible(
+          child: SingleChildScrollView(
+            child: GitFailurePanel(
+              error: _failure!,
+              onRefresh: () => unawaited(_loadInspector()),
+            ),
+          ),
+        ),
+      if (_selected != null && _failure == null)
+        Expanded(child: _detailPane())
+      else if (!_loading && _failure == null)
+        const Expanded(
+          child: Center(child: GitLabel(GitMessages.noCommitsYet)),
+        ),
+    ],
+  );
+
   Widget _changedFilesPane(GitCommit commit) {
     final generation = _selectionGeneration;
     final parent = _parent;
@@ -1404,7 +1770,7 @@ final class _GitLogViewState extends State<GitLogView> {
         _parent == parent;
     if (_filesLoading) {
       return Center(
-        child: CircularProgressIndicator(
+        child: GitLoading.spinner(
           semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
         ),
       );
@@ -1429,34 +1795,115 @@ final class _GitLogViewState extends State<GitLogView> {
       );
     }
     return ListView.builder(
+      key: PageStorageKey(
+        'git-inspector-files:${widget.session.repository.presentationKey}',
+      ),
       itemCount: _files.length,
       itemBuilder: (context, i) {
         final file = _files[i];
-        return ListTile(
-          dense: true,
-          leading: Text(file.index),
-          title: Text(
-            file.path.basename,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: file.originalPath != null
-              ? Text(
-                  '${file.originalPath!.display} → ${file.path.display}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                )
-              : file.path.parent.isEmpty
-              ? null
-              : Text(
-                  file.path.parent,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-          selected: _selectedFile?.path == file.path,
-          onTap: () {
-            if (current()) setState(() => _selectedFile = file);
+        final session = widget.session;
+        final comparisons = List<GitComparison>.unmodifiable(
+          _files.map((change) => _comparison(commit, change, parent)),
+        );
+        void activate() {
+          if (!current()) return;
+          setState(() => _selectedFile = file);
+          if (widget.inspector) {
+            session.setViewState('inspectorFile', file.path.toJson());
+            widget.onReview?.call(
+              _comparison(commit, file, parent),
+              comparisons,
+            );
+          }
+        }
+
+        Future<void> action(String value) async {
+          if (!current() ||
+              !widget.active ||
+              _presentationRoute?.isCurrent == false)
+            return;
+          if (value == 'review') activate();
+          if (value == 'history')
+            await session.host.present<void>(
+              context,
+              GitMessages.fileHistoryAndBlame,
+              GitFileHistoryView(
+                session: session,
+                path: file.path,
+                revision: commit.oid,
+              ),
+              expanded: true,
+            );
+          if (value == 'snapshot')
+            await session.host.present<void>(
+              context,
+              GitMessages.openSnapshot,
+              GitSnapshotView(session: session, revision: commit.oid),
+              expanded: true,
+            );
+        }
+
+        const entries = [
+          GitMenuEntry('review', GitMessages.reviewDifference),
+          GitMenuEntry('history', GitMessages.fileHistoryAndBlame),
+          GitMenuEntry('snapshot', GitMessages.openSnapshot),
+        ];
+        Future<void> menu({Offset? position}) async {
+          if (!current() ||
+              !widget.active ||
+              _presentationRoute?.isCurrent == false)
+            return;
+          final value = await session.host.menu(
+            context,
+            file.path.display,
+            entries,
+            position: position,
+            localizeTitle: false,
+          );
+          if (value != null) await action(value);
+        }
+
+        return Focus(
+          onFocusChange: (focused) {
+            if (!focused) _contextMenuKeys.clear();
           },
+          onKeyEvent: (_, event) =>
+              _contextMenuKeys.handle(event, () => unawaited(menu()))
+              ? KeyEventResult.handled
+              : KeyEventResult.ignored,
+          child: GestureDetector(
+            onSecondaryTapUp: (details) =>
+                unawaited(menu(position: details.globalPosition)),
+            child: GitActionRow(
+              dense: true,
+              leading: Text(file.index),
+              title: Text(
+                file.path.basename,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: file.originalPath != null
+                  ? Text(
+                      '${file.originalPath!.display} → ${file.path.display}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  : file.path.parent.isEmpty
+                  ? null
+                  : Text(
+                      file.path.parent,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+              selected: _selectedFile?.path == file.path,
+              trailing: GitMenuButton(
+                host: session.host,
+                entries: entries,
+                onSelected: (value) => unawaited(action(value)),
+              ),
+              onTap: activate,
+            ),
+          ),
         );
       },
     );
@@ -1469,60 +1916,29 @@ final class _GitLogViewState extends State<GitLogView> {
       return const Center(child: GitLabel(GitMessages.selectACommit));
     return GitSplitter(
       axis: Axis.vertical,
-      initial: .52,
-      minimum: 110,
-      first: Column(
-        children: [
-          if (commit.parents.length > 1)
-            DropdownButton<GitOid>(
-              value: _parent,
-              isExpanded: true,
-              items: [
-                for (var i = 0; i < commit.parents.length; i++)
-                  DropdownMenuItem(
-                    value: commit.parents[i],
-                    child: Text(
-                      gitString(
-                        context,
-                        GitMessages.compareParentArg0Arg1,
-                        values: {
-                          'arg0': i + 1,
-                          'arg1': commit.parents[i].abbreviated,
-                        },
-                      ),
-                    ),
-                  ),
-              ],
-              onChanged: (parent) {
-                if (mounted &&
-                    generation == _selectionGeneration &&
-                    parent != null)
-                  unawaited(_select(commit, parent: parent));
-              },
-            ),
-          Padding(
-            padding: EdgeInsets.all(widget.session.host.spacing),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Semantics(
-                container: true,
-                header: true,
-                child: const GitLabel(GitMessages.changedFiles),
-              ),
-            ),
-          ),
-          Expanded(child: _changedFilesPane(commit)),
-        ],
+      initial: .40,
+      minimum: 90,
+      minimumSecond: 100,
+      value: widget.session.split(
+        widget.inspector ? 'inspectorInfoSplit' : 'logInfoSplit',
+        .40,
       ),
-      second: SingleChildScrollView(
+      onChanged: (value) => widget.session.setViewState(
+        widget.inspector ? 'inspectorInfoSplit' : 'logInfoSplit',
+        value,
+      ),
+      first: SingleChildScrollView(
+        key: PageStorageKey(
+          'git-commit-information:${widget.session.repository.key}:${commit.oid.value}',
+        ),
         padding: EdgeInsets.all(widget.session.host.spacing),
-        child: SelectionArea(
+        child: GitSelectionArea(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 commit.message,
-                style: Theme.of(context).textTheme.bodyMedium,
+                style: GitTheme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: 12),
               Text(
@@ -1553,8 +1969,13 @@ final class _GitLogViewState extends State<GitLogView> {
                   GitMessages.shallowPartialBoundaryAParentObjectIsUnavailable,
                 ),
               for (final parent in commit.parents)
-                TextButton(
+                GitButton(
                   onPressed: () {
+                    if (widget.inspector) {
+                      widget.session.setViewState('inspectorFile', '');
+                      unawaited(_loadInspector(target: parent));
+                      return;
+                    }
                     final target = _commits
                         .where((c) => c.oid == parent)
                         .firstOrNull;
@@ -1575,14 +1996,61 @@ final class _GitLogViewState extends State<GitLogView> {
                 ),
               for (final ref in _references.where((r) => r.oid == commit.oid))
                 Text(ref.name),
-              if (widget.onChooseCommit == null)
-                TextButton(
+              if (!_selectionOnly)
+                GitButton(
                   onPressed: () => unawaited(_menu(commit)),
                   child: const GitLabel(GitMessages.commitActions),
                 ),
             ],
           ),
         ),
+      ),
+      second: Column(
+        key: const ValueKey('git-changed-files'),
+        children: [
+          if (commit.parents.length > 1)
+            GitChoice<GitOid>(
+              value: _parent,
+              isExpanded: true,
+              items: [
+                for (var i = 0; i < commit.parents.length; i++)
+                  GitChoiceItem(
+                    value: commit.parents[i],
+                    child: Text(
+                      gitString(
+                        context,
+                        GitMessages.compareParentArg0Arg1,
+                        values: {
+                          'arg0': i + 1,
+                          'arg1': commit.parents[i].abbreviated,
+                        },
+                      ),
+                    ),
+                  ),
+              ],
+              onChanged: (parent) {
+                if (mounted &&
+                    generation == _selectionGeneration &&
+                    parent != null) {
+                  if (widget.inspector)
+                    widget.session.setViewState('inspectorFile', '');
+                  unawaited(_select(commit, parent: parent));
+                }
+              },
+            ),
+          Padding(
+            padding: EdgeInsets.all(widget.session.host.spacing),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Semantics(
+                container: true,
+                header: true,
+                child: const GitLabel(GitMessages.changedFiles),
+              ),
+            ),
+          ),
+          Expanded(child: _changedFilesPane(commit)),
+        ],
       ),
     );
   }
@@ -1611,7 +2079,7 @@ final class _GitLogViewState extends State<GitLogView> {
         Row(
           children: [
             if (expanded)
-              TextButton.icon(
+              GitButton.icon(
                 onPressed: () {
                   if (!current()) return;
                   setState(() => _expandedDiff = false);
@@ -1676,7 +2144,7 @@ final class _GitLogViewState extends State<GitLogView> {
     if (!mounted ||
         !widget.active ||
         _presentationRoute?.isActive == false ||
-        widget.onChooseCommit != null)
+        _selectionOnly)
       return;
     final session = widget.session;
     final epoch = _interactionEpoch;
@@ -1844,11 +2312,14 @@ final class _GitLogViewState extends State<GitLogView> {
     if (!mounted || selection != _selectionGeneration || !widget.active) return;
     _tableFocus.requestFocus();
     if (_tableScroll.hasClients) {
+      final start = index * widget.session.host.rowHeight(context);
+      final position = _tableScroll.position;
+      if (start >= position.pixels &&
+          start + widget.session.host.rowHeight(context) <=
+              position.pixels + position.viewportDimension)
+        return;
       _tableScroll.jumpTo(
-        (index * widget.session.host.rowHeight(context)).clamp(
-          0,
-          _tableScroll.position.maxScrollExtent,
-        ),
+        start.clamp(0, _tableScroll.position.maxScrollExtent),
       );
     }
   }
@@ -1858,14 +2329,14 @@ final class _GitLogViewState extends State<GitLogView> {
       return;
     final session = widget.session, epoch = _interactionEpoch;
     final request = ++_dialogRequest;
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(1970),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+    final range = await session.host.presentation.dateRange(
+      context,
+      start: _since,
+      end: _until?.subtract(const Duration(days: 1)),
     );
     if (_ownsDialogRequest(session, epoch, request) && range != null) {
-      _since = range.start;
-      _until = range.end.add(const Duration(days: 1));
+      _since = range.$1;
+      _until = range.$2.add(const Duration(days: 1));
       await _load();
     }
   }
@@ -1970,9 +2441,9 @@ Widget _logBranches(
   final filter = search.text.toLowerCase();
   return Column(
     children: [
-      TextField(
+      GitTextField(
         controller: search,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.branchOrTag),
           prefixIcon: GitIcon(GitGlyph.search),
         ),
@@ -1981,7 +2452,7 @@ Widget _logBranches(
       Expanded(
         child: ListView(
           children: [
-            ListTile(
+            GitActionRow(
               dense: true,
               title: const GitLabel(GitMessages.allReferences),
               selected: selected == null,
@@ -1992,7 +2463,7 @@ Widget _logBranches(
               GitMessages.remote,
               GitMessages.tags,
             ])
-              ExpansionTile(
+              GitExpander(
                 initiallyExpanded: true,
                 title: GitLabel(group),
                 children: [
@@ -2060,7 +2531,7 @@ Widget _logBranchReference(
     onSecondaryTapUp: chooseOnly
         ? null
         : (details) => unawaited(menu(details.globalPosition)),
-    child: ListTile(
+    child: GitActionRow(
       dense: true,
       leading: GitIcon(
         ref.current

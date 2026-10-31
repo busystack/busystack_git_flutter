@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -242,7 +243,8 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
+                child: GitButton.icon(
+                  variant: GitActionStyle.standard,
                   onPressed: !newBase && root
                       ? null
                       : () => unawaited(chooseTarget(newBase: newBase)),
@@ -543,7 +545,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                     targetControl(newBase: true),
                     SizedBox(
                       width: 200,
-                      child: CheckboxListTile(
+                      child: GitCheckRow(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         title: const GitLabel(GitMessages.includeRootCommits),
@@ -556,21 +558,21 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                     ),
                     SizedBox(
                       width: 250,
-                      child: DropdownButtonFormField<bool>(
+                      child: GitChoice<bool>(
                         initialValue: preserve,
                         isExpanded: true,
-                        decoration: InputDecoration(
+                        decoration: GitFieldDecoration(
                           labelText: gitString(
                             context,
                             GitMessages.mergeCommits,
                           ),
                         ),
                         items: const [
-                          DropdownMenuItem(
+                          GitChoiceItem(
                             value: false,
                             child: GitLabel(GitMessages.flattenHistory),
                           ),
-                          DropdownMenuItem(
+                          GitChoiceItem(
                             value: true,
                             child: GitLabel(
                               GitMessages.preserveBranchStructure,
@@ -585,7 +587,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                     ),
                     SizedBox(
                       width: 160,
-                      child: CheckboxListTile(
+                      child: GitCheckRow(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
                         value: autosquash,
@@ -596,7 +598,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                         },
                       ),
                     ),
-                    OutlinedButton(
+                    GitButton.standard(
                       onPressed: loading || (!root && boundary == null)
                           ? null
                           : () => unawaited(prepare()),
@@ -628,7 +630,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                     },
                   ),
                 if (preserve && data != null)
-                  ExpansionTile(
+                  GitExpander(
                     title: const GitLabel(
                       GitMessages.gitBranchLabelResetMergeStructure,
                     ),
@@ -636,7 +638,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                       ConstrainedBox(
                         constraints: const BoxConstraints(maxHeight: 150),
                         child: SingleChildScrollView(
-                          child: SelectableText(data!['todo'] as String),
+                          child: GitSelectableText(data!['todo'] as String),
                         ),
                       ),
                     ],
@@ -677,17 +679,17 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                       children: [
                         Wrap(
                           children: [
-                            TextButton.icon(
+                            GitButton.icon(
                               onPressed: canMove(-1) ? () => move(-1) : null,
                               icon: const GitIcon(GitGlyph.up),
                               label: const GitLabel(GitMessages.moveUp),
                             ),
-                            TextButton.icon(
+                            GitButton.icon(
                               onPressed: canMove(1) ? () => move(1) : null,
                               icon: const GitIcon(GitGlyph.down),
                               label: const GitLabel(GitMessages.moveDown),
                             ),
-                            TextButton(
+                            GitButton(
                               onPressed: planAction(() {
                                 setState(() {
                                   _messageGeneration++;
@@ -724,7 +726,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                                         step.commit.abbreviated,
                                   },
                                 ),
-                                child: ListTile(
+                                child: GitActionRow(
                                   dense: true,
                                   selected: i == selected,
                                   leading: Text('${i + 1}'),
@@ -752,12 +754,12 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                                       ),
                                     ),
                                   ),
-                                  trailing: DropdownButton<RebaseAction>(
+                                  trailing: GitChoice<RebaseAction>(
                                     value: step.action,
                                     underline: const SizedBox.shrink(),
                                     items: [
                                       for (final action in RebaseAction.values)
-                                        DropdownMenuItem(
+                                        GitChoiceItem(
                                           value: action,
                                           child: Text(
                                             gitEnumLabel(context, action),
@@ -795,7 +797,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
         if (invalid != null)
           Text(
             gitString(context, invalid!),
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(color: GitColors.of(context).conflict),
           ),
         if (steps.any(
           (e) =>
@@ -803,7 +805,7 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
         ))
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton(
+            child: GitButton(
               onPressed: loading || invalid != null
                   ? null
                   : () => unawaited(previewMessages()),
@@ -816,11 +818,11 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
         Wrap(
           alignment: WrapAlignment.end,
           children: [
-            TextButton(
+            GitButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const GitLabel(GitMessages.cancelPlan),
             ),
-            FilledButton(
+            GitButton.primary(
               onPressed: invalid != null
                   ? null
                   : planAction(() async {

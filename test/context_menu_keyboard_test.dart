@@ -11,6 +11,9 @@ void main() {
     final original = host();
     var menus = 0;
     final configured = GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+
       present: original.present,
       openDocument: original.openDocument,
       prepareMutation: original.prepareMutation,
@@ -39,7 +42,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitHostScope(
             host: configured,

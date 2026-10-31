@@ -178,7 +178,7 @@ Future<GitSession> _mount(
   final session = GitSession(client: client, repository: repo, host: host());
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(
           context,
@@ -821,7 +821,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: Column(
               children: [
@@ -926,7 +926,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.source.path),
           ),
@@ -968,7 +968,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: Builder(
               builder: (context) => TextButton(
@@ -1061,7 +1061,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.source.path),
           ),

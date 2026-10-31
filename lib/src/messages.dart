@@ -1,5 +1,9 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const removeFilter = "Remove filter";
+  static const noCommitsYet = "No commits yet";
+  static const nativeMenuUnavailable =
+      "The native menu service is unavailable. Try again.";
   static const mergeInProgress = "Merge in progress";
   static const rebaseInProgress = "Rebase in progress";
   static const cherryPickInProgress = "Cherry-pick in progress";
@@ -158,7 +162,7 @@ abstract final class GitMessages {
   static const arg0WhitespaceOnlyChangedLinesHiddenShowExactChanges =
       "{arg0} whitespace-only changed lines hidden · Show exact changes";
   static const arg0ChangedLinesSelectedDisplaySettingsNeverAlterTheStaged =
-      "{arg0} changed lines selected · Display settings never alter the staged bytes.";
+      "{arg0} changed lines selected.";
   static const readOnlyComparisonCopyTextOrAdjustDisplaySettings =
       "Read-only comparison · Copy text or adjust display settings.";
   static const noFinalNewline = " · no final newline";
@@ -1785,5 +1789,9 @@ abstract final class GitMessages {
     discardUnsavedCommitMessages,
     messagesCouldNotBeSavedStayInThisWindow,
     discardCommitMessages,
+
+    removeFilter,
+    noCommitsYet,
+    nativeMenuUnavailable,
   ];
 }

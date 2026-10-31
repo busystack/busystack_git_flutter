@@ -65,7 +65,7 @@ void main() {
       final scroll = ScrollController(), focus = FocusNode();
       final received = <GitNativeTableRequest>[];
       Widget view(String revision, {bool active = true, bool ticking = true}) =>
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: TickerMode(
                 enabled: ticking,
@@ -227,7 +227,7 @@ void main() {
     final scroll = ScrollController(), focus = FocusNode();
     late BuildContext pageContext;
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: Builder(
             builder: (context) {
@@ -301,7 +301,7 @@ void main() {
       });
       var ready = false;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitNativeTable(
               name: 'Changes',
@@ -371,7 +371,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -443,7 +443,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(body: GitLogView(session: session)),
       ),
     );
@@ -512,7 +512,7 @@ void main() {
       final reviews = <GitComparison>[];
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitChangeTree(session: session, onReview: reviews.add),
           ),

@@ -37,7 +37,7 @@ void main() {
       RepositoryId? opened;
       bool? hostRouteCurrent;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Builder(
             builder: (context) {
               return Scaffold(

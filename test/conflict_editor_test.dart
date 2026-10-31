@@ -110,7 +110,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.path),
           ),
@@ -128,7 +128,7 @@ void main() {
       );
       final value = controller.value;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(
               session: session,
@@ -173,7 +173,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.path),
           ),
@@ -240,7 +240,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.path),
           ),
@@ -315,7 +315,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: GitConflictView(session: session, path: client.path),
             ),
@@ -395,7 +395,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.path),
           ),
@@ -454,7 +454,7 @@ void main() {
         host: host(),
       );
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.path),
           ),

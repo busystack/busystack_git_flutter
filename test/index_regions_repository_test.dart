@@ -7,7 +7,7 @@ import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/presentation_fixture.dart' show host;
+import 'support/presentation_fixture.dart' show host, GitTestApp;
 
 final class _IsolatedRunner implements GitRunner {
   _IsolatedRunner(this.directory)
@@ -208,7 +208,7 @@ void main() {
           });
         });
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: GitIndexEditor(
                 session: session,

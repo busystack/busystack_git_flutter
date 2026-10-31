@@ -18,7 +18,7 @@ void main() {
         final navigator = GlobalKey<NavigatorState>();
         Future<bool>? decision;
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             navigatorKey: navigator,
             home: const Scaffold(body: Text('Application home')),
           ),

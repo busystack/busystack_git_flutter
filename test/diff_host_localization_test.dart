@@ -21,7 +21,7 @@ void main() {
           );
           await session.start();
           await tester.pumpWidget(
-            MaterialApp(
+            GitTestApp(
               home: Directionality(
                 textDirection: TextDirection.rtl,
                 child: MediaQuery(
@@ -46,7 +46,7 @@ void main() {
           if (workspaceLog) {
             await tester.tap(
               find.descendant(
-                of: find.byType(SegmentedButton<bool>),
+                of: find.byType(GitChoiceBar<bool>),
                 matching: find.text('Log'),
               ),
             );
@@ -55,7 +55,7 @@ void main() {
           final path = find.text(repo.root).hitTestable();
           expect(path, findsOneWidget);
           final chrome = workspaceLog
-              ? find.byType(SegmentedButton<bool>)
+              ? find.byType(GitChoiceBar<bool>)
               : find.text(GitMessages.commitScopeEntireRepository);
           expect(Directionality.of(tester.element(chrome)), TextDirection.rtl);
           void expectLiteralGlyphOrder(Finder text) {
@@ -114,6 +114,10 @@ void main() {
     (tester) async {
       String? shown;
       final boundHost = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: <T>(context, title, child, {bool expanded = false}) async {
           shown = title;
           return null;
@@ -135,7 +139,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,

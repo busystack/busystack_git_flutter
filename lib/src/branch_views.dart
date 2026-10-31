@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'host.dart';
 import 'dart:async';
@@ -85,8 +86,8 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       Row(
         children: [
           Expanded(
-            child: TextField(
-              decoration: InputDecoration(
+            child: GitTextField(
+              decoration: GitFieldDecoration(
                 prefixIcon: GitIcon(GitGlyph.search),
                 labelText: gitString(
                   context,
@@ -96,7 +97,7 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
               onChanged: (value) => setState(() => search = value),
             ),
           ),
-          TextButton.icon(
+          GitButton.icon(
             onPressed:
                 loading ||
                     reviewed?.head == null ||
@@ -129,14 +130,14 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                     GitMessages.remoteBranches,
                   ),
                   _ => gitString(context, GitMessages.tags),
-                }, style: Theme.of(context).textTheme.titleSmall),
+                }, style: GitTheme.of(context).textTheme.titleSmall),
               ),
               for (final reference in refs.where(
                 (e) =>
                     e.name.startsWith(prefix) &&
                     e.name.toLowerCase().contains(search.toLowerCase()),
               ))
-                ListTile(
+                GitActionRow(
                   dense: true,
                   leading: GitIcon(
                     reference.current
@@ -631,7 +632,8 @@ final class _MergeState extends GitDialogState<GitMergeView> {
         ),
       ),
       states(),
-      OutlinedButton.icon(
+      GitButton.icon(
+        variant: GitActionStyle.standard,
         onPressed: loading
             ? null
             : () async {
@@ -650,15 +652,15 @@ final class _MergeState extends GitDialogState<GitMergeView> {
         ),
       ),
       SizedBox(height: session.host.spacing),
-      DropdownButtonFormField<MergePolicy>(
+      GitChoice<MergePolicy>(
         initialValue: policy,
         isExpanded: true,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.mergePolicy),
         ),
         items: [
           for (final p in MergePolicy.values)
-            DropdownMenuItem(
+            GitChoiceItem(
               value: p,
               child: Text(switch (p) {
                 MergePolicy.fastForward => gitString(
@@ -687,7 +689,7 @@ final class _MergeState extends GitDialogState<GitMergeView> {
                 if (policy == MergePolicy.fastForwardOnly) stop = false;
               }),
       ),
-      CheckboxListTile(
+      GitCheckRow(
         dense: true,
         contentPadding: EdgeInsets.zero,
         value: stop,
@@ -717,7 +719,7 @@ final class _MergeState extends GitDialogState<GitMergeView> {
               ),
       ),
       const SizedBox(height: 12),
-      FilledButton(
+      GitButton.primary(
         onPressed: loading || source == null
             ? null
             : () async {
@@ -793,7 +795,7 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
       states(refresh: refresh),
       Align(
         alignment: Alignment.centerRight,
-        child: TextButton.icon(
+        child: GitButton.icon(
           onPressed: loading
               ? null
               : () => unawaited(edit(null, RemoteAction.add)),
@@ -805,9 +807,9 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
         child: ListView(
           children: [
             for (final remote in (data?['remotes'] as List? ?? []).cast<Json>())
-              ListTile(
+              GitActionRow(
                 title: Text(remote['name'] as String),
-                subtitle: SelectableText(
+                subtitle: GitSelectableText(
                   gitString(
                     context,
                     GitMessages.fetchArg0PushArg1,

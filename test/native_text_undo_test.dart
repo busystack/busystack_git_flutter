@@ -1,3 +1,4 @@
+import 'support/presentation_fixture.dart';
 import 'package:busystack_git_flutter/src/text_pane.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,7 +20,7 @@ void main() {
     ValueChanged<String>? onChanged,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitTextPane(
             label: 'Index',

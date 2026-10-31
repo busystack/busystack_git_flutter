@@ -1,3 +1,4 @@
+import '../test/support/native_presentation_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -122,6 +123,9 @@ void main() {
         client: background,
         repository: repository,
         host: GitHost(
+          presentation: const TestGitPresentation(),
+          icons: testGitIcons,
+          presentMenu: testGitMenu,
           present: <T>(context, title, child, {bool expanded = false}) =>
               showDialog<T>(
                 context: context,
@@ -197,7 +201,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.runAsync(
       () => tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitHostScope(
               host: session.host,
@@ -266,7 +270,7 @@ void main() {
     });
     await tester.runAsync(
       () => tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitHostScope(
               host: session.host,
@@ -310,7 +314,7 @@ void main() {
     );
     await tester.runAsync(
       () => tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitHostScope(
               host: session.host,

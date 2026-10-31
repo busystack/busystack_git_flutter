@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -42,7 +43,7 @@ final class GitHighlightedTextController extends TextEditingController {
       boundaries.add(composing.end);
     }
     final offsets = boundaries.toList()..sort();
-    final colors = Theme.of(context).colorScheme;
+    final colors = GitColors.of(context);
     Color? background(int start, int end) {
       GitHighlightKind? kind;
       for (final range in _highlights) {
@@ -52,13 +53,13 @@ final class GitHighlightedTextController extends TextEditingController {
             : GitHighlightKind.conflict;
       }
       return switch (kind) {
-        GitHighlightKind.staged => colors.primaryContainer.withValues(
+        GitHighlightKind.staged => colors.stagedBackground.withValues(
           alpha: .55,
         ),
-        GitHighlightKind.unstaged => colors.tertiaryContainer.withValues(
+        GitHighlightKind.unstaged => colors.unstagedBackground.withValues(
           alpha: .55,
         ),
-        GitHighlightKind.conflict => colors.errorContainer.withValues(
+        GitHighlightKind.conflict => colors.conflictBackground.withValues(
           alpha: .65,
         ),
         null => null,
@@ -367,13 +368,11 @@ final class _TextPaneState extends State<GitTextPane> {
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(
-      context,
-    ).textTheme.bodyMedium!.copyWith(fontFamily: 'monospace');
+    final style = gitPresentation(context).codeStyle(context)!;
     final label = TextPainter(
       text: TextSpan(
         text: 'M\nM',
-        style: Theme.of(context).textTheme.bodyMedium,
+        style: GitTheme.of(context).textTheme.bodyMedium,
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -392,7 +391,7 @@ final class _TextPaneState extends State<GitTextPane> {
             ),
           ),
         ),
-        const Divider(height: 1),
+        const GitSeparator(height: 1),
         Expanded(
           child: AnimatedBuilder(
             animation: Listenable.merge([_text, _scroll, _geometry]),
@@ -455,9 +454,7 @@ final class _TextPaneState extends State<GitTextPane> {
                                                   ?.findRenderObject()
                                               as RenderBox?,
                                       style: style.copyWith(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.onSurfaceVariant,
+                                        color: GitColors.of(context).mutedText,
                                       ),
                                       textScaler: MediaQuery.textScalerOf(
                                         context,
@@ -467,15 +464,13 @@ final class _TextPaneState extends State<GitTextPane> {
                                           ? (_text as GitHighlightedTextController)
                                                 .highlights
                                           : const [],
-                                      stagedColor: Theme.of(
+                                      stagedColor: GitColors.of(context).accent,
+                                      unstagedColor: GitColors.of(
                                         context,
-                                      ).colorScheme.primary,
-                                      unstagedColor: Theme.of(
+                                      ).unstaged,
+                                      conflictColor: GitColors.of(
                                         context,
-                                      ).colorScheme.tertiary,
-                                      conflictColor: Theme.of(
-                                        context,
-                                      ).colorScheme.error,
+                                      ).conflict,
                                       repaint: Listenable.merge([
                                         _text,
                                         _scroll,
@@ -490,14 +485,14 @@ final class _TextPaneState extends State<GitTextPane> {
                           ),
                         ),
                       ),
-                      const VerticalDivider(width: 1),
+                      const GitSeparator.vertical(width: 1),
                       Expanded(
                         child: GitTextUndo(
                           controller: _text,
                           history: widget.undoController,
                           enabled:
                               widget.controller != null && !widget.readOnly,
-                          child: TextField(
+                          child: GitTextField(
                             key: _fieldKey,
                             controller: _text,
                             readOnly:
@@ -511,7 +506,7 @@ final class _TextPaneState extends State<GitTextPane> {
                             textDirection: TextDirection.ltr,
                             textAlign: TextAlign.left,
                             style: style,
-                            decoration: InputDecoration(
+                            decoration: GitFieldDecoration(
                               labelText: gitString(
                                 context,
                                 widget.semanticLabel ??
@@ -519,7 +514,6 @@ final class _TextPaneState extends State<GitTextPane> {
                                         ? GitMessages.readOnlyRevisionContent
                                         : GitMessages.editableIndexContent),
                               ),
-                              border: InputBorder.none,
                               contentPadding: const EdgeInsets.all(8),
                             ),
                           ),

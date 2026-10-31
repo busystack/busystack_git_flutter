@@ -79,6 +79,9 @@ Future<GitSession> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final original = host();
   final configured = GitHost(
+    presentation: const TestGitPresentation(),
+    icons: testGitIcons,
+
     present: original.present,
     openDocument: original.openDocument,
     prepareMutation: (_, _) async => allowMutation,
@@ -94,7 +97,7 @@ Future<GitSession> _mount(
   );
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(body: GitLogView(session: session)),
     ),
   );

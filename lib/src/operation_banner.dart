@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -26,7 +27,7 @@ final class GitOperationBanner extends StatelessWidget {
       GitOperationKind.unmerged => GitMessages.unresolvedIndexConflicts,
       GitOperationKind.none => '',
     };
-    return MaterialBanner(
+    return GitNotice(
       content: Text(
         gitString(context, title) +
             (operation.unmerged && operation.kind != GitOperationKind.unmerged
@@ -34,7 +35,7 @@ final class GitOperationBanner extends StatelessWidget {
                 : ''),
       ),
       actions: [
-        TextButton(
+        GitButton(
           onPressed: () =>
               unawaited(GitWorkflowUi(context, session).operation()),
           child: const GitLabel(GitMessages.reviewOperation),

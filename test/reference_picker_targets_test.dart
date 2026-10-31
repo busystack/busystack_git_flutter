@@ -55,7 +55,7 @@ void main() {
         addTearDown(session.dispose);
         GitRevisionTarget? result;
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: Builder(
                 builder: (context) => TextButton(

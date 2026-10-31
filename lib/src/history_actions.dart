@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -121,7 +122,7 @@ final class GitHistoryActions {
                 .movesHEADCurrentBranchReflogDoesNotRecoverArbitraryUntracked,
           ),
           for (final mode in ResetMode.values)
-            ListTile(
+            GitActionRow(
               title: Text(gitEnumLabel(context, mode)),
               subtitle: Text(switch (mode) {
                 ResetMode.soft => gitString(
@@ -207,7 +208,7 @@ final class _TagState extends GitDialogState<GitTagView> {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      SelectableText(
+      GitSelectableText(
         gitString(
           context,
           GitMessages.targetArg0,
@@ -215,29 +216,29 @@ final class _TagState extends GitDialogState<GitTagView> {
         ),
       ),
       states(),
-      TextField(
+      GitTextField(
         controller: name,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.tagName),
         ),
       ),
-      CheckboxListTile(
+      GitCheckRow(
         value: annotated,
         title: const GitLabel(GitMessages.annotatedTag),
         onChanged: (v) => setState(() => annotated = v!),
       ),
-      DropdownButtonFormField<int>(
+      GitChoice<int>(
         initialValue: 0,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.cryptographicSigning),
         ),
         items: const [
-          DropdownMenuItem(
+          GitChoiceItem(
             value: 0,
             child: GitLabel(GitMessages.configuredPolicy),
           ),
-          DropdownMenuItem(value: 1, child: GitLabel(GitMessages.signThisTag)),
-          DropdownMenuItem(value: 2, child: GitLabel(GitMessages.doNotSign)),
+          GitChoiceItem(value: 1, child: GitLabel(GitMessages.signThisTag)),
+          GitChoiceItem(value: 2, child: GitLabel(GitMessages.doNotSign)),
         ],
         onChanged: (v) => setState(() {
           sign = v == 0 ? null : v == 1;
@@ -245,17 +246,17 @@ final class _TagState extends GitDialogState<GitTagView> {
         }),
       ),
       if (annotated)
-        TextField(
+        GitTextField(
           controller: message,
           maxLines: 5,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.tagMessage),
           ),
         ),
       const GitLabel(
         GitMessages.createsTheTagLocallyPublishSelectedTagsExplicitlyInPush,
       ),
-      FilledButton(
+      GitButton.primary(
         onPressed: loading
             ? null
             : () async {
@@ -334,7 +335,7 @@ final class _ComparisonState extends GitDialogState<GitRevisionComparison> {
               Builder(
                 builder: (context) {
                   final change = GitChange.fromJson(row);
-                  return ListTile(
+                  return GitActionRow(
                     dense: true,
                     leading: Text(change.index),
                     title: Text(change.path.display),
@@ -365,7 +366,7 @@ final class _ComparisonState extends GitDialogState<GitRevisionComparison> {
         ),
       ),
       if (data?['hasMore'] == true)
-        TextButton(
+        GitButton(
           onPressed: () {
             offset += 300;
             unawaited(
@@ -430,7 +431,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
               Builder(
                 builder: (context) {
                   final entry = IndexEntry.fromJson(row);
-                  return ListTile(
+                  return GitActionRow(
                     dense: true,
                     title: Text(entry.path.display),
                     subtitle: Text('${entry.mode} · ${entry.oid.abbreviated}'),
@@ -470,7 +471,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
       Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(
+          GitButton(
             onPressed: offset == 0
                 ? null
                 : () {
@@ -479,7 +480,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                   },
             child: const GitLabel(GitMessages.previousPage),
           ),
-          TextButton(
+          GitButton(
             onPressed: data?['hasMore'] != true
                 ? null
                 : () {
@@ -747,7 +748,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                       unawaited(refresh());
                     },
             ),
-            TextButton(
+            GitButton(
               onPressed: selected == null || selected['deleted'] == true
                   ? null
                   : () {
@@ -794,7 +795,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                                   row['commit'] as Json,
                                 ),
                                 path = RepoPath.fromJson(row['pathAtCommit']);
-                            return ListTile(
+                            return GitActionRow(
                               dense: true,
                               selected:
                                   commit.oid ==
@@ -906,7 +907,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
         ),
         Row(
           children: [
-            TextButton(
+            GitButton(
               onPressed:
                   loading || error != null || offset == 0 || _historyTip == null
                   ? null
@@ -917,7 +918,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                     },
               child: const GitLabel(GitMessages.previousPage),
             ),
-            TextButton(
+            GitButton(
               onPressed:
                   loading ||
                       error != null ||
@@ -1041,12 +1042,12 @@ final class _FileHistoryComparisonState extends State<_FileHistoryComparison> {
     return Column(
       children: [
         if (_commit.parents.length > 1)
-          DropdownButton<GitOid>(
+          GitChoice<GitOid>(
             value: _parent,
             isExpanded: true,
             items: [
               for (var i = 0; i < _commit.parents.length; i++)
-                DropdownMenuItem(
+                GitChoiceItem(
                   value: _commit.parents[i],
                   child: Text(
                     gitString(
@@ -1073,7 +1074,7 @@ final class _FileHistoryComparisonState extends State<_FileHistoryComparison> {
           ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: GitLoading.spinner())
               : _error != null
               ? GitFailurePanel(error: _error!, onRefresh: _load)
               : GitDiffView(
@@ -1157,7 +1158,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
           itemBuilder: (context, i) {
             final row = (data!['lines'] as List)[i] as Json,
                 number = row['line'] as int;
-            return InkWell(
+            return GitActivation(
               onTap: () => GitWorkflowUi(context, session).present(
                 gitString(
                   context,
@@ -1197,18 +1198,17 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                                 : '',
                           },
                         ),
-                        style: Theme.of(context).textTheme.labelSmall,
+                        style: GitTheme.of(context).textTheme.labelSmall,
                       ),
                     ),
                     SizedBox(width: 45, child: Text('$number')),
                     Expanded(
-                      child: SelectableText(
+                      child: GitSelectableText(
                         number <= lines.length
                             ? lines[number - 1].trimRight()
                             : '',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontFamily: 'monospace',
-                        ),
+                        style: GitTheme.of(context).textTheme.bodyMedium
+                            ?.copyWith(fontFamily: 'monospace'),
                       ),
                     ),
                   ],
@@ -1220,7 +1220,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
       ),
       Row(
         children: [
-          TextButton(
+          GitButton(
             onPressed: offset == 0
                 ? null
                 : () {
@@ -1229,7 +1229,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                   },
             child: const GitLabel(GitMessages.previousLines),
           ),
-          TextButton(
+          GitButton(
             onPressed: offset + 200 >= lines.length
                 ? null
                 : () {
@@ -1285,7 +1285,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
       ),
       Wrap(
         children: [
-          TextButton(
+          GitButton(
             onPressed: loading
                 ? null
                 : () async {
@@ -1315,7 +1315,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                   },
             child: const GitLabel(GitMessages.addReviewedCommit),
           ),
-          TextButton(
+          GitButton(
             onPressed: selected <= 0
                 ? null
                 : () => setState(() {
@@ -1324,7 +1324,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                   }),
             child: const GitLabel(GitMessages.moveEarlier),
           ),
-          TextButton(
+          GitButton(
             onPressed: selected + 1 >= commits.length
                 ? null
                 : () => setState(() {
@@ -1341,7 +1341,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
           minimum: 240,
           first: ListView.builder(
             itemCount: commits.length,
-            itemBuilder: (context, i) => ListTile(
+            itemBuilder: (context, i) => GitActionRow(
               selected: selected == i,
               leading: Text('${i + 1}'),
               title: Text(commits[i].subject),
@@ -1365,7 +1365,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
           second: GitCommitFiles(session: session, commit: commits[selected]),
         ),
       ),
-      CheckboxListTile(
+      GitCheckRow(
         dense: true,
         value: noCommit,
         title: const GitLabel(GitMessages.applyChangesWithoutCreatingCommits),
@@ -1375,7 +1375,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
         Row(
           children: [
             Expanded(
-              child: CheckboxListTile(
+              child: GitCheckRow(
                 dense: true,
                 value: reviewedMainline,
                 title: const GitLabel(
@@ -1384,7 +1384,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                 onChanged: (v) => setState(() => reviewedMainline = v!),
               ),
             ),
-            DropdownButton<int>(
+            GitChoice<int>(
               value: mainline,
               items: [
                 for (
@@ -1396,7 +1396,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
                           .reduce((a, b) => a < b ? a : b);
                   i++
                 )
-                  DropdownMenuItem(
+                  GitChoiceItem(
                     value: i,
                     child: Text(
                       gitString(
@@ -1412,7 +1412,7 @@ final class _PickState extends GitDialogState<GitCherryPickView> {
           ],
         ),
       const GitLabel(GitMessages.emptyOrAlreadyAppliedCommitsMayStopGitForAn),
-      FilledButton(
+      GitButton.primary(
         onPressed:
             loading ||
                 commits.any((e) => e.parents.length > 1) && !reviewedMainline

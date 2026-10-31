@@ -24,7 +24,7 @@ void main() {
         var logOpened = false;
         var reviewContext = 0;
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: SizedBox(
                 width: 340,

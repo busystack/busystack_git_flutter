@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -289,7 +290,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 180),
               child: SingleChildScrollView(
-                child: SelectableText(review.local.text),
+                child: GitSelectableText(review.local.text),
               ),
             ),
             const SizedBox(height: 12),
@@ -297,17 +298,17 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 180),
               child: SingleChildScrollView(
-                child: SelectableText(review.saved.text ?? ''),
+                child: GitSelectableText(review.saved.text ?? ''),
               ),
             ),
             Wrap(
               spacing: host.spacing,
               children: [
-                TextButton(
+                GitButton(
                   onPressed: () => gitCompleteSurface(dialogContext, false),
                   child: const GitLabel(GitMessages.keepThisMessage),
                 ),
-                TextButton(
+                GitButton(
                   onPressed: () => gitCompleteSurface(dialogContext, true),
                   child: const GitLabel(GitMessages.useSavedMessage),
                 ),
@@ -366,7 +367,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   );
   double _minimumHeight(BuildContext context, double width) {
     final row = host.rowHeight(context), spacing = host.spacing;
-    final theme = Theme.of(context).textTheme;
+    final theme = GitTheme.of(context).textTheme;
     double height(
       String text,
       TextStyle? style,
@@ -421,7 +422,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
 
   double _messageMinimum(BuildContext context, double width) {
     final row = host.rowHeight(context);
-    final theme = Theme.of(context).textTheme;
+    final theme = GitTheme.of(context).textTheme;
     double textHeight(
       String text,
       TextStyle? style, {
@@ -452,11 +453,6 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
           inset: 96,
           maxLines: 1,
         ).clamp(48.0, double.infinity) +
-        textHeight(
-          GitMessages.configuredHooksAndSigningAreRespected,
-          theme.bodySmall,
-          maxLines: 1,
-        ) +
         (_amend
             ? textHeight(
                 GitMessages
@@ -515,7 +511,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                 Row(
                   children: [
                     Expanded(
-                      child: TextButton.icon(
+                      child: GitButton.icon(
                         onPressed: () => _leaveReview(view.onBranches),
                         icon: GitIcon(GitGlyph.branch, size: 16),
                         label: Text(
@@ -563,30 +559,30 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                 ),
                 Directionality(
                   textDirection: TextDirection.ltr,
-                  child: Tooltip(
+                  child: GitTooltip(
                     message: session.repository.root,
                     child: Text(
                       session.repository.root,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: GitTheme.of(context).textTheme.bodySmall,
                     ),
                   ),
                 ),
-                Tooltip(
+                GitTooltip(
                   message: gitString(
                     context,
                     GitMessages.commitScopeEntireRepository,
                   ),
                   child: GitLabel(
                     GitMessages.commitScopeEntireRepository,
-                    style: Theme.of(context).textTheme.bodySmall,
+                    style: GitTheme.of(context).textTheme.bodySmall,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 if (snapshot?.upstream != null)
-                  Tooltip(
+                  GitTooltip(
                     message: gitString(
                       context,
                       GitMessages.cachedTrackingUpstreamAheadAheadBehindBehind,
@@ -603,7 +599,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                         'ahead': snapshot.ahead,
                         'behind': snapshot.behind,
                       },
-                      style: Theme.of(context).textTheme.bodySmall,
+                      style: GitTheme.of(context).textTheme.bodySmall,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -621,7 +617,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
               ],
             ),
           ),
-          if (session.loading) const LinearProgressIndicator(),
+          if (session.loading) const GitLoading(),
           if (session.failure case final error?)
             ConstrainedBox(
               constraints: BoxConstraints(
@@ -650,7 +646,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
               value: session.split('commitMessageSplit', .62),
               onChanged: (v) => session.setViewState('commitMessageSplit', v),
               first: session.loading && snapshot == null
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(child: GitLoading.spinner())
                   : snapshot == null
                   ? const Center(
                       child: GitLabel(GitMessages.repositoryStatusUnavailable),
@@ -690,7 +686,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                               ? null
                               : () => unawaited(_setAmend(!_amend)),
                           child: ExcludeSemantics(
-                            child: Checkbox(
+                            child: GitCheckbox(
                               value: _amend,
                               onChanged:
                                   session.running || snapshot?.head == null
@@ -783,21 +779,17 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     if (_amend && _amendTarget != snapshot?.head)
                       Text(
                         _staleAmendMessage(context),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
+                        style: TextStyle(color: GitColors.of(context).conflict),
                       ),
                     if (session.draftFailure != null)
                       Text(
                         _draftFailureMessage(context),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
+                        style: TextStyle(color: GitColors.of(context).conflict),
                       ),
                     if (session.reviewableMessageDraft(_messageKey) != null)
                       Align(
                         alignment: AlignmentDirectional.centerStart,
-                        child: TextButton(
+                        child: GitButton(
                           onPressed: () => _reviewSavedMessage(context),
                           child: const GitLabel(GitMessages.reviewSavedMessage),
                         ),
@@ -805,31 +797,24 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     Expanded(
                       child: GitTextUndo(
                         controller: _message,
-                        child: TextField(
+                        child: GitTextField(
                           controller: _message,
                           expands: true,
                           maxLines: null,
                           minLines: null,
                           textAlignVertical: TextAlignVertical.top,
-                          decoration: InputDecoration(
+                          decoration: GitFieldDecoration(
                             labelText: gitString(
                               context,
                               GitMessages.commitMessage,
                             ),
                             alignLabelWithHint: true,
-                            border: OutlineInputBorder(),
                           ),
                           onChanged: (value) {
                             _storeMessage(value);
                           },
                         ),
                       ),
-                    ),
-                    GitLabel(
-                      GitMessages.configuredHooksAndSigningAreRespected,
-                      style: Theme.of(context).textTheme.bodySmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -848,7 +833,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: GitLoading.spinner(strokeWidth: 2),
                     ),
                     Expanded(
                       child: Text(
@@ -862,7 +847,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    TextButton(
+                    GitButton(
                       onPressed: session.cancel,
                       child: const GitLabel(GitMessages.cancel),
                     ),
@@ -882,14 +867,14 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
       spacing: host.spacing,
       runSpacing: host.spacing,
       children: [
-        FilledButton(
+        GitButton.primary(
           onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
           child: GitLabel(
             _amend ? GitMessages.amendStaged : GitMessages.commitStagedCount,
             values: {'count': staged},
           ),
         ),
-        OutlinedButton(
+        GitButton.standard(
           onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
           child: const GitLabel(GitMessages.commitAndPush),
         ),
@@ -984,7 +969,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
           child: ListView(
             children: [
               for (final commit in page.commits)
-                ListTile(
+                GitActionRow(
                   title: Text(commit.subject),
                   onTap: () => Navigator.of(context).pop(commit.message),
                 ),
@@ -1016,7 +1001,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
             const GitLabel(
               GitMessages.replaceTheExistingCommitMessageWithTheSelectedMessage,
             ),
-            TextButton(
+            GitButton(
               onPressed: () => Navigator.of(context).pop(true),
               child: const GitLabel(GitMessages.replaceDraft),
             ),
@@ -1146,15 +1131,15 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       states(),
-      TextField(
+      GitTextField(
         controller: name,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.commitAuthorName),
         ),
       ),
-      TextField(
+      GitTextField(
         controller: email,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.commitAuthorEmail),
         ),
       ),
@@ -1172,7 +1157,7 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
           },
         ),
       ),
-      SelectableText(
+      GitSelectableText(
         gitString(
           context,
           GitMessages.configuredHooksArg0,
@@ -1180,7 +1165,7 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
         ),
       ),
       const GitLabel(GitMessages.aSignOffTrailerIsAStatementInTheMessage),
-      FilledButton(
+      GitButton.primary(
         onPressed: loading
             ? null
             : () async {
@@ -1223,6 +1208,7 @@ final class GitChangeTree extends StatefulWidget {
 final class _GitChangeTreeState extends State<GitChangeTree> {
   bool _preparingStage = false;
   final _collapsed = <String>{}, _selected = <String>{};
+  final _pointerModifiers = <String, ({bool shift, bool additive})>{};
   final _scroll = ScrollController();
   final _focus = FocusNode(debugLabel: 'Git changes');
   final _contextMenuKeys = GitContextMenuKeys();
@@ -1347,6 +1333,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
   Widget build(BuildContext context) {
     final rows = _rows(), host = widget.session.host;
     _selected.removeWhere((key) => !_rowKeys.contains(key));
+    _pointerModifiers.removeWhere((key, _) => !_rowKeys.contains(key));
     _focused = _focused.clamp(0, rows.isEmpty ? 0 : rows.length - 1);
     if (rows.length == 1 && rows.first.change == null)
       return const Center(child: GitLabel(GitMessages.noChanges));
@@ -1584,19 +1571,41 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                         )
                                       : row.label
                                 : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
-                            child: InkWell(
+                            child: GitActivation(
+                              onPointerDown: (_) =>
+                                  _pointerModifiers[row.key] = (
+                                    shift: HardwareKeyboard
+                                        .instance
+                                        .isShiftPressed,
+                                    additive:
+                                        HardwareKeyboard
+                                            .instance
+                                            .isControlPressed ||
+                                        HardwareKeyboard.instance.isMetaPressed,
+                                  ),
                               onTap: () {
-                                _select(rows, index);
-                                _activate(row);
+                                final modifiers = _pointerModifiers.remove(
+                                  row.key,
+                                );
+                                _select(
+                                  rows,
+                                  index,
+                                  shift: modifiers?.shift,
+                                  additive: modifiers?.additive,
+                                );
+                                if (!(modifiers?.shift ?? false) &&
+                                    !(modifiers?.additive ?? false))
+                                  _activate(row);
                               },
                               onDoubleTap: change == null
                                   ? null
-                                  : () => unawaited(
-                                      host.openDocument(
-                                        widget.session.repository,
-                                        change.path,
-                                      ),
-                                    ),
+                                  : () {
+                                      final modifiers = _pointerModifiers
+                                          .remove(row.key);
+                                      if (!(modifiers?.shift ?? false) &&
+                                          !(modifiers?.additive ?? false))
+                                        _activate(row);
+                                    },
                               onSecondaryTapUp: (details) {
                                 if (!_selected.contains(row.key))
                                   _select(rows, index);
@@ -1610,10 +1619,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                               },
                               child: ColoredBox(
                                 color: _selected.contains(row.key)
-                                    ? Theme.of(
-                                        context,
-                                      ).colorScheme.secondaryContainer
-                                    : Colors.transparent,
+                                    ? GitColors.of(context).selection
+                                    : GitColors.of(context).transparent,
                                 child: Padding(
                                   padding: EdgeInsets.only(
                                     left: row.depth * host.spacing * 2,
@@ -1640,7 +1647,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                                       GitMessages.staged
                                                 ? change.index
                                                 : change.worktree,
-                                            style: Theme.of(
+                                            style: GitTheme.of(
                                               context,
                                             ).textTheme.labelSmall,
                                           ),
@@ -1799,12 +1806,15 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     List<_ChangeRow> rows,
     int index, {
     bool keyboardModifiers = true,
+    bool? shift,
+    additive,
   }) {
     _focus.requestFocus();
     _selectionGeneration++;
     setState(() {
       _focused = index;
-      if (keyboardModifiers && HardwareKeyboard.instance.isShiftPressed) {
+      if (keyboardModifiers &&
+          (shift ?? HardwareKeyboard.instance.isShiftPressed)) {
         _selected.clear();
         for (
           var i = _anchor < index ? _anchor : index;
@@ -1814,7 +1824,9 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           if (rows[i].change != null) _selected.add(rows[i].key);
         }
       } else if (keyboardModifiers &&
-          HardwareKeyboard.instance.isControlPressed) {
+          (additive ??
+              (HardwareKeyboard.instance.isControlPressed ||
+                  HardwareKeyboard.instance.isMetaPressed))) {
         if (!_selected.add(rows[index].key)) _selected.remove(rows[index].key);
       } else {
         _selected
@@ -1962,7 +1974,8 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
               ..clear()
               ..addAll(retained.isEmpty ? {refreshed[focused].key} : retained);
           });
-          _activate(refreshed[focused]);
+          // Staging preserves the selection. Opening a comparison is a
+          // separate normal activation, never a side effect of staging.
         }
       }
     } on Object catch (error) {

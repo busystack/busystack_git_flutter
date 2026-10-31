@@ -103,7 +103,7 @@ Future<GitSession> showRebase(
   await session.start();
   addTearDown(session.dispose);
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(
           context,
@@ -398,10 +398,10 @@ void main() {
       await showRebase(tester, client);
       await prepare(tester, client);
       final oldAction = tester
-          .widget<DropdownButton<RebaseAction>>(
+          .widget<GitChoice<RebaseAction>>(
             find
                 .byWidgetPredicate(
-                  (widget) => widget is DropdownButton<RebaseAction>,
+                  (widget) => widget is GitChoice<RebaseAction>,
                 )
                 .first,
           )
@@ -414,10 +414,10 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(
         tester
-            .widget<DropdownButton<RebaseAction>>(
+            .widget<GitChoice<RebaseAction>>(
               find
                   .byWidgetPredicate(
-                    (widget) => widget is DropdownButton<RebaseAction>,
+                    (widget) => widget is GitChoice<RebaseAction>,
                   )
                   .first,
             )
@@ -436,7 +436,7 @@ void main() {
       final session = await showRebase(tester, client);
       await prepare(tester, client);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitHostScope(
               host: session.host,

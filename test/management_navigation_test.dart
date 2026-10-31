@@ -71,6 +71,9 @@ void main() {
         String? opened;
         bool? hostRouteCurrent;
         final configured = GitHost(
+          presentation: const TestGitPresentation(),
+          icons: testGitIcons,
+
           present: <T>(context, title, child, {bool expanded = false}) =>
               showDialog<T>(
                 context: context,
@@ -98,7 +101,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: StatefulBuilder(
               builder: (context, setState) {
                 hostContext = context;

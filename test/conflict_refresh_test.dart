@@ -102,7 +102,7 @@ void main() {
       addTearDown(session.dispose);
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitConflictView(session: session, path: client.source.path),
           ),

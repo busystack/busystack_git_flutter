@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -33,6 +32,10 @@ void main() {
     final original = host();
     final requested = <String>[];
     final localized = GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+      presentMenu: testGitMenu,
+
       present: original.present,
       openDocument: original.openDocument,
       prepareMutation: original.prepareMutation,
@@ -47,7 +50,7 @@ void main() {
       },
     );
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: GitHostScope(
           host: localized,
           child: const GitLabel(
@@ -70,6 +73,10 @@ void main() {
       final original = host();
       final requested = <(String, Map<String, Object?>)>[];
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: original.present,
         openDocument: original.openDocument,
         prepareMutation: original.prepareMutation,
@@ -82,7 +89,7 @@ void main() {
         },
       );
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: GitHostScope(
             host: configured,
             child: const GitLabel(

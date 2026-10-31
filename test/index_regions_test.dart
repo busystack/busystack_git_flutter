@@ -80,7 +80,7 @@ Future<(GitSession, TextEditingController)> _mountIndex(
   );
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: GitHostScope(
           host: session.host,
@@ -495,7 +495,7 @@ void main() {
           );
         } else if (external == 'switch') {
           await tester.pumpWidget(
-            MaterialApp(
+            GitTestApp(
               home: Scaffold(
                 body: GitHostScope(
                   host: session.host,
@@ -570,7 +570,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
@@ -627,7 +627,7 @@ void main() {
       );
       final value = draft.value;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitHostScope(
               host: session.host,
@@ -803,7 +803,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitHostScope(
             host: session.host,
@@ -864,7 +864,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: Builder(
             builder: (context) => TextButton(
@@ -925,7 +925,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitHostScope(
             host: session.host,

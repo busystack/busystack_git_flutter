@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -57,7 +58,7 @@ final class _PromptState extends State<_GitPromptView> {
   @override
   Widget build(BuildContext context) {
     final message = widget.prompt.kind == GitPromptKind.message;
-    final field = TextField(
+    final field = GitTextField(
       controller: text,
       undoController: message ? undo : null,
       autofocus: true,
@@ -67,11 +68,10 @@ final class _PromptState extends State<_GitPromptView> {
       expands: message,
       maxLines: message ? null : 1,
       textAlignVertical: TextAlignVertical.top,
-      decoration: InputDecoration(
+      decoration: GitFieldDecoration(
         labelText: message
             ? gitString(context, GitMessages.gitMessage)
             : widget.prompt.title,
-        border: const OutlineInputBorder(),
       ),
       onSubmitted: message ? null : (_) => accept(),
     );
@@ -89,11 +89,11 @@ final class _PromptState extends State<_GitPromptView> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            TextButton(
+            GitButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const GitLabel(GitMessages.cancelPrompt),
             ),
-            FilledButton(
+            GitButton.primary(
               onPressed: accept,
               child: Text(
                 message

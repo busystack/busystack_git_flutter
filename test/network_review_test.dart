@@ -114,7 +114,7 @@ Future<void> _show(WidgetTester tester, Widget child) async {
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: Builder(
           builder: (context) => TextButton(
@@ -156,11 +156,11 @@ void main() {
           )
           .onPressed!;
       tester
-          .widget<DropdownButtonFormField<String>>(
+          .widget<GitChoice<String>>(
             find.byWidgetPredicate(
               (w) =>
-                  w is DropdownButtonFormField<String> &&
-                  w.decoration.labelText == 'Source branch',
+                  w is GitChoice<String> &&
+                  w.decoration?.labelText == 'Source branch',
             ),
           )
           .onChanged!('feature');
@@ -188,20 +188,20 @@ void main() {
       await session.start();
       await _show(tester, GitPullView(session: session));
       tester
-          .widget<DropdownButtonFormField<String>>(
+          .widget<GitChoice<String>>(
             find.byWidgetPredicate(
               (w) =>
-                  w is DropdownButtonFormField<String> &&
-                  w.decoration.labelText == 'Source remote',
+                  w is GitChoice<String> &&
+                  w.decoration?.labelText == 'Source remote',
             ),
           )
           .onChanged!('team');
       await tester.pump();
-      final source = tester.widget<DropdownButtonFormField<String>>(
+      final source = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Source branch',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Source branch',
         ),
       );
       expect(source.initialValue, isNull);
@@ -227,11 +227,11 @@ void main() {
       expect(client.mutations, isEmpty);
       await tester.tap(find.widgetWithText(TextButton, 'Fetch'));
       await tester.pumpAndSettle();
-      final remote = tester.widget<DropdownButtonFormField<String>>(
+      final remote = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Remote to fetch',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Remote to fetch',
         ),
       );
       expect(remote.initialValue, 'team/upstream');
@@ -239,19 +239,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(client.mutations.single, isA<FetchRemote>());
       expect(find.byType(GitFetchView), findsNothing);
-      final source = tester.widget<DropdownButtonFormField<String>>(
+      final source = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Source branch',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Source branch',
         ),
       );
       expect(source.initialValue, 'review/main');
       await tester.tap(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Source branch',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Source branch',
         ),
       );
       await tester.pumpAndSettle();
@@ -260,8 +260,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         tester
-            .widget<DropdownButtonFormField<PullStrategy>>(
-              find.byType(DropdownButtonFormField<PullStrategy>),
+            .widget<GitChoice<PullStrategy>>(
+              find.byType(GitChoice<PullStrategy>),
             )
             .initialValue,
         PullStrategy.rebase,
@@ -293,7 +293,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitPushView(session: session)),
         ),
       );
@@ -358,11 +358,11 @@ void main() {
         await _show(tester, GitPullView(session: session));
         expect(
           tester
-              .widget<DropdownButtonFormField<String>>(
+              .widget<GitChoice<String>>(
                 find.byWidgetPredicate(
                   (w) =>
-                      w is DropdownButtonFormField<String> &&
-                      w.decoration.labelText == 'Source remote',
+                      w is GitChoice<String> &&
+                      w.decoration?.labelText == 'Source remote',
                 ),
               )
               .initialValue,
@@ -370,11 +370,11 @@ void main() {
         );
         expect(
           tester
-              .widget<DropdownButtonFormField<String>>(
+              .widget<GitChoice<String>>(
                 find.byWidgetPredicate(
                   (widget) =>
-                      widget is DropdownButtonFormField<String> &&
-                      widget.decoration.labelText == 'Source branch',
+                      widget is GitChoice<String> &&
+                      widget.decoration?.labelText == 'Source branch',
                 ),
               )
               .initialValue,
@@ -449,8 +449,8 @@ void main() {
     await _show(tester, GitPullView(session: session));
     final source = find.byWidgetPredicate(
       (widget) =>
-          widget is DropdownButtonFormField<String> &&
-          widget.decoration.labelText == 'Source branch',
+          widget is GitChoice<String> &&
+          widget.decoration?.labelText == 'Source branch',
     );
     await tester.tap(source);
     await tester.pumpAndSettle();
@@ -480,15 +480,15 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitPushView(session: session)),
         ),
       );
       await tester.pumpAndSettle();
       final destination = find.byWidgetPredicate(
         (widget) =>
-            widget is DropdownButtonFormField<String> &&
-            widget.decoration.labelText == 'Destination reference',
+            widget is GitChoice<String> &&
+            widget.decoration?.labelText == 'Destination reference',
       );
       await tester.tap(destination);
       await tester.pumpAndSettle();
@@ -523,7 +523,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitPushView(session: session)),
         ),
       );

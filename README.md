@@ -30,8 +30,8 @@ opened on demand with Ctrl+F inside the review.
 `GitHost` supplies native application dialogs, document/folder opening, directory
 selection, native contextual menus, mutation/inspection preflight, draft persistence
 and notifications. Native menu cancellation remains distinct from an unavailable
-menu service; only the latter falls back to the host dialog presenter.
-It also supplies host density, text measurement, icons and translation hooks.
+menu service. An unavailable service reports an operational error; Git never substitutes a Material menu.
+The required `GitPresentation` adapter supplies the host’s approved native controls, text menus, typography, semantic status/diff colors and input behavior. Host density, text measurement, the complete glyph catalog and translation remain explicit. There is no default presentation adapter.
 Every shared icon uses a semantic `GitGlyph` key in `GitHost.icons`, so hosts can
 use their existing glyph catalog throughout Commit, Log and workflow dialogs.
 BusyMark's optional message drafting remains a host action. Native Git prompts
@@ -129,6 +129,27 @@ Targets retain reviewed reference tips and resolved commit identities; preparing
 and starting a plan revalidates those references. Plan, selection and message
 preview requests have separate generations. Replaced plans and obsolete row
 callbacks cannot change the active review or retarget its repository.
+
+
+## BusyMark sidebars and ordinary comparison tabs (2026-10-31)
+
+BusyMark has independent Commit and Git Log sidebar views. Git Log places the
+selected-commit button first, commit information next, and Changed files last.
+Information and files have independent scroll allocations. The button opens the
+existing graph/history browser in a native modal; browsing never applies a
+candidate, while confirmation does. History operations remain in context menus.
+
+Ordinary file activation opens an independently selectable/closable comparison
+in the existing content tab strip. Captured repository, paths, versions, parent
+and mutable review context identify each tab. Documents remain mounted with their
+buffers intact. Staging does not open a tab; modified multi-selection does not
+activate files. BusyFiles retains its existing Git workspace placement.
+
+The resolved-symbol gate is `dart run tool/check_native_presentation.dart`; its
+self-test is `dart run tool/test_native_presentation_audit.dart`. Consumer checks
+also scan their Git integrations and run after source archive materialization.
+See [native mappings and action destinations](docs/native-presentation.md).
+Earlier layout descriptions below are historical and superseded by this model.
 
 ## Commit, Log, and comparison interaction
 

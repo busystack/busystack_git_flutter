@@ -48,7 +48,7 @@ void main() {
       );
       addTearDown(session.dispose);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitCommitFiles(session: session, commit: _commit('a')),
           ),
@@ -117,7 +117,7 @@ void main() {
         message: 'merge review',
       );
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitCommitFiles(session: session, commit: commit),
           ),
@@ -150,7 +150,7 @@ void main() {
       await tester.pump();
       expect(tester.state(find.byType(GitDiffView)), same(beforeExpansion));
       tester
-          .widget<DropdownButton<GitOid>>(find.byType(DropdownButton<GitOid>))
+          .widget<GitChoice<GitOid>>(find.byType(GitChoice<GitOid>))
           .onChanged!(secondParent);
       await tester.pump();
       oldNext();
@@ -197,7 +197,7 @@ void main() {
       addTearDown(firstSession.dispose);
       addTearDown(secondSession.dispose);
       Future<void> mount(GitSession session) => tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitCommitFiles(session: session, commit: _commit('a')),
           ),
@@ -230,7 +230,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     addTearDown(session.dispose);
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitCommitFiles(session: session, commit: _commit('a')),
         ),
@@ -271,7 +271,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     addTearDown(session.dispose);
     Future<void> select(String id) => tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitCommitFiles(session: session, commit: _commit(id)),
         ),

@@ -66,7 +66,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -117,7 +117,7 @@ void main() {
       await session.start();
       expect(client.statusReads, 1);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -161,7 +161,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,
@@ -199,6 +199,10 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final original = host();
       final translated = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: original.present,
         openDocument: original.openDocument,
         prepareMutation: original.prepareMutation,
@@ -221,7 +225,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: SizedBox(
               width: 350,
@@ -264,7 +268,7 @@ void main() {
       await session.start();
       await target.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: target,
@@ -408,7 +412,7 @@ void main() {
       );
       var pushes = 0;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitCommitView(
               session: target,
@@ -456,7 +460,7 @@ void main() {
         error: const GitException(GitErrorCode.staleReview),
       );
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitIndexEditor(session: target, path: RepoPath.text('a')),
           ),
@@ -488,7 +492,7 @@ void main() {
       final result = TextEditingController(text: 'manual result');
       addTearDown(result.dispose);
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: SizedBox(
               width: 500,
@@ -561,7 +565,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitWorkspace(session: session)),
         ),
       );
@@ -602,7 +606,7 @@ void main() {
       await session.start();
       var branchReviews = 0;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitWorkspace(
               session: session,

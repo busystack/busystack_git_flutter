@@ -25,7 +25,7 @@ class _Review {
   var decision = Completer<bool>();
   bool get clean => text.text == 'saved';
 
-  Widget app() => MaterialApp(
+  Widget app() => GitTestApp(
     navigatorKey: navigation,
     navigatorObservers: [observer],
     home: Scaffold(

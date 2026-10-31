@@ -75,6 +75,10 @@ GitSession _session(
     client: client ?? FixtureClient(),
     repository: repository,
     host: GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+      presentMenu: testGitMenu,
+
       present: base.present,
       openDocument: base.openDocument,
       prepareMutation: base.prepareMutation,
@@ -123,7 +127,7 @@ class _CommitClient extends FixtureClient {
   }) async => current();
 }
 
-Widget _commit(GitSession session) => MaterialApp(
+Widget _commit(GitSession session) => GitTestApp(
   home: Scaffold(
     body: SizedBox(
       width: 600,
@@ -192,7 +196,7 @@ void main() {
       first.setDraft('local B');
       await first.flushMessageDrafts();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           builder: (context, child) => MediaQuery(
             data: MediaQuery.of(
               context,
@@ -236,7 +240,7 @@ void main() {
     var dirty = false, requests = 0;
     final decision = Completer<bool>();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: GitDraftGuard(
           host: session.host,
           canDismiss: true,
@@ -384,7 +388,7 @@ void main() {
       second.setDraft('saved C');
       await second.flushMessageDrafts();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitWorkspace(session: first)),
         ),
       );

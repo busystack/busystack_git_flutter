@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'dart:async';
 
 import 'package:busystack_git/busystack_git.dart';
@@ -32,7 +33,7 @@ final class _DocumentSelectionState extends State<GitDiffDocumentSelection> {
 
   @override
   Widget build(BuildContext context) {
-    return SelectionArea(
+    return GitSelectionArea(
       child: SelectionContainer(
         delegate: documents.selection,
         child: _DocumentScope(

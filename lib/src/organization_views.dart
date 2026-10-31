@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -125,7 +126,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
       states(refresh: () => unawaited(refresh())),
       Align(
         alignment: Alignment.centerRight,
-        child: TextButton.icon(
+        child: GitButton.icon(
           onPressed: loading || session.snapshot == null || session.running
               ? null
               : () async {
@@ -147,10 +148,10 @@ final class _StashesState extends GitDialogState<GitStashesView>
           first: ListView(
             children: [
               if ((data?['entries'] as List? ?? []).isEmpty && !loading)
-                const ListTile(title: GitLabel(GitMessages.noStashes)),
+                const GitActionRow(title: GitLabel(GitMessages.noStashes)),
               for (final entry
                   in (data?['entries'] as List? ?? []).cast<Json>())
-                ListTile(
+                GitActionRow(
                   key: ValueKey(entry['identity']),
                   dense: true,
                   selected: selected?['identity'] == entry['identity'],
@@ -183,7 +184,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
         },
       ),
       if (commit != null && commit!.parents.length > 2)
-        TextButton(
+        GitButton(
           onPressed: () => GitWorkflowUi(context, session).present(
             GitMessages.stashedUntrackedFiles,
             GitSnapshotView(session: session, revision: commit!.parents[2]),
@@ -191,7 +192,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
           ),
           child: const GitLabel(GitMessages.inspectStashedUntrackedFiles),
         ),
-      CheckboxListTile(
+      GitCheckRow(
         dense: true,
         value: restoreIndex,
         onChanged: (v) => setState(() => restoreIndex = v!),
@@ -209,7 +210,7 @@ final class _StashesState extends GitDialogState<GitStashesView>
             StashAction.branch,
             StashAction.drop,
           ])
-            OutlinedButton(
+            GitButton.standard(
               onPressed: loading || selected == null
                   ? null
                   : () => unawaited(act(action)),
@@ -343,34 +344,34 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
     return Column(
       children: [
         states(refresh: () => unawaited(_refreshReview())),
-        TextField(
+        GitTextField(
           controller: message,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.stashNameMessage),
           ),
         ),
         SizedBox(height: session.host.spacing),
-        DropdownButtonFormField<int>(
+        GitChoice<int>(
           initialValue: mode,
           isExpanded: true,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(
               context,
               GitMessages.stashContentAndResultingIndex,
             ),
           ),
           items: const [
-            DropdownMenuItem(
+            GitChoiceItem(
               value: 0,
               child: GitLabel(GitMessages.stashTrackedWorkingAndStagedChanges),
             ),
-            DropdownMenuItem(
+            GitChoiceItem(
               value: 1,
               child: GitLabel(
                 GitMessages.stashChangesLeaveStagedChangesInPlaceKeepIndex,
               ),
             ),
-            DropdownMenuItem(
+            GitChoiceItem(
               value: 2,
               child: GitLabel(GitMessages.stashOnlyStagedChangesStaged),
             ),
@@ -380,13 +381,13 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
             if (mode == 2) untracked = false;
           }),
         ),
-        CheckboxListTile(
+        GitCheckRow(
           dense: true,
           value: untracked,
           onChanged: mode == 2 ? null : (v) => setState(() => untracked = v!),
           title: const GitLabel(GitMessages.includeUntrackedFiles),
         ),
-        CheckboxListTile(
+        GitCheckRow(
           dense: true,
           value: all,
           onChanged: (v) => setState(() => all = v!),
@@ -405,7 +406,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                   // A known extent also makes scrollbar/keyboard jumps bounded
                   // instead of laying out every preceding path to seek a row.
                   prototypeItem: const ExcludeSemantics(
-                    child: CheckboxListTile(
+                    child: GitCheckRow(
                       dense: true,
                       value: true,
                       onChanged: null,
@@ -415,10 +416,10 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
                   ),
                   itemBuilder: (context, index) {
                     final change = eligible[index];
-                    return Tooltip(
+                    return GitTooltip(
                       key: ValueKey(change.path.key),
                       message: change.path.display,
-                      child: CheckboxListTile(
+                      child: GitCheckRow(
                         dense: true,
                         value: all || selected.contains(change.path),
                         onChanged: all
@@ -442,7 +443,7 @@ final class _CreateStashState extends GitDialogState<GitCreateStashView> {
         ),
         if (eligible.isNotEmpty && chosen.isEmpty)
           const GitLabel(GitMessages.selectAtLeastOneEligiblePath),
-        FilledButton(
+        GitButton.primary(
           onPressed: loading || chosen.isEmpty
               ? null
               : () async {
@@ -503,7 +504,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
       states(refresh: () => unawaited(refresh())),
       Align(
         alignment: Alignment.centerRight,
-        child: TextButton.icon(
+        child: GitButton.icon(
           onPressed: loading || session.snapshot?.head == null
               ? null
               : () => unawaited(create()),
@@ -519,7 +520,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
         child: ListView(
           children: [
             for (final entry in (data?['entries'] as List? ?? []).cast<Json>())
-              ListTile(
+              GitActionRow(
                 key: ValueKey(entry['path']),
                 title: Text(entry['path'] as String),
                 subtitle: Text(
@@ -716,7 +717,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
   Widget build(BuildContext context) => Column(
     children: [
       states(refresh: () => unawaited(refresh())),
-      CheckboxListTile(
+      GitCheckRow(
         dense: true,
         value: recursive,
         onChanged: (v) => setState(() => recursive = v!),
@@ -729,12 +730,14 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
         child: ListView(
           children: [
             if ((data?['entries'] as List? ?? []).isEmpty && !loading)
-              const ListTile(title: GitLabel(GitMessages.noRecordedSubmodules)),
+              const GitActionRow(
+                title: GitLabel(GitMessages.noRecordedSubmodules),
+              ),
             for (final entry in (data?['entries'] as List? ?? []).cast<Json>())
               Builder(
                 builder: (context) {
                   final path = RepoPath.fromJson(entry['path']);
-                  return ListTile(
+                  return GitActionRow(
                     key: ValueKey(path.key),
                     title: Text(path.display),
                     subtitle: GitSelectableText(
@@ -958,7 +961,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
             children: [
               for (final entry
                   in (data?['entries'] as List? ?? []).cast<Json>())
-                ListTile(
+                GitActionRow(
                   dense: true,
                   key: ValueKey(_entryIdentity(entry)),
                   selected:
@@ -997,7 +1000,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
       Wrap(
         spacing: session.host.spacing,
         children: [
-          TextButton(
+          GitButton(
             onPressed: offset == 0
                 ? null
                 : () {
@@ -1006,7 +1009,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                   },
             child: const GitLabel(GitMessages.previousPage),
           ),
-          TextButton(
+          GitButton(
             onPressed: data?['hasMore'] != true
                 ? null
                 : () {
@@ -1015,7 +1018,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                   },
             child: const GitLabel(GitMessages.nextPage),
           ),
-          FilledButton(
+          GitButton.primary(
             onPressed: selected == null
                 ? null
                 : () async {
@@ -1045,7 +1048,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                   },
             child: const GitLabel(GitMessages.createRecoveryBranch),
           ),
-          TextButton(
+          GitButton(
             onPressed: selected == null
                 ? null
                 : () => GitWorkflowUi(context, session).present(
@@ -1058,7 +1061,7 @@ final class _RecoveryState extends GitDialogState<GitRecoveryView>
                   ),
             child: const GitLabel(GitMessages.inspectSnapshot),
           ),
-          TextButton(
+          GitButton(
             onPressed: selected == null
                 ? null
                 : () => GitHistoryActions(
@@ -1094,13 +1097,13 @@ final class GitPageNavigation extends StatelessWidget {
           values: {'arg0': offset ~/ 100 + 1},
         ),
       ),
-      TextButton(
+      GitButton(
         onPressed: loading || offset == 0
             ? null
             : () => onPage((offset - 100).clamp(0, 1000000)),
         child: const GitLabel(GitMessages.previousPage),
       ),
-      TextButton(
+      GitButton(
         onPressed: loading || !hasMore ? null : () => onPage(offset + 100),
         child: const GitLabel(GitMessages.nextPage),
       ),

@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -50,7 +51,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
           operation == null || operation.kind == GitOperationKind.none
               ? gitString(context, GitMessages.noContinuingGitOperation)
               : '${gitEnumLabel(context, operation.kind)}${operation.editStop ? gitString(context, GitMessages.stoppedForEditingAmend) : ''}',
-          style: Theme.of(context).textTheme.titleMedium,
+          style: GitTheme.of(context).textTheme.titleMedium,
         ),
         if (operation?.kind == GitOperationKind.unmerged)
           const GitLabel(
@@ -66,7 +67,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
             children: [
               for (final change
                   in state?.changes.where((e) => e.conflicted) ?? <GitChange>[])
-                ListTile(
+                GitActionRow(
                   leading: const GitIcon(GitGlyph.warning),
                   title: Text(change.path.display),
                   subtitle: Text(
@@ -85,7 +86,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                       GitWorkflowUi(context, session).conflict(change.path),
                 ),
               if (state != null && !state.operation.unmerged)
-                const ListTile(
+                const GitActionRow(
                   title: GitLabel(GitMessages.theIndexHasNoUnresolvedEntries),
                 ),
             ],
@@ -104,7 +105,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                   GitOperationKind.rebase,
                   GitOperationKind.cherryPick,
                 }.contains(operation?.kind))
-              OutlinedButton(
+              GitButton.standard(
                 onPressed: loading || session.running
                     ? null
                     : () async {
@@ -141,7 +142,7 @@ final class _OperationState extends GitDialogState<GitOperationView> {
                 child: const GitLabel(GitMessages.keepEmptyCommit),
               ),
             for (final action in operation?.actions ?? <GitContinuation>{})
-              OutlinedButton(
+              GitButton.standard(
                 onPressed: loading || session.running
                     ? null
                     : () async {
@@ -831,7 +832,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 onRefresh: () => unawaited(refresh()),
               ),
             if (_readingVersions && !loading)
-              LinearProgressIndicator(
+              GitLoading(
                 semanticsLabel: gitString(
                   context,
                   GitMessages.loadingConflictVersions,
@@ -855,26 +856,26 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 spacing: session.host.spacing,
                 children: [
                   if (data!['baseAvailable'] == true)
-                    TextButton(
+                    GitButton(
                       onPressed: () => compareBase(2),
                       child: const GitLabel(GitMessages.baseLeft),
                     ),
                   if (data!['baseAvailable'] == true)
-                    TextButton(
+                    GitButton(
                       onPressed: () => compareBase(3),
                       child: const GitLabel(GitMessages.baseRight),
                     ),
                   if (data!['baseAvailable'] != true)
                     const GitLabel(GitMessages.noBaseEntryForThisConflict),
                   if (text)
-                    TextButton(
+                    GitButton(
                       onPressed: _busy
                           ? null
                           : () => unawaited(acceptWhole(ConflictChoice.left)),
                       child: const GitLabel(GitMessages.acceptEntireLeftFile),
                     ),
                   if (text)
-                    TextButton(
+                    GitButton(
                       onPressed: _busy
                           ? null
                           : () => unawaited(acceptWhole(ConflictChoice.right)),
@@ -949,27 +950,27 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                       GitMessages
                           .sourceAlignmentExceededTheTextComparisonLimitSourcePanesRemain,
                     ),
-                  TextButton(
+                  GitButton(
                     onPressed:
                         _busy || stale || activeRegion < 0 || regions.isEmpty
                         ? null
                         : _regionAction(true),
                     child: const GitLabel(GitMessages.acceptLeftRegion),
                   ),
-                  TextButton(
+                  GitButton(
                     onPressed:
                         _busy || stale || activeRegion < 0 || regions.isEmpty
                         ? null
                         : _regionAction(false),
                     child: const GitLabel(GitMessages.acceptRightRegion),
                   ),
-                  TextButton(
+                  GitButton(
                     onPressed: _keepManualAction(),
                     child: const GitLabel(
                       GitMessages.keepManualResultForRegion,
                     ),
                   ),
-                  TextButton(
+                  GitButton(
                     onPressed: _busy || preview?.text == null
                         ? null
                         : () async {
@@ -1041,7 +1042,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
               Expanded(
                 child: left == null
                     ? error == null
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Center(child: GitLoading.spinner())
                           : const Center(
                               child: GitLabel(
                                 GitMessages
@@ -1063,14 +1064,14 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
                 alignment: WrapAlignment.end,
                 spacing: session.host.spacing,
                 children: [
-                  OutlinedButton(
+                  GitButton.standard(
                     onPressed:
                         _busy || stale || error != null || reviewed == null
                         ? null
                         : () => unawaited(save(false)),
                     child: const GitLabel(GitMessages.saveResultDraft),
                   ),
-                  FilledButton(
+                  GitButton.primary(
                     onPressed:
                         _busy || stale || error != null || reviewed == null
                         ? null
@@ -1142,7 +1143,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
           ConflictChoice.right,
           ConflictChoice.delete,
         ])
-          TextButton(
+          GitButton(
             onPressed: _busy ? null : () => unawaited(acceptWhole(choice)),
             child: Text(switch (choice) {
               ConflictChoice.left => gitString(
@@ -1157,7 +1158,7 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
             }),
           ),
         if (data?['kind'] == 'submodule')
-          TextButton(
+          GitButton(
             onPressed: _busy
                 ? null
                 : () async {

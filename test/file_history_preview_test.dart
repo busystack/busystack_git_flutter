@@ -119,7 +119,7 @@ Future<GitSession> _mountHistory(
   final session = GitSession(client: client, repository: repo, host: host());
   await session.start();
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: GitHostScope(
           host: session.host,
@@ -152,8 +152,8 @@ void main() {
       tester.widget<GitDiffView>(find.byType(GitDiffView)).comparison.leftPath,
       RepoPath.text('old/chapter.md'),
     );
-    final oldPicker = tester.widget<DropdownButton<GitOid>>(
-      find.byType(DropdownButton<GitOid>),
+    final oldPicker = tester.widget<GitChoice<GitOid>>(
+      find.byType(GitChoice<GitOid>),
     );
     oldPicker.onChanged!(client.otherParent);
     oldPicker.onChanged!(
@@ -179,8 +179,8 @@ void main() {
     (tester) async {
       final client = _MergeHistoryClient();
       await _mountHistory(tester, client);
-      final picker = tester.widget<DropdownButton<GitOid>>(
-        find.byType(DropdownButton<GitOid>),
+      final picker = tester.widget<GitChoice<GitOid>>(
+        find.byType(GitChoice<GitOid>),
       );
       picker.onChanged!(client.otherParent);
       await tester.pump();
@@ -218,7 +218,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitHostScope(
             host: session.host,

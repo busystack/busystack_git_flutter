@@ -65,6 +65,9 @@ void main() {
       final client = WorktreeClient();
       final original = host();
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+
         present: <T>(context, title, child, {bool expanded = false}) =>
             showDialog<T>(
               context: context,
@@ -90,7 +93,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Builder(
             builder: (context) => Scaffold(
               body: TextButton(
@@ -136,6 +139,10 @@ void main() {
       final original = host();
       final prompts = <String>[];
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: <T>(context, title, child, {bool expanded = false}) async {
           prompts.add(title);
           return (prompts.length == 1 ? 'new-worktree' : 'new-branch') as T;
@@ -157,7 +164,7 @@ void main() {
       await session.start();
       final reviewed = session.snapshot!;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitWorktreesView(session: session)),
         ),
       );

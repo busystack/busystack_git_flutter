@@ -23,7 +23,7 @@ void main() {
         await session.start();
         final navigator = GlobalKey<NavigatorState>();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             navigatorKey: navigator,
             home: const Scaffold(body: Text('Files home')),
           ),

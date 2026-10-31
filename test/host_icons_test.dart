@@ -9,6 +9,9 @@ void main() {
   ) async {
     final original = host();
     GitHost configured(IconData icon) => GitHost(
+      presentation: const TestGitPresentation(),
+      presentMenu: testGitMenu,
+
       present: original.present,
       openDocument: original.openDocument,
       prepareMutation: original.prepareMutation,
@@ -17,7 +20,7 @@ void main() {
       drafts: original.drafts,
       icons: {for (final glyph in GitGlyph.values) glyph: icon},
     );
-    Widget surface(GitHost host) => MaterialApp(
+    Widget surface(GitHost host) => GitTestApp(
       home: GitHostScope(
         host: host,
         child: Wrap(

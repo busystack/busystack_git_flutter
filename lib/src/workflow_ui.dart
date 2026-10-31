@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -223,7 +224,7 @@ final class GitActionMenu extends StatelessWidget {
       shrinkWrap: true,
       children: [
         for (final entry in actions.entries)
-          ListTile(
+          GitActionRow(
             dense: true,
             title: Text(entry.value),
             onTap: () => Navigator.of(context).pop(entry.key),
@@ -291,13 +292,12 @@ final class _GitTextInputState extends State<_GitTextInput> {
         ),
       GitTextUndo(
         controller: controller,
-        child: TextField(
+        child: GitTextField(
           controller: controller,
           autofocus: true,
           maxLines: widget.multiline ? 8 : 1,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, widget.title),
-            border: const OutlineInputBorder(),
           ),
           onSubmitted: widget.multiline
               ? null
@@ -308,11 +308,11 @@ final class _GitTextInputState extends State<_GitTextInput> {
       Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(
+          GitButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const GitLabel(GitMessages.cancel),
           ),
-          FilledButton(
+          GitButton.primary(
             onPressed: () => Navigator.of(context).pop(controller.text),
             child: const GitLabel(GitMessages.apply),
           ),
@@ -355,11 +355,11 @@ Future<bool> gitConfirm(
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                TextButton(
+                GitButton(
                   onPressed: () => decide(false),
                   child: const GitLabel(GitMessages.cancel),
                 ),
-                FilledButton(
+                GitButton.primary(
                   onPressed: () => decide(true),
                   child: GitLabel(action),
                 ),
@@ -468,7 +468,7 @@ abstract class GitDialogState<T extends StatefulWidget> extends State<T> {
   Widget states({VoidCallback? refresh}) => Column(
     mainAxisSize: MainAxisSize.min,
     children: [
-      if (loading) const LinearProgressIndicator(),
+      if (loading) const GitLoading(),
       if (error case final failure?)
         GitFailurePanel(error: failure, onRefresh: refresh),
       if (session.running)
@@ -481,7 +481,7 @@ abstract class GitDialogState<T extends StatefulWidget> extends State<T> {
                     : gitString(context, GitMessages.gitOperationInProgress),
               ),
             ),
-            TextButton(
+            GitButton(
               onPressed: session.cancel,
               child: const GitLabel(GitMessages.cancelProcess),
             ),

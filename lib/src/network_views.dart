@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
@@ -71,7 +72,7 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
           GitMessages.deleteREMOTEReferenceArg0,
           values: {'arg0': widget.reference},
         ),
-        style: Theme.of(context).textTheme.titleMedium,
+        style: GitTheme.of(context).textTheme.titleMedium,
       ),
       const GitLabel(
         GitMessages.thisRemovesTheReferenceOnEveryActualPushDestinationListed,
@@ -92,7 +93,7 @@ final class _DeleteRemoteState extends GitDialogState<GitDeleteRemoteView> {
         ),
       if (completed) const GitLabel(GitMessages.remoteDeletionCompleted),
       const SizedBox(height: 12),
-      FilledButton(
+      GitButton.primary(
         onPressed:
             completed ||
                 loading ||
@@ -358,16 +359,16 @@ final class _PushState extends GitDialogState<GitPushView> {
             ),
             SizedBox(
               width: 170,
-              child: DropdownButtonFormField<String>(
+              child: GitChoice<String>(
                 key: ValueKey(remote),
                 initialValue: remote,
-                decoration: InputDecoration(
+                decoration: GitFieldDecoration(
                   labelText: gitString(context, GitMessages.remote),
                 ),
                 isExpanded: true,
                 items: [
                   for (final entry in remotes)
-                    DropdownMenuItem(
+                    GitChoiceItem(
                       value: entry['name'] as String,
                       child: Text(entry['name'] as String),
                     ),
@@ -387,11 +388,11 @@ final class _PushState extends GitDialogState<GitPushView> {
             ),
             SizedBox(
               width: 300,
-              child: DropdownButtonFormField<String>(
+              child: GitChoice<String>(
                 key: ValueKey('$remote:$destinationChoice'),
                 initialValue: destinationChoice,
                 isExpanded: true,
-                decoration: InputDecoration(
+                decoration: GitFieldDecoration(
                   labelText: gitString(
                     context,
                     GitMessages.destinationReference,
@@ -399,11 +400,11 @@ final class _PushState extends GitDialogState<GitPushView> {
                 ),
                 items: [
                   for (final reference in _existingDestinations())
-                    DropdownMenuItem(
+                    GitChoiceItem(
                       value: reference,
                       child: Text(reference.substring('refs/heads/'.length)),
                     ),
-                  DropdownMenuItem(
+                  GitChoiceItem(
                     value: '__new__',
                     child: GitLabel(GitMessages.newRemoteBranch),
                   ),
@@ -423,9 +424,9 @@ final class _PushState extends GitDialogState<GitPushView> {
             if (destinationChoice == '__new__')
               SizedBox(
                 width: 220,
-                child: TextField(
+                child: GitTextField(
                   controller: branchName,
-                  decoration: InputDecoration(
+                  decoration: GitFieldDecoration(
                     labelText: gitString(context, GitMessages.newRemoteBranch),
                   ),
                   enabled: !_busy,
@@ -436,7 +437,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                   },
                 ),
               ),
-            TextButton(
+            GitButton(
               onPressed: _busy
                   ? null
                   : () async {
@@ -451,7 +452,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                     },
               child: const GitLabel(GitMessages.manageRemotes),
             ),
-            OutlinedButton(
+            GitButton.standard(
               onPressed: _busy || remote == null || reviewed.head == null
                   ? null
                   : () => unawaited(preview()),
@@ -481,13 +482,13 @@ final class _PushState extends GitDialogState<GitPushView> {
             ),
           ),
         if (data?['needsFetch'] == true)
-          MaterialBanner(
+          GitNotice(
             content: const GitLabel(
               GitMessages
                   .aDestinationHasCommitsThatAreUnavailableLocallyFetchThat,
             ),
             actions: [
-              TextButton(
+              GitButton(
                 onPressed: _busy
                     ? null
                     : () async {
@@ -521,18 +522,18 @@ final class _PushState extends GitDialogState<GitPushView> {
                           padding: EdgeInsets.all(session.host.spacing),
                           child: Text(
                             entry['destination'] as String,
-                            style: Theme.of(context).textTheme.labelMedium,
+                            style: GitTheme.of(context).textTheme.labelMedium,
                           ),
                         ),
                         if ((entry['commits'] as List).isEmpty)
-                          const ListTile(
+                          const GitActionRow(
                             title: GitLabel(GitMessages.noOutgoingCommits),
                           ),
                         for (final commit
                             in (entry['commits'] as List).cast<Json>().map(
                               GitCommit.fromJson,
                             ))
-                          ListTile(
+                          GitActionRow(
                             dense: true,
                             selected: selected?.oid == commit.oid,
                             title: Text(commit.subject),
@@ -552,7 +553,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                 ),
         ),
         if (data?['hasMore'] == true)
-          TextButton(
+          GitButton(
             onPressed: _busy ? null : () => unawaited(nextPage()),
             child: const GitLabel(GitMessages.loadMoreOutgoingCommits),
           ),
@@ -563,7 +564,7 @@ final class _PushState extends GitDialogState<GitPushView> {
             if (reviewed.branch != null)
               SizedBox(
                 width: 300,
-                child: CheckboxListTile(
+                child: GitCheckRow(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   value: upstream,
@@ -623,7 +624,7 @@ final class _PushState extends GitDialogState<GitPushView> {
         Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
-            Tooltip(
+            GitTooltip(
               message:
                   data?['forceDisabledReason'] as String? ??
                   gitString(
@@ -631,7 +632,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                     GitMessages
                         .forceRequiresTheExactDestinationTipsShownInThisReview,
                   ),
-              child: TextButton(
+              child: GitButton(
                 onPressed: eligible && data?['forceAllowed'] != false
                     ? () => unawaited(push(true))
                     : null,
@@ -639,7 +640,7 @@ final class _PushState extends GitDialogState<GitPushView> {
               ),
             ),
             const SizedBox(width: 8),
-            FilledButton(
+            GitButton.primary(
               onPressed: eligible ? () => unawaited(push(false)) : null,
               child: const GitLabel(GitMessages.push),
             ),
@@ -853,7 +854,7 @@ final class _CommitFilesState extends State<GitCommitFiles> {
     itemCount: files?.length ?? 0,
     itemBuilder: (context, index) {
       final file = files![index];
-      return ListTile(
+      return GitActionRow(
         dense: true,
         selected: selected == file,
         leading: Text(file.index),
@@ -975,11 +976,11 @@ final class _CommitFilesState extends State<GitCommitFiles> {
             ),
           ),
         if (commit.parents.length > 1)
-          DropdownButton<GitOid>(
+          GitChoice<GitOid>(
             value: chosenParent,
             items: [
               for (var i = 0; i < commit.parents.length; i++)
-                DropdownMenuItem(
+                GitChoiceItem(
                   value: commit.parents[i],
                   child: Text(
                     gitString(
@@ -1005,7 +1006,7 @@ final class _CommitFilesState extends State<GitCommitFiles> {
         if (error != null)
           GitFailurePanel(error: error!, onRefresh: () => unawaited(load())),
         if (files == null && error == null)
-          LinearProgressIndicator(
+          GitLoading(
             semanticsLabel: gitString(context, GitMessages.loadingChangedFiles),
           ),
         Expanded(
@@ -1065,23 +1066,23 @@ final class _FetchState extends GitDialogState<GitFetchView> {
     mainAxisSize: MainAxisSize.min,
     children: [
       states(),
-      DropdownButtonFormField<String>(
+      GitChoice<String>(
         key: ValueKey(remote),
         initialValue: remote,
-        decoration: InputDecoration(
+        decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.remoteToFetch),
         ),
         isExpanded: true,
         items: [
           for (final value in (data?['remotes'] as List? ?? []).cast<Json>())
-            DropdownMenuItem(
+            GitChoiceItem(
               value: value['name'] as String,
               child: Text(value['name'] as String),
             ),
         ],
         onChanged: loading ? null : (value) => setState(() => remote = value),
       ),
-      CheckboxListTile(
+      GitCheckRow(
         dense: true,
         value: prune,
         title: const GitLabel(GitMessages.pruneDeletedRemoteTrackingBranches),
@@ -1091,7 +1092,7 @@ final class _FetchState extends GitDialogState<GitFetchView> {
         GitMessages
             .fetchUpdatesRemoteTrackingInformationWithoutReplacingWorkingFiles,
       ),
-      FilledButton(
+      GitButton.primary(
         onPressed: loading || remote == null
             ? null
             : () async {
@@ -1294,16 +1295,16 @@ final class _PullState extends GitDialogState<GitPullView> {
           ),
         ),
         states(),
-        DropdownButtonFormField<String>(
+        GitChoice<String>(
           key: ValueKey(remote),
           initialValue: remote,
           isExpanded: true,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.sourceRemote),
           ),
           items: [
             for (final value in (data?['remotes'] as List? ?? []).cast<Json>())
-              DropdownMenuItem(
+              GitChoiceItem(
                 value: value['name'] as String,
                 child: Text(value['name'] as String),
               ),
@@ -1321,7 +1322,7 @@ final class _PullState extends GitDialogState<GitPullView> {
           children: [
             if (remote != null && branch.text.isNotEmpty)
               const Expanded(child: GitLabel(GitMessages.cachedTracking)),
-            TextButton.icon(
+            GitButton.icon(
               onPressed: loading || initializing || session.running
                   ? null
                   : () => unawaited(_fetchSources()),
@@ -1331,18 +1332,18 @@ final class _PullState extends GitDialogState<GitPullView> {
           ],
         ),
         SizedBox(height: session.host.spacing),
-        DropdownButtonFormField<String>(
+        GitChoice<String>(
           key: ValueKey('$remote:${branch.text}'),
           initialValue: _sourceBranches().contains(branch.text)
               ? branch.text
               : null,
           isExpanded: true,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.sourceBranch),
           ),
           items: [
             for (final name in _sourceBranches())
-              DropdownMenuItem(value: name, child: Text(name)),
+              GitChoiceItem(value: name, child: Text(name)),
           ],
           onChanged: loading || initializing || _sourceBranches().isEmpty
               ? null
@@ -1352,15 +1353,15 @@ final class _PullState extends GitDialogState<GitPullView> {
                 }),
         ),
         SizedBox(height: session.host.spacing),
-        DropdownButtonFormField<PullStrategy>(
+        GitChoice<PullStrategy>(
           key: ValueKey(strategy),
           initialValue: strategy,
-          decoration: InputDecoration(
+          decoration: GitFieldDecoration(
             labelText: gitString(context, GitMessages.reviewedStrategy),
           ),
           items: [
             for (final value in PullStrategy.values)
-              DropdownMenuItem(
+              GitChoiceItem(
                 value: value,
                 child: Text(switch (value) {
                   PullStrategy.fastForwardOnly => gitString(
@@ -1411,7 +1412,7 @@ final class _PullState extends GitDialogState<GitPullView> {
           const GitLabel(
             GitMessages.gitIsConfiguredForInteractiveRebaseSelectAPullStrategy,
           ),
-          TextButton(
+          GitButton(
             onPressed: () => setState(() {
               _selectionGeneration++;
               interactivePreference = false;
@@ -1422,11 +1423,11 @@ final class _PullState extends GitDialogState<GitPullView> {
           ),
         ],
         if (strategy != PullStrategy.fastForwardOnly)
-          ExpansionTile(
+          GitExpander(
             title: const GitLabel(GitMessages.options),
             children: [
               if (strategy == PullStrategy.merge)
-                CheckboxListTile(
+                GitCheckRow(
                   dense: true,
                   value: noFastForward,
                   title: const GitLabel(
@@ -1440,7 +1441,7 @@ final class _PullState extends GitDialogState<GitPullView> {
                         }),
                 ),
               if (strategy == PullStrategy.rebase)
-                CheckboxListTile(
+                GitCheckRow(
                   dense: true,
                   value: preserveMerges,
                   title: const GitLabel(GitMessages.preserveLocalMergeCommits),
@@ -1460,7 +1461,7 @@ final class _PullState extends GitDialogState<GitPullView> {
                 GitMessages
                     .localChangesMayPreventPullReviewCommitThemOrExplicitly,
               ),
-              TextButton(
+              GitButton(
                 onPressed: () async {
                   await GitWorkflowUi(context, session).present(
                     GitMessages.stashes,
@@ -1488,7 +1489,7 @@ final class _PullState extends GitDialogState<GitPullView> {
             ],
           ),
         const SizedBox(height: 12),
-        FilledButton(
+        GitButton.primary(
           onPressed:
               loading ||
                   initializing ||

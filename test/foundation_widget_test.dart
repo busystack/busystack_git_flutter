@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: SizedBox(
               width: 350,
@@ -80,7 +81,7 @@ void main() {
   ) async {
     for (final diagnostic in ['', 'Rebasing (1/6)']) {
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitFailurePanel(
               key: ValueKey(diagnostic),
@@ -123,7 +124,7 @@ void main() {
       await session.start();
       final reviews = <GitComparison>[];
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: SizedBox(
               width: 340,
@@ -150,6 +151,20 @@ void main() {
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(client.mutations.single, isA<StagePaths>());
+      expect(
+        reviews,
+        hasLength(1),
+        reason: 'Stage file must not also activate a comparison',
+      );
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.tap(find.text('notes.md').first);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(
+        reviews,
+        hasLength(1),
+        reason: 'Multi-selection must not open a comparison',
+      );
       target.dispose();
       session.dispose();
     },
@@ -172,7 +187,7 @@ void main() {
       await target.start();
       client.pending = Completer<GitOutcome>();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: SizedBox(
               width: 350,
@@ -246,7 +261,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitDiffView(
               session: session,

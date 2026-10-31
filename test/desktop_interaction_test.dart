@@ -7,6 +7,9 @@ import 'support/presentation_fixture.dart';
 GitHost menuHost(GitPresentMenu menu, {GitPresentSurface? surface}) {
   final original = host();
   return GitHost(
+    presentation: const TestGitPresentation(),
+    icons: testGitIcons,
+
     present: surface ?? original.present,
     presentMenu: menu,
     openDocument: original.openDocument,
@@ -25,6 +28,9 @@ void main() {
       final original = host();
       List<GitMenuEntry> entries = [];
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+
         present: original.present,
         openDocument: original.openDocument,
         prepareMutation: original.prepareMutation,
@@ -43,7 +49,7 @@ void main() {
       );
       late BuildContext current;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Builder(
             builder: (context) {
               current = context;
@@ -74,6 +80,10 @@ void main() {
       final original = host();
       final surfaces = <Widget>[];
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: <T>(context, title, child, {bool expanded = false}) async {
           surfaces.add(child);
           return null;
@@ -92,7 +102,7 @@ void main() {
       );
       late BuildContext current;
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Builder(
             builder: (context) {
               current = context;
@@ -114,7 +124,7 @@ void main() {
         GitWorkflowUi(current, session),
       ).run(commit, 'Open snapshot');
       await tester.pumpWidget(
-        MaterialApp(home: Scaffold(body: surfaces.single)),
+        GitTestApp(home: Scaffold(body: surfaces.single)),
       );
       await tester.pumpAndSettle();
       expect(
@@ -148,7 +158,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -199,7 +209,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -248,6 +258,9 @@ void main() {
     var gitMenus = 0, outsideMenus = 0;
     final original = host();
     final configured = GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+
       present: original.present,
       presentMenu: (_, entries, {position}) async {
         expect(
@@ -277,7 +290,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: Focus(
             onKeyEvent: (_, event) {
@@ -326,6 +339,9 @@ void main() {
       Size? anchorSize;
       final original = host();
       final configured = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+
         present: original.present,
         openDocument: original.openDocument,
         prepareMutation: original.prepareMutation,
@@ -348,7 +364,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
@@ -389,7 +405,7 @@ void main() {
     );
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: GitCommitView(
             session: session,
@@ -430,7 +446,7 @@ void main() {
         },
       );
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Builder(
             builder: (context) => TextButton(
               onPressed: () => configured.menu(context, 'Options', const [
@@ -476,7 +492,7 @@ void main() {
     },
   );
 
-  testWidgets('an unavailable native menu uses the host dialog', (
+  testWidgets('an unavailable native menu never falls back to a dialog', (
     tester,
   ) async {
     var fallbackCount = 0;
@@ -490,12 +506,23 @@ void main() {
       },
     );
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Builder(
           builder: (context) => TextButton(
-            onPressed: () => configured.menu(context, 'Options', const [
-              GitMenuEntry('open', 'Open'),
-            ]),
+            onPressed: () async {
+              await expectLater(
+                configured.menu(context, 'Options', const [
+                  GitMenuEntry('open', 'Open'),
+                ]),
+                throwsA(
+                  isA<GitException>().having(
+                    (error) => error.code,
+                    'code',
+                    GitErrorCode.unavailable,
+                  ),
+                ),
+              );
+            },
             child: const Text('Open'),
           ),
         ),
@@ -503,7 +530,7 @@ void main() {
     );
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    expect(fallbackCount, 1);
+    expect(fallbackCount, 0);
   });
 
   testWidgets(
@@ -524,7 +551,7 @@ void main() {
       addTearDown(undo.dispose);
       addTearDown(scroll.dispose);
       Future<void> show(int? offset) => tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: MediaQuery(
               data: const MediaQueryData(textScaler: TextScaler.linear(2)),
@@ -584,7 +611,7 @@ void main() {
       session.setDraft('Review selected prose');
       for (final scale in [1.0, 1.5, 2.0]) {
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: MediaQuery(
                 data: MediaQueryData(textScaler: TextScaler.linear(scale)),
@@ -640,7 +667,7 @@ void main() {
         const Size(350, 700),
       ]) {
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: MediaQuery(
                 data: const MediaQueryData(textScaler: TextScaler.linear(2)),

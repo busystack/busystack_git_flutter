@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
@@ -126,16 +127,18 @@ final class GitHost {
     this.spacing = 8,
     this.minimumRowHeight = 30,
     this.measureText,
-    this.icons = const {},
+    required this.icons,
+    required this.presentation,
     this.readViewState,
     this.writeViewState,
     this.revokeRepositoryTrust,
-    this.presentMenu,
+    required this.presentMenu,
     this.registerDismissalGuard,
   }) : _present = present,
        _notify = notify;
   final GitPresentSurface _present;
-  final GitPresentMenu? presentMenu;
+  final GitPresentMenu presentMenu;
+  final GitPresentation presentation;
   final VoidCallback Function(Future<bool> Function())? registerDismissalGuard;
   Future<T?> present<T>(
     BuildContext context,
@@ -176,46 +179,14 @@ final class GitHost {
       );
       section = false;
     }
-    if (presentMenu != null) {
-      try {
-        return await presentMenu!(context, localized, position: position);
-      } on GitException catch (error) {
-        if (error.code != GitErrorCode.unavailable) rethrow;
-      }
+    // Native service errors are operational errors. Never substitute a menu.
+    try {
+      return await presentMenu(context, localized, position: position);
+    } on GitException catch (error) {
+      if (error.code == GitErrorCode.unavailable)
+        notify(GitMessages.nativeMenuUnavailable);
+      rethrow;
     }
-    if (!context.mounted) return null;
-    return present<String>(
-      context,
-      title,
-      ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .7,
-        ),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final e in localized) ...[
-              if (e.sectionStart) const Divider(),
-              ListTile(
-                dense: true,
-                enabled: e.enabled,
-                leading: e.checked == null
-                    ? null
-                    : SizedBox(
-                        width: 18,
-                        child: e.checked!
-                            ? const GitIcon(GitGlyph.check, size: 18)
-                            : null,
-                      ),
-                title: Text(e.label),
-                onTap: e.enabled ? () => Navigator.of(context).pop(e.id) : null,
-              ),
-            ],
-          ],
-        ),
-      ),
-      localizeTitle: localizeTitle,
-    );
   }
 
   final Future<void> Function(RepositoryId, RepoPath, {GitContent? snapshot})
@@ -258,7 +229,7 @@ final class GitHost {
   }
 
   double rowHeight(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodyMedium;
+    final style = GitTheme.of(context).textTheme.bodyMedium;
     final painter = TextPainter(
       text: TextSpan(text: 'Ag', style: style),
       textDirection: Directionality.of(context),
@@ -301,28 +272,7 @@ enum GitGlyph {
   tag,
   error,
   warning,
-  close;
-
-  IconData get fallback => switch (this) {
-    back => Icons.arrow_back,
-    branch => Icons.account_tree_outlined,
-    history => Icons.history,
-    refresh => Icons.refresh,
-    more => Icons.more_vert,
-    expand => Icons.expand_more,
-    previous => Icons.chevron_left,
-    next => Icons.chevron_right,
-    up => Icons.arrow_upward,
-    down => Icons.arrow_downward,
-    search => Icons.search,
-    add => Icons.add,
-    remove => Icons.remove,
-    check => Icons.check,
-    tag => Icons.label_outline,
-    error => Icons.error_outline,
-    warning => Icons.warning_amber_outlined,
-    close => Icons.close,
-  };
+  close,
 }
 
 /// Inherits the active theme and resolves artwork through the host's catalog.
@@ -333,7 +283,8 @@ final class GitIcon extends StatelessWidget {
   final Color? color;
   @override
   Widget build(BuildContext context) => Icon(
-    GitHostScope.of(context)?.icons[glyph] ?? glyph.fallback,
+    GitHostScope.of(context)?.icons[glyph] ??
+        (throw StateError('Missing native Git glyph: $glyph')),
     size: size,
     color: color,
   );
@@ -361,7 +312,7 @@ final class GitSelectableText extends StatelessWidget {
   final TextStyle? style;
   @override
   Widget build(BuildContext context) =>
-      SelectableText(data, semanticsLabel: data, style: style);
+      gitPresentation(context).selectable(context, this);
 }
 
 final class GitLabel extends StatelessWidget {
@@ -507,16 +458,14 @@ final class _GitSplitterState extends State<GitSplitter> {
               ),
               child: ColoredBox(
                 color: _focused
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(
-                        context,
-                      ).colorScheme.outlineVariant.withValues(alpha: .5),
+                    ? GitColors.of(context).accent
+                    : GitColors.of(context).subtleBorder.withValues(alpha: .5),
                 child: SizedBox(
                   width: widget.axis == Axis.horizontal ? handleExtent : null,
                   height: widget.axis == Axis.vertical ? handleExtent : null,
                   child: Center(
                     child: Container(
-                      color: Theme.of(context).colorScheme.outline,
+                      color: GitColors.of(context).border,
                       width: widget.axis == Axis.horizontal ? 2 : 22,
                       height: widget.axis == Axis.vertical ? 2 : 22,
                     ),
@@ -565,7 +514,7 @@ final class GitFailurePanel extends StatelessWidget {
     if (error.diagnostic.isNotEmpty) error.diagnostic,
   ].join('\n');
   @override
-  Widget build(BuildContext context) => MaterialBanner(
+  Widget build(BuildContext context) => GitNotice(
     leading: const GitIcon(GitGlyph.error),
     content: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -617,25 +566,25 @@ final class GitFailurePanel extends StatelessWidget {
               },
         ),
         if (_diagnostics(context).isNotEmpty)
-          ExpansionTile(
+          GitExpander(
             title: const GitLabel(GitMessages.diagnostics),
-            children: [SelectableText(_diagnostics(context))],
+            children: [GitSelectableText(_diagnostics(context))],
           ),
       ],
     ),
     actions: [
       if (onAuthorize != null)
-        TextButton(
+        GitButton(
           onPressed: onAuthorize,
           child: const GitLabel(GitMessages.authorizeGitInspection),
         ),
       if (onRefresh != null)
-        TextButton(
+        GitButton(
           onPressed: onRefresh,
           child: const GitLabel(GitMessages.refresh),
         )
       else
-        TextButton(
+        GitButton(
           onPressed: () => Clipboard.setData(
             ClipboardData(text: '${error.code.name}\n${_diagnostics(context)}'),
           ),
@@ -667,20 +616,7 @@ final class GitIconButton extends StatelessWidget {
     enabled: onPressed != null,
     onTap: onPressed,
     child: ExcludeSemantics(
-      child: IconButton(
-        tooltip: gitString(context, tooltip),
-        onPressed: onPressed,
-        icon: icon,
-        padding: compact ? EdgeInsets.zero : null,
-        constraints: compact ? const BoxConstraints() : null,
-        style: compact
-            ? IconButton.styleFrom(
-                padding: EdgeInsets.zero,
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              )
-            : null,
-      ),
+      child: gitPresentation(context).iconAction(context, this),
     ),
   );
 }
@@ -730,9 +666,9 @@ final class GitMenuButton extends StatelessWidget {
             onPressed: available ? () => open() : null,
             icon: const GitIcon(GitGlyph.more, size: 18),
           )
-        : Tooltip(
+        : GitTooltip(
             message: gitString(context, description),
-            child: TextButton(
+            child: GitButton(
               onPressed: available ? () => open() : null,
               child: child!,
             ),

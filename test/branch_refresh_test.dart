@@ -74,6 +74,9 @@ void main() {
   GitHost configuredHost(void Function(List<GitMenuEntry>) menu) {
     final original = host();
     return GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
+
       present: original.present,
       openDocument: original.openDocument,
       prepareMutation: original.prepareMutation,
@@ -99,7 +102,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitBranchesView(session: session)),
         ),
       );
@@ -159,7 +162,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitBranchesView(session: session)),
         ),
       );

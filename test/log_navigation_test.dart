@@ -67,7 +67,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(body: GitLogView(session: session)),
           ),
         );
@@ -113,7 +113,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -145,7 +145,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );
@@ -204,7 +204,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(body: GitLogView(session: session)),
         ),
       );

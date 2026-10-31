@@ -56,7 +56,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitIndexEditor(
               session: session,
@@ -112,7 +112,7 @@ void main() {
       );
       await session.start();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           home: Scaffold(
             body: GitIndexEditor(
               session: session,
@@ -179,7 +179,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: GitIndexEditor(
                 session: session,

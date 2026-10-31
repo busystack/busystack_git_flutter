@@ -80,7 +80,7 @@ void main() {
         await session.start();
         var pushes = 0;
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: SizedBox(
                 width: 500,
@@ -175,7 +175,7 @@ void main() {
           );
           await session.start();
           Future<void> mount() => tester.pumpWidget(
-            MaterialApp(
+            GitTestApp(
               home: Scaffold(
                 body: SizedBox(
                   width: 500,
@@ -283,7 +283,7 @@ void main() {
         );
         await session.start();
         await tester.pumpWidget(
-          MaterialApp(
+          GitTestApp(
             home: Scaffold(
               body: SizedBox(
                 width: 500,
@@ -364,7 +364,7 @@ void main() {
     final session = GitSession(client: client, repository: repo, host: host());
     await session.start();
     await tester.pumpWidget(
-      MaterialApp(
+      GitTestApp(
         home: Scaffold(
           body: SizedBox(
             width: 440,

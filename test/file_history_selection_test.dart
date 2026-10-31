@@ -79,6 +79,10 @@ Future<(GitSession, ValueNotifier<RepoPath>, List<Widget>)> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final presented = <Widget>[];
   final testHost = GitHost(
+    presentation: const TestGitPresentation(),
+    icons: testGitIcons,
+    presentMenu: testGitMenu,
+
     present: <T>(context, title, child, {bool expanded = false}) async {
       presented.add(child);
       return null;
@@ -93,7 +97,7 @@ Future<(GitSession, ValueNotifier<RepoPath>, List<Widget>)> _mount(
   await session.start();
   final path = ValueNotifier(RepoPath.text('new/chapter.md'));
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: GitHostScope(
           host: testHost,

@@ -46,6 +46,9 @@ Future<(_Client, _Client, ValueNotifier<_Binding>, Completer<String?>)> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final answer = Completer<String?>();
   final presenter = GitHost(
+    presentation: const TestGitPresentation(),
+    icons: testGitIcons,
+
     translate: translated
         ? (_, fallback) => switch (fallback) {
             GitMessages.local => 'Localized local',
@@ -103,7 +106,7 @@ Future<(_Client, _Client, ValueNotifier<_Binding>, Completer<String?>)> _mount(
     shown: true,
   ));
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: ValueListenableBuilder<_Binding>(
           valueListenable: binding,
@@ -363,6 +366,10 @@ void main() {
           ),
         ];
       final presenter = GitHost(
+        presentation: const TestGitPresentation(),
+        icons: testGitIcons,
+        presentMenu: testGitMenu,
+
         present: <T>(context, title, child, {bool expanded = false}) async =>
             await answer.future as T?,
         openDocument: (_, _, {snapshot}) async {},
@@ -379,7 +386,7 @@ void main() {
       await session.start();
       final navigator = GlobalKey<NavigatorState>();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           navigatorKey: navigator,
           home: const Scaffold(body: Text('Owning parent remains')),
         ),
@@ -629,7 +636,7 @@ void main() {
       await session.start();
       final navigator = GlobalKey<NavigatorState>();
       await tester.pumpWidget(
-        MaterialApp(
+        GitTestApp(
           navigatorKey: navigator,
           home: const Scaffold(body: Text('Parent route')),
         ),

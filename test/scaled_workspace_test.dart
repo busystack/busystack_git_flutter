@@ -8,7 +8,7 @@ Future<void> scaled(WidgetTester tester, Widget child, Size size) async {
   tester.view.physicalSize = const Size(1280, 800);
   tester.view.devicePixelRatio = 1;
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: MediaQuery(
           data: const MediaQueryData(

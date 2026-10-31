@@ -32,6 +32,9 @@ Future<(ValueNotifier<GitSession>, GitSession, List<String>)> _mount(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final testHost = GitHost(
+    presentation: const TestGitPresentation(),
+    icons: testGitIcons,
+
     present: <T>(context, title, child, {bool expanded = false}) async =>
         input == null ? null : await input.future as T?,
     presentMenu: (_, entries, {position}) => menu?.future ?? Future.value(),
@@ -61,7 +64,7 @@ Future<(ValueNotifier<GitSession>, GitSession, List<String>)> _mount(
   final selected = ValueNotifier(first);
   final dispatched = <String>[];
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(
         body: ValueListenableBuilder<GitSession>(
           valueListenable: selected,

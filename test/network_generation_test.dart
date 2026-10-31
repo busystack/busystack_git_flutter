@@ -106,7 +106,7 @@ Future<GitSession> _mount(WidgetTester tester, _ReviewClient client) async {
   await session.start();
   addTearDown(session.dispose);
   await tester.pumpWidget(
-    MaterialApp(
+    GitTestApp(
       home: Scaffold(body: GitPushView(session: session)),
     ),
   );
@@ -123,11 +123,9 @@ void main() {
       await _mount(tester, client);
       await tester.pumpAndSettle();
       expect(client.plans, isEmpty);
-      final remote = tester.widget<DropdownButtonFormField<String>>(
+      final remote = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
-          (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Remote',
+          (w) => w is GitChoice<String> && w.decoration?.labelText == 'Remote',
         ),
       );
       expect(remote.initialValue, isNull);
@@ -220,11 +218,11 @@ void main() {
       await tester.pumpAndSettle();
       final field = find.widgetWithText(TextField, 'new remote branch');
       // Choose new branch so the destination editor participates in the review.
-      final chooser = tester.widget<DropdownButtonFormField<String>>(
+      final chooser = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Destination reference',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Destination reference',
         ),
       );
       chooser.onChanged!('__new__');
@@ -255,11 +253,11 @@ void main() {
       final client = _ReviewClient()..options = Completer<Json>();
       await _mount(tester, client);
       await tester.pump();
-      final chooser = tester.widget<DropdownButtonFormField<String>>(
+      final chooser = tester.widget<GitChoice<String>>(
         find.byWidgetPredicate(
           (w) =>
-              w is DropdownButtonFormField<String> &&
-              w.decoration.labelText == 'Destination reference',
+              w is GitChoice<String> &&
+              w.decoration?.labelText == 'Destination reference',
         ),
       );
       expect(chooser.onChanged, isNull);

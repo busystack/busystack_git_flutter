@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -301,7 +302,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
       (offset / widget.rowHeight).floor() - (widget.headers ? 1 : 0),
     );
     final count = math.min(512, (rect.height / widget.rowHeight).ceil() + 2);
-    final style = Theme.of(context).textTheme.bodyMedium;
+    final style = GitTheme.of(context).textTheme.bodyMedium;
     final args = <String, Object>{
       'id': _id,
       'generation': generation,
@@ -401,7 +402,7 @@ final class _GitNativeTableState extends State<GitNativeTable>
         Row(
           children: [
             Expanded(child: GitLabel(_failure!)),
-            TextButton(
+            GitButton(
               onPressed: () {
                 setState(() {
                   _failure = null;

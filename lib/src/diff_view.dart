@@ -1,3 +1,4 @@
+import 'presentation.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -62,6 +63,7 @@ final class GitDiffView extends StatefulWidget {
     required this.session,
     required this.comparison,
     this.preview = false,
+    this.initialSideBySide = false,
     this.onPreviousFile,
     this.onNextFile,
     @visibleForTesting this.searchMatches,
@@ -71,6 +73,7 @@ final class GitDiffView extends StatefulWidget {
   final GitSession session;
   final GitComparison comparison;
   final bool preview;
+  final bool initialSideBySide;
   final VoidCallback? onPreviousFile, onNextFile;
   @override
   State<GitDiffView> createState() => _GitDiffViewState();
@@ -124,7 +127,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
   @override
   void initState() {
     super.initState();
-    _unified = widget.session.option('diffUnified', false);
+    _unified = widget.initialSideBySide
+        ? false
+        : widget.session.option('diffUnified', false);
     _wrap = widget.session.option('diffWrap', true);
     _words = widget.session.option('diffWords', true);
     _collapse = widget.session.option('diffCollapse', true);
@@ -492,7 +497,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
   );
 
   Widget _buildReview(BuildContext context, BoxConstraints bounds) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const Center(child: GitLoading.spinner());
     if (_error != null)
       return GitFailurePanel(
         error: _error!,
@@ -503,7 +508,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final label = TextPainter(
       text: TextSpan(
         text: gitString(context, GitMessages.editHEADIndexWorkingTree),
-        style: Theme.of(context).textTheme.labelLarge,
+        style: GitTheme.of(context).textTheme.labelLarge,
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
@@ -535,13 +540,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
       child: Column(
         children: [
           if (_stale)
-            MaterialBanner(
+            GitNotice(
               content: const GitLabel(
                 GitMessages
                     .theReviewedIndexOrWorkingContentChangedRefreshThisComparison,
               ),
               actions: [
-                TextButton(
+                GitButton(
                   onPressed: () => unawaited(_load(refreshStatus: true)),
                   child: const GitLabel(GitMessages.refreshComparison),
                 ),
@@ -554,7 +559,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
                 children: [
                   Row(
                     children: [
-                      Expanded(child: SelectableText(comparison.path.display)),
+                      Expanded(
+                        child: GitSelectableText(comparison.path.display),
+                      ),
                       GitIconButton(
                         tooltip: gitString(
                           context,
@@ -634,15 +641,15 @@ final class _GitDiffViewState extends State<GitDiffView> {
                           ),
                         )
                       else
-                        SegmentedButton<bool>(
+                        GitChoiceBar<bool>(
                           segments: [
-                            ButtonSegment(
+                            GitSegment(
                               value: false,
                               label: GitLabel(
                                 gitString(context, GitMessages.sideBySide),
                               ),
                             ),
-                            ButtonSegment(
+                            GitSegment(
                               value: true,
                               label: GitLabel(
                                 gitString(context, GitMessages.unified),
@@ -722,7 +729,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                         icon: const GitIcon(GitGlyph.search),
                       ),
                       if (_canOpenSource)
-                        TextButton(
+                        GitButton(
                           key: const ValueKey('git-diff-open-source'),
                           onPressed: () => _openSource(generation),
                           child: const GitLabel(GitMessages.openCurrentFile),
@@ -732,10 +739,10 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   if (_searchVisible)
                     GitTextUndo(
                       controller: _search,
-                      child: TextField(
+                      child: GitTextField(
                         controller: _search,
                         focusNode: _searchFocus,
-                        decoration: InputDecoration(
+                        decoration: GitFieldDecoration(
                           labelText: gitString(context, GitMessages.search),
                           isDense: true,
                           suffixIcon: GitIconButton(
@@ -783,7 +790,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                             key: ValueKey('git-diff-search-loading'),
                             width: 16,
                             height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: GitLoading.spinner(strokeWidth: 2),
                           )
                         else
                           GitLabel(
@@ -847,7 +854,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                     Wrap(
                       spacing: host.spacing,
                       children: [
-                        FilledButton(
+                        GitButton.primary(
                           onPressed: _selected.isEmpty
                               ? null
                               : () => unawaited(_applySelection(generation)),
@@ -863,13 +870,13 @@ final class _GitDiffViewState extends State<GitDiffView> {
                                   ),
                           ),
                         ),
-                        OutlinedButton(
+                        GitButton.standard(
                           onPressed: () => unawaited(_indexEditor(generation)),
                           child: const GitLabel(
                             GitMessages.editHEADIndexWorkingTree,
                           ),
                         ),
-                        TextButton(
+                        GitButton(
                           onPressed: () => unawaited(_wholeFile(generation)),
                           child: Text(
                             _unstage
@@ -896,7 +903,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
             ],
           ),
           if (_ignoreWhitespace && _ignoredWhitespace().isNotEmpty)
-            TextButton(
+            GitButton(
               onPressed: () => setState(() => _ignoreWhitespace = false),
               child: Text(
                 gitString(
@@ -907,7 +914,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                 ),
               ),
             ),
-          const Divider(height: 1),
+          const GitSeparator(height: 1),
           Expanded(child: _diff == null ? _nonText() : _reviewRows(context)),
           if (!widget.preview && (_diff != null || !_stagingComparison))
             Padding(
@@ -925,7 +932,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                         GitMessages
                             .readOnlyComparisonCopyTextOrAdjustDisplaySettings,
                       ),
-                style: Theme.of(context).textTheme.bodySmall,
+                style: GitTheme.of(context).textTheme.bodySmall,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -948,7 +955,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
             : '',
       },
     );
-    return Tooltip(
+    return GitTooltip(
       message: label,
       child: Padding(
         padding: const EdgeInsets.all(6),
@@ -979,7 +986,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   ),
           ),
           if (_stagingComparison)
-            TextButton(
+            GitButton(
               onPressed:
                   widget.session.running ||
                       _stale ||
@@ -1096,14 +1103,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
   }
 
   Color _lineColor(int? index) {
-    if (index == null) return Colors.transparent;
-    final colors = Theme.of(context).colorScheme;
+    if (index == null) return GitColors.of(context).transparent;
+    final colors = GitColors.of(context);
     return _selected.contains(index)
-        ? colors.secondaryContainer
+        ? colors.selection
         : switch (_diff!.edits[index].kind) {
-            TextEditKind.add => colors.primaryContainer.withValues(alpha: .3),
-            TextEditKind.remove => colors.errorContainer.withValues(alpha: .3),
-            _ => Colors.transparent,
+            TextEditKind.add => colors.addedBackground.withValues(alpha: .3),
+            TextEditKind.remove => colors.removedBackground.withValues(
+              alpha: .3,
+            ),
+            _ => GitColors.of(context).transparent,
           };
   }
 
@@ -1192,7 +1201,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           children: [
             if (gap)
               SelectionContainer.disabled(
-                child: TextButton(
+                child: GitButton(
                   onPressed: () => setState(() => _collapse = false),
                   child: const GitLabel(GitMessages.expandUnchangedContext),
                 ),
@@ -1203,7 +1212,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: SelectionContainer.disabled(
-                  child: TextButton(
+                  child: GitButton(
                     onPressed: () =>
                         unawaited(_applySelection(generation, hunk)),
                     child: Text(
@@ -1223,7 +1232,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: cell(left, right, false)),
-                    const VerticalDivider(width: 6),
+                    const GitSeparator.vertical(width: 6),
                     Expanded(child: cell(right, left, true)),
                   ],
                 ),
@@ -1242,9 +1251,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
     // one document scrollbar; its offset is used by every visible content row.
     // Neither the divider nor the opposite viewport is part of that surface.
     double contentWidth(bool right) {
-      final style = Theme.of(
-        context,
-      ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
+      final style = gitPresentation(context).codeStyle(context);
       final painter = TextPainter(
         textDirection: Directionality.of(context),
         textScaler: MediaQuery.textScalerOf(context),
@@ -1266,7 +1273,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           builder: (context, bounds) => SizedBox(
             key: key,
             height: 18,
-            child: Scrollbar(
+            child: GitScrollbar(
               controller: controller,
               thumbVisibility: true,
               child: SingleChildScrollView(
@@ -1309,7 +1316,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                   const ValueKey('git-diff-left-horizontal'),
                 ),
               ),
-              const VerticalDivider(width: 6),
+              const GitSeparator.vertical(width: 6),
               Expanded(
                 child: scrollbar(
                   _rightHorizontalScroll,
@@ -1428,9 +1435,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
         : text.endsWith('\n')
         ? text.substring(0, text.length - 1)
         : text;
-    final style = Theme.of(
-      context,
-    ).textTheme.bodyMedium?.copyWith(fontFamily: 'monospace');
+    final style = gitPresentation(context).codeStyle(context);
     final content = GitDiffCopyText(
       line: copyLine,
       right: !_unified && identical(horizontal, _rightHorizontalScroll),
@@ -1456,7 +1461,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           child: Text(
             number,
             textAlign: TextAlign.right,
-            style: Theme.of(context).textTheme.labelSmall,
+            style: GitTheme.of(context).textTheme.labelSmall,
           ),
         ),
         const SizedBox(width: 8),
@@ -1512,7 +1517,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
                 ),
               ),
         },
-        child: Tooltip(
+        child: GitTooltip(
           message: gitString(
             context,
             GitMessages.arg0ChangedLine,
@@ -1523,7 +1528,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               ),
             },
           ),
-          child: InkWell(
+          child: GitActivation(
             key: ValueKey('git-diff-stage-line-$index'),
             focusNode: _lineFocus.putIfAbsent(index, FocusNode.new),
             onTap: () => _selectChangedLine(index, generation),
@@ -1620,8 +1625,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
           style: changed.contains(i)
               ? TextStyle(
                   backgroundColor: (kind == TextEditKind.add
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Theme.of(context).colorScheme.errorContainer),
+                      ? GitColors.of(context).addedBackground
+                      : GitColors.of(context).removedBackground),
                 )
               : null,
         ),
@@ -1666,8 +1671,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
           text: value.substring(start, end),
           style: TextStyle(
             backgroundColor: current
-                ? Theme.of(context).colorScheme.secondaryContainer
-                : Theme.of(context).colorScheme.tertiaryContainer,
+                ? GitColors.of(context).selection
+                : GitColors.of(context).searchBackground,
             decoration: current ? TextDecoration.underline : null,
             fontWeight: current ? FontWeight.bold : null,
           ),
@@ -2331,8 +2336,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
         error: _failure!,
         onRefresh: () => unawaited(_load()),
       );
-    if (_snapshot == null)
-      return const Center(child: CircularProgressIndicator());
+    if (_snapshot == null) return const Center(child: GitLoading.spinner());
     final _regionReviewForBuild = _regionReview;
     return GitDraftGuard(
       host: widget.session.host,
@@ -2370,7 +2374,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
               ),
             ),
             if (_saving)
-              LinearProgressIndicator(
+              GitLoading(
                 semanticsLabel: gitString(
                   context,
                   GitMessages.writingReviewedIndexResult,
@@ -2379,7 +2383,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
             if (_appliedNewerDraft)
               const GitLabel(GitMessages.indexAppliedNewerDraftPreserved),
             if (_appliedReview case final applied?)
-              TextButton(
+              GitButton(
                 onPressed:
                     _saving ||
                         _reviewingSavedIndex ||
@@ -2434,7 +2438,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                   onPressed: _regions.isEmpty ? null : () => _navigateRegion(1),
                   icon: const GitIcon(GitGlyph.down),
                 ),
-                TextButton(
+                GitButton(
                   onPressed:
                       _regions.isEmpty ||
                           _saving ||
@@ -2445,7 +2449,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                       : _regionAction(_regions[_activeRegion]),
                   child: const GitLabel(GitMessages.unstageThisHunk),
                 ),
-                TextButton(
+                GitButton(
                   onPressed:
                       _regions.isEmpty ||
                           _saving ||
@@ -2533,13 +2537,13 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                     builder: (context, _) => Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        TextButton(
+                        GitButton(
                           onPressed: _saving || !_undo.value.canUndo
                               ? null
                               : _undo.undo,
                           child: const GitLabel(GitMessages.undo),
                         ),
-                        TextButton(
+                        GitButton(
                           onPressed: _saving || !_undo.value.canRedo
                               ? null
                               : _undo.redo,
@@ -2548,7 +2552,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                       ],
                     ),
                   ),
-                  TextButton(
+                  GitButton(
                     onPressed: _saving || _reviewingSavedIndex
                         ? null
                         : () async {
@@ -2565,7 +2569,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                                             GitMessages
                                                 .reloadTheCurrentHEADIndexAndWorkingVersionsThisReplaces,
                                           ),
-                                          TextButton(
+                                          GitButton(
                                             onPressed: () =>
                                                 Navigator.of(context).pop(true),
                                             child: const GitLabel(
@@ -2585,7 +2589,7 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
                           },
                     child: const GitLabel(GitMessages.reloadVersions),
                   ),
-                  FilledButton(
+                  GitButton.primary(
                     onPressed: _saving || _stale || !_dirty
                         ? null
                         : () => unawaited(_apply()),
@@ -2985,7 +2989,7 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
-      final font = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14;
+      final font = GitTheme.of(context).textTheme.bodyMedium?.fontSize ?? 14;
       final minimum = math.max(
         720.0,
         MediaQuery.textScalerOf(context).scale(font) / 14 * 720,
@@ -3009,19 +3013,16 @@ final class _RevisionPanesState extends State<GitRevisionPanes> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               if (narrow)
-                SegmentedButton<int>(
+                GitChoiceBar<int>(
                   segments: [
                     for (var i = 0; i < 3; i++)
-                      ButtonSegment(
-                        value: i,
-                        label: GitLabel(widget.labels[i]),
-                      ),
+                      GitSegment(value: i, label: GitLabel(widget.labels[i])),
                   ],
                   selected: {_selected},
                   onSelectionChanged: (value) =>
                       setState(() => _selected = value.single),
                 ),
-              FilterChip(
+              GitFilterChoice(
                 label: const GitLabel(GitMessages.synchronizeScrolling),
                 selected:
                     _sync &&

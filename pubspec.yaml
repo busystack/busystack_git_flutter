@@ -12,11 +12,11 @@ dependencies:
   busystack_git:
     path: ../busystack_git
 dev_dependencies:
+  analyzer: 12.1.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 flutter:
-  uses-material-design: true
   plugin:
     platforms:
       linux:
