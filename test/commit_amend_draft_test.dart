@@ -43,9 +43,12 @@ final class _AmendClient extends FixtureClient {
 }
 
 void main() {
-  for (final pushFails in [false, true]) {
+  for (final (layout, pushFails) in [
+    for (final layout in GitCommitLayout.values)
+      for (final fails in [false, true]) (layout, fails),
+  ]) {
     testWidgets(
-      'message-only amend commits once before canceled/failed Push, failed: $pushFails',
+      'message-only amend commits once before canceled/failed Push, failed: $pushFails layout: $layout',
       (tester) async {
         tester.view.physicalSize = const Size(1200, 1000);
         tester.view.devicePixelRatio = 1;
@@ -85,6 +88,7 @@ void main() {
               body: SizedBox(
                 width: 500,
                 child: GitCommitView(
+                  layout: layout,
                   session: session,
                   onReview: (_) {},
                   onLog: () {},

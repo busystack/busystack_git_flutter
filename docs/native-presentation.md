@@ -10,7 +10,7 @@ repository-specific AGENTS.md files at this baseline. No engine change is planne
 | Git control category | BusyMark implementation | BusyFiles implementation |
 | --- | --- | --- |
 | Actions | BusyMarkPushButton standard/suggested | BusyFilesPushButton standard/suggested |
-| Icon actions | BusyMarkCompactIconButton | BusyFilesToolbarButton |
+| Icon actions | BusyMarkHeaderIconButton (flat native header shape) | BusyFilesToolbarButton |
 | Text/search/message/editor inputs | BusyMarkGroupedTextEntry, extended for existing editor controllers | BusyFilesTextField, extended for existing editor controllers |
 | Check choices | BusyMarkCheckbox | BusyFilesCheckbox |
 | Selectors | BusyMarkPopupSelector / BusyMarkMenuButton | BusyFilesSelectionButton / BusyFilesNativeMenuButton / BusyFilesModeSelector |
@@ -79,3 +79,32 @@ Font-family assignments in Git sources must reference the existing host catalog
 (`BusyMarkTypography.monoFontFamily` / `monoFontFamilyFallback` in the approved
 design module); shared views use `GitPresentation.codeStyle`. The analyzer
 resolves those exact symbols. A newly named feature constant is not an exception.
+
+## BusyMark Commit correction (2026-11-01)
+
+The non-Git Writerside usage header in `workspace_screen.dart` uses
+`BusyMarkHeaderIconButton`; its semantic style explicitly uses the native
+rounded rectangle, including hover/pressed/disabled states. Git icon actions
+must use that flat treatment, including stage/unstage and Branches menus.
+`BusyMarkCompactIconButton` and its pill focus outline are not approved for Git.
+The non-Git Files tree uses `BusyMarkSidebarTreeRow`: Git change rows reuse that
+row, disclosure, indentation and native surface through the required host
+presentation contract. Branch records use the same row surface and spacing.
+Do not expand an allowlist or accept a golden to excuse circular Git actions.
+
+BusyMark's Commit layout is the compact sidebar allocation: branch/path tooltip,
+Refresh and Repository actions, then compact local tracking, then the tree.
+Commit and Commit and Push… share a measured, spaced row. BusyFiles retains its
+workspace layout, history shortcut, trust presentation and descendant browsing.
+BusyMark alone requires the canonical opened workspace to equal the discovered
+working-tree root, at attachment and authoring-command boundaries. Untrusted
+Commit shows only the native trust screen; drafts remain owned by the session.
+All action destinations in the checklist above are retained by this correction.
+
+The 2026-11-01 tracking correction requires one read-only engine contract bit:
+`GitSnapshot.trackingCountsKnown` distinguishes an omitted porcelain `branch.ab`
+(unavailable upstream object) from a measured `+0 -0`. Both previously became
+zero in the typed snapshot. Parser, background status and JSON handoff preserve
+this bit; old packets remain honestly unknown. Discovery, mutation/preconditions,
+Git invocations and transaction semantics are unchanged. BusyMark renders
+unknown counts as question marks with localized accessible descriptions.

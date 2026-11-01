@@ -114,7 +114,8 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
     }
     if (nativeDesign && element is ConstructorElement) {
       final control = element.enclosingElement.name;
-      if (control == 'BusyMarkMenuButton' ||
+      if (control == 'BusyMarkCompactIconButton' ||
+          control == 'BusyMarkMenuButton' ||
           control == 'BusyMarkHeaderPopupMenuButton' &&
               element.name != 'native') {
         if (_seen.add(node.offset))

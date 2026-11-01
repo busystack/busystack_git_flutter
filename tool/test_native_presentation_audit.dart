@@ -41,9 +41,12 @@ Future<void> main() async {
     design.writeAsStringSync('''
 class BusyMarkHeaderPopupMenuButton { const BusyMarkHeaderPopupMenuButton(); const BusyMarkHeaderPopupMenuButton.native(); }
 void showBusyMarkMenu() {}
+class BusyMarkCompactIconButton { const BusyMarkCompactIconButton(); }
+class BusyMarkHeaderIconButton { const BusyMarkHeaderIconButton(); }
 class BusyMarkTypography { static const monoFontFamily = 'Native mono'; }
 ''');
     for (final source in [
+      "import 'lib/src/app/busymark_design.dart' as host; typedef Alias = host.BusyMarkCompactIconButton; final button = Alias.new;",
       "import 'lib/src/app/busymark_design.dart' as host; final button = host.BusyMarkHeaderPopupMenuButton();",
       "import 'lib/src/app/busymark_design.dart' as host; void fallback() => host.showBusyMarkMenu();",
     ]) {
@@ -58,6 +61,12 @@ class BusyMarkTypography { static const monoFontFamily = 'Native mono'; }
       );
     if ((await auditNativeGitSources([nativeMenu.path])).isNotEmpty)
       throw StateError('Rejected required native menu');
+    final flat = File('${temp.path}/flat_action.dart')
+      ..writeAsStringSync(
+        "import 'lib/src/app/busymark_design.dart' as host; final button = host.BusyMarkHeaderIconButton();",
+      );
+    if ((await auditNativeGitSources([flat.path])).isNotEmpty)
+      throw StateError('Rejected flat native action');
     final nativeFont = File('${temp.path}/native_font.dart')
       ..writeAsStringSync(
         "import 'package:flutter/painting.dart'; import 'lib/src/app/busymark_design.dart' as native; final style = TextStyle(fontFamily: native.BusyMarkTypography.monoFontFamily);",

@@ -24,3 +24,9 @@ immutable endpoints/parent and mutable review context identify that tab; sidebar
 navigation never retargets it. Preserve actual tab/editor dismissal guards and
 all transaction, draft, native input, history and comparison regressions.
 BusyFiles retains its existing navigation and authenticated daemon boundary.
+
+The required change-row builder and text inset come from each real host, so
+native tree geometry and accessibility agree. BusyMark uses its existing flat
+header action and sidebar tree treatment; compact circular actions are rejected
+by resolved symbol identity even when aliased. Preserve BusyFiles' workspace
+layout and descendant navigation when changing shared Commit presentation.

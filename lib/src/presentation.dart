@@ -29,6 +29,8 @@ abstract interface class GitPresentation {
   Widget separator(BuildContext context, GitSeparator control);
   Widget scrollbar(BuildContext context, GitScrollbar control);
   Widget activation(BuildContext context, GitActivation control);
+  Widget changeRow(BuildContext context, GitChangeRow control);
+  double changeRowTextInset(BuildContext context, int depth);
   Widget notice(BuildContext context, GitNotice control);
   Widget selectable(BuildContext context, GitSelectableText control);
   Widget selectionArea(BuildContext context, Widget child);
@@ -187,6 +189,42 @@ final class GitActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       gitPresentation(context).row(context, this);
+}
+
+/// Semantic tree request. The host owns row geometry, native disclosure and
+/// action treatment; the shared tree keeps reviewed selection and transactions.
+final class GitChangeRow extends StatelessWidget {
+  const GitChangeRow({
+    super.key,
+    required this.title,
+    required this.depth,
+    required this.onTap,
+    required this.onPointerDown,
+    this.onDoubleTap,
+    this.onSecondaryTapUp,
+    this.onToggle,
+    this.expanded,
+    this.selected = false,
+    this.group = false,
+    this.status,
+    this.tooltip,
+    this.trailing,
+  });
+  final String title;
+  final int depth;
+  final bool selected, group;
+  final bool? expanded;
+  final String? status, tooltip;
+  final Widget? trailing;
+  final VoidCallback onTap;
+  final VoidCallback? onDoubleTap, onToggle;
+  final GestureTapUpCallback? onSecondaryTapUp;
+  final PointerDownEventListener onPointerDown;
+  @override
+  Widget build(BuildContext context) => Listener(
+    onPointerDown: onPointerDown,
+    child: gitPresentation(context).changeRow(context, this),
+  );
 }
 
 final class GitExpander extends StatelessWidget {

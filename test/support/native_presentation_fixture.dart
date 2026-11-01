@@ -153,6 +153,38 @@ class TestGitPresentation implements GitPresentation {
     onTap: c.onTap,
   );
   @override
+  double changeRowTextInset(BuildContext context, int depth) => depth * 16 + 24;
+  @override
+  Widget changeRow(BuildContext context, GitChangeRow c) => activation(
+    context,
+    GitActivation(
+      onTap: c.onTap,
+      onDoubleTap: c.onDoubleTap,
+      onSecondaryTapUp: c.onSecondaryTapUp,
+      child: Padding(
+        padding: EdgeInsetsDirectional.only(start: c.depth * 16),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 24,
+              child: c.expanded == null
+                  ? Text(c.status ?? '')
+                  : GestureDetector(
+                      onTap: c.onToggle,
+                      child: GitIcon(
+                        c.expanded! ? GitGlyph.expand : GitGlyph.next,
+                      ),
+                    ),
+            ),
+            Expanded(child: Text(c.title)),
+            if (c.trailing != null) c.trailing!,
+          ],
+        ),
+      ),
+    ),
+  );
+
+  @override
   Widget expander(BuildContext context, GitExpander c) => ExpansionTile(
     title: c.title,
     initiallyExpanded: c.initiallyExpanded,

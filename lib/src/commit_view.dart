@@ -16,6 +16,10 @@ import 'operation_banner.dart';
 import 'text_undo.dart';
 import 'dismissal.dart';
 
+/// Compact hosts retain the workspace layout's operations in their own sidebar
+/// navigation and repository menu. Other hosts keep their existing workspace.
+enum GitCommitLayout { workspace, sidebar }
+
 final class GitCommitView extends StatelessWidget {
   const GitCommitView({
     super.key,
@@ -27,6 +31,8 @@ final class GitCommitView extends StatelessWidget {
     required this.onMore,
     this.selectedComparison,
     this.notice,
+    this.layout = GitCommitLayout.workspace,
+    this.trackingDescription,
     this.active = true,
     this.reviewContext,
     this.protectMessageDrafts = true,
@@ -35,6 +41,8 @@ final class GitCommitView extends StatelessWidget {
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
   final Widget? notice;
+  final GitCommitLayout layout;
+  final String Function(GitSnapshot snapshot)? trackingDescription;
   final bool active;
 
   /// Hosts with a persistent window-level message guard disable this local guard.
@@ -71,6 +79,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   GitOid? _amendTarget;
   GitSession get session => view.session;
   GitHost get host => session.host;
+  bool get _sidebar => view.layout == GitCommitLayout.sidebar;
   void _leaveReview(VoidCallback action) {
     _reviewGeneration++;
     action();
@@ -389,22 +398,36 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     final messageMinimum = _messageMinimum(context, width);
     final header =
         row +
-        spacing * 2 +
-        height(
-          GitMessages.commitScopeEntireRepository,
-          theme.bodySmall,
-          inner,
-          maxLines: 1,
-        ) +
-        height(session.repository.root, theme.bodySmall, inner, maxLines: 1) +
-        (session.snapshot?.upstream == null
-            ? 0
+        spacing * (_sidebar ? 3 : 2) +
+        (_sidebar
+            ? (session.snapshot == null
+                  ? 0
+                  : height(
+                      GitMessages.noUpstream,
+                      theme.bodySmall,
+                      inner,
+                      maxLines: 1,
+                    ))
             : height(
-                GitMessages.cachedTracking,
-                theme.bodySmall,
-                inner,
-                maxLines: 1,
-              )) +
+                    GitMessages.commitScopeEntireRepository,
+                    theme.bodySmall,
+                    inner,
+                    maxLines: 1,
+                  ) +
+                  height(
+                    session.repository.root,
+                    theme.bodySmall,
+                    inner,
+                    maxLines: 1,
+                  ) +
+                  (session.snapshot?.upstream == null
+                      ? 0
+                      : height(
+                          GitMessages.cachedTracking,
+                          theme.bodySmall,
+                          inner,
+                          maxLines: 1,
+                        ))) +
         (view.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
         (session.snapshot?.capabilities.writeMetadata == false ? row * 3 : 0);
@@ -511,30 +534,35 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                 Row(
                   children: [
                     Expanded(
-                      child: GitButton.icon(
-                        onPressed: () => _leaveReview(view.onBranches),
-                        icon: GitIcon(GitGlyph.branch, size: 16),
-                        label: Text(
-                          snapshot?.branch ??
-                              (snapshot?.head == null
-                                  ? gitString(context, GitMessages.repository)
-                                  : gitString(
-                                      context,
-                                      GitMessages.detachedArg0,
-                                      values: {
-                                        'arg0': snapshot!.head!.abbreviated,
-                                      },
-                                    )),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      child: GitTooltip(
+                        message: session.repository.root,
+                        child: GitButton.icon(
+                          onPressed: () => _leaveReview(view.onBranches),
+                          icon: GitIcon(GitGlyph.branch, size: 16),
+                          label: Text(
+                            snapshot?.branch ??
+                                (snapshot?.head == null
+                                    ? gitString(context, GitMessages.repository)
+                                    : gitString(
+                                        context,
+                                        GitMessages.detachedArg0,
+                                        values: {
+                                          'arg0': snapshot!.head!.abbreviated,
+                                        },
+                                      )),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ),
                     ),
-                    GitIconButton(
-                      tooltip: gitString(context, GitMessages.log),
-                      onPressed: () => _leaveReview(view.onLog),
-                      icon: GitIcon(GitGlyph.history, size: 18),
-                    ),
+                    SizedBox(width: host.spacing),
+                    if (!_sidebar)
+                      GitIconButton(
+                        tooltip: gitString(context, GitMessages.log),
+                        onPressed: () => _leaveReview(view.onLog),
+                        icon: GitIcon(GitGlyph.history, size: 18),
+                      ),
                     GitIconButton(
                       tooltip: gitString(context, GitMessages.refresh),
                       onPressed: session.refreshing
@@ -544,6 +572,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                             ),
                       icon: const GitIcon(GitGlyph.refresh, size: 18),
                     ),
+                    SizedBox(width: host.spacing),
                     Builder(
                       builder: (anchor) => GitIconButton(
                         tooltip: gitString(
@@ -557,31 +586,64 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     ),
                   ],
                 ),
-                Directionality(
-                  textDirection: TextDirection.ltr,
-                  child: GitTooltip(
-                    message: session.repository.root,
-                    child: Text(
-                      session.repository.root,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GitTheme.of(context).textTheme.bodySmall,
+                if (!_sidebar)
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: GitTooltip(
+                      message: session.repository.root,
+                      child: Text(
+                        session.repository.root,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GitTheme.of(context).textTheme.bodySmall,
+                      ),
                     ),
                   ),
-                ),
-                GitTooltip(
-                  message: gitString(
-                    context,
-                    GitMessages.commitScopeEntireRepository,
+                if (!_sidebar)
+                  GitTooltip(
+                    message: gitString(
+                      context,
+                      GitMessages.commitScopeEntireRepository,
+                    ),
+                    child: GitLabel(
+                      GitMessages.commitScopeEntireRepository,
+                      style: GitTheme.of(context).textTheme.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  child: GitLabel(
-                    GitMessages.commitScopeEntireRepository,
-                    style: GitTheme.of(context).textTheme.bodySmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                if (_sidebar && snapshot != null) ...[
+                  SizedBox(height: host.spacing),
+                  GitTooltip(
+                    message:
+                        view.trackingDescription?.call(snapshot) ??
+                        (snapshot.upstream == null
+                            ? gitString(context, GitMessages.noUpstream)
+                            : gitString(
+                                context,
+                                GitMessages
+                                    .cachedTrackingUpstreamAheadAheadBehindBehind,
+                                values: {
+                                  'upstream': snapshot.upstream,
+                                  'ahead': snapshot.ahead,
+                                  'behind': snapshot.behind,
+                                },
+                              )),
+                    child: Semantics(
+                      label: view.trackingDescription?.call(snapshot),
+                      excludeSemantics: view.trackingDescription != null,
+                      child: Text(
+                        snapshot.upstream == null
+                            ? gitString(context, GitMessages.noUpstream)
+                            : '${snapshot.upstream} · ↑${snapshot.trackingCountsKnown ? snapshot.ahead : '?'} ↓${snapshot.trackingCountsKnown ? snapshot.behind : '?'}',
+                        style: GitTheme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ),
-                ),
-                if (snapshot?.upstream != null)
+                ],
+                if (!_sidebar && snapshot?.upstream != null)
                   GitTooltip(
                     message: gitString(
                       context,
@@ -863,24 +925,38 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
 
   Widget _actions(int staged) => Padding(
     padding: EdgeInsets.all(host.spacing),
-    child: Wrap(
-      spacing: host.spacing,
-      runSpacing: host.spacing,
-      children: [
-        GitButton.primary(
-          onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
-          child: GitLabel(
-            _amend ? GitMessages.amendStaged : GitMessages.commitStagedCount,
-            values: {'count': staged},
-          ),
+    child: _actionLayout([
+      GitButton.primary(
+        onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
+        child: GitLabel(
+          _sidebar
+              ? GitMessages.commit
+              : (_amend
+                    ? GitMessages.amendStaged
+                    : GitMessages.commitStagedCount),
+          values: {'count': staged},
         ),
-        GitButton.standard(
-          onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
-          child: const GitLabel(GitMessages.commitAndPush),
-        ),
-      ],
-    ),
+      ),
+      GitButton.standard(
+        onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
+        child: const GitLabel(GitMessages.commitAndPush),
+      ),
+    ]),
   );
+
+  Widget _actionLayout(List<Widget> actions) => _sidebar
+      ? Row(
+          children: [
+            actions.first,
+            SizedBox(width: host.spacing),
+            actions.last,
+          ],
+        )
+      : Wrap(
+          spacing: host.spacing,
+          runSpacing: host.spacing,
+          children: actions,
+        );
 
   void _options(String option) {
     if (option.startsWith('recoverAmend:')) {
@@ -1371,10 +1447,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           return GitNativeRow(
             id: row.key,
             textInsets: [
-              (Directionality.of(context) == TextDirection.rtl
-                      ? host.spacing
-                      : row.depth * host.spacing * 2) +
-                  (change == null ? 16 : 22),
+              gitPresentation(context).changeRowTextInset(context, row.depth),
             ],
             cells: [
               change == null && row.depth == 0
@@ -1571,7 +1644,36 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                         )
                                       : row.label
                                 : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
-                            child: GitActivation(
+                            child: GitChangeRow(
+                              title: change == null && row.depth == 0
+                                  ? gitString(
+                                      context,
+                                      GitMessages.groupCount,
+                                      values: {
+                                        'group': gitString(context, row.group),
+                                        'count': row.count,
+                                      },
+                                    )
+                                  : row.label,
+                              depth: row.depth,
+                              group: row.depth == 0,
+                              selected: _selected.contains(row.key),
+                              expanded: change == null
+                                  ? !_collapsed.contains(row.key)
+                                  : null,
+                              onToggle: change == null
+                                  ? () => _activate(row)
+                                  : null,
+                              tooltip: change?.path.display ?? row.label,
+                              status: change == null
+                                  ? null
+                                  : change.conflicted
+                                  ? '!'
+                                  : change.untracked
+                                  ? '?'
+                                  : row.group == GitMessages.staged
+                                  ? change.index
+                                  : change.worktree,
                               onPointerDown: (_) =>
                                   _pointerModifiers[row.key] = (
                                     shift: HardwareKeyboard
@@ -1617,121 +1719,49 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                   ),
                                 );
                               },
-                              child: ColoredBox(
-                                color: _selected.contains(row.key)
-                                    ? GitColors.of(context).selection
-                                    : GitColors.of(context).transparent,
-                                child: Padding(
-                                  padding: EdgeInsets.only(
-                                    left: row.depth * host.spacing * 2,
-                                    right: host.spacing,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      if (change == null)
-                                        GitIcon(
-                                          _collapsed.contains(row.key)
-                                              ? GitGlyph.next
-                                              : GitGlyph.expand,
-                                          size: 16,
-                                        )
-                                      else
-                                        SizedBox(
-                                          width: 22,
-                                          child: Text(
-                                            change.conflicted
-                                                ? '!'
-                                                : change.untracked
-                                                ? '?'
-                                                : row.group ==
-                                                      GitMessages.staged
-                                                ? change.index
-                                                : change.worktree,
-                                            style: GitTheme.of(
+                              trailing:
+                                  row.group != GitMessages.conflicts &&
+                                      (change == null || !change.conflicted)
+                                  ? GitIconButton(
+                                      tooltip: row.group == GitMessages.staged
+                                          ? gitString(
                                               context,
-                                            ).textTheme.labelSmall,
-                                          ),
-                                        ),
-                                      Expanded(
-                                        child: change == null && row.depth == 0
-                                            ? GitLabel(
-                                                GitMessages.groupCount,
-                                                values: {
-                                                  'group': gitString(
-                                                    context,
-                                                    row.group,
-                                                  ),
-                                                  'count': row.count,
-                                                },
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w600,
+                                              change == null
+                                                  ? GitMessages
+                                                        .unstageSelectedFiles
+                                                  : GitMessages.unstageFile,
+                                            )
+                                          : gitString(
+                                              context,
+                                              change == null
+                                                  ? GitMessages
+                                                        .stageSelectedFiles
+                                                  : GitMessages.stageFile,
+                                            ),
+                                      onPressed:
+                                          widget.session.running ||
+                                              _preparingStage ||
+                                              !widget.session.canWriteMetadata
+                                          ? null
+                                          : () {
+                                              if (!_selected.contains(row.key))
+                                                _select(rows, index);
+                                              unawaited(
+                                                _stage(
+                                                  row.group ==
+                                                      GitMessages.staged,
+                                                  rows,
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              )
-                                            : Text(
-                                                row.label,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: change == null
-                                                    ? const TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.w600,
-                                                      )
-                                                    : null,
-                                              ),
+                                              );
+                                            },
+                                      icon: GitIcon(
+                                        row.group == GitMessages.staged
+                                            ? GitGlyph.remove
+                                            : GitGlyph.add,
+                                        size: 16,
                                       ),
-                                      if (row.group != GitMessages.conflicts &&
-                                          (change == null ||
-                                              !change.conflicted))
-                                        GitIconButton(
-                                          tooltip:
-                                              row.group == GitMessages.staged
-                                              ? gitString(
-                                                  context,
-                                                  change == null
-                                                      ? GitMessages
-                                                            .unstageSelectedFiles
-                                                      : GitMessages.unstageFile,
-                                                )
-                                              : gitString(
-                                                  context,
-                                                  change == null
-                                                      ? GitMessages
-                                                            .stageSelectedFiles
-                                                      : GitMessages.stageFile,
-                                                ),
-                                          onPressed:
-                                              widget.session.running ||
-                                                  _preparingStage ||
-                                                  !widget
-                                                      .session
-                                                      .canWriteMetadata
-                                              ? null
-                                              : () {
-                                                  if (!_selected.contains(
-                                                    row.key,
-                                                  ))
-                                                    _select(rows, index);
-                                                  unawaited(
-                                                    _stage(
-                                                      row.group ==
-                                                          GitMessages.staged,
-                                                      rows,
-                                                    ),
-                                                  );
-                                                },
-                                          icon: GitIcon(
-                                            row.group == GitMessages.staged
-                                                ? GitGlyph.remove
-                                                : GitGlyph.add,
-                                            size: 16,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                                    )
+                                  : null,
                             ),
                           );
                         },
