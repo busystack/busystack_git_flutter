@@ -33,6 +33,7 @@ final class GitCommitView extends StatelessWidget {
     this.notice,
     this.layout = GitCommitLayout.workspace,
     this.trackingDescription,
+    this.minimumWidth = 220,
     this.active = true,
     this.reviewContext,
     this.protectMessageDrafts = true,
@@ -42,6 +43,7 @@ final class GitCommitView extends StatelessWidget {
   final GitComparison? selectedComparison;
   final Widget? notice;
   final GitCommitLayout layout;
+  final double minimumWidth;
   final String Function(GitSnapshot snapshot)? trackingDescription;
   final bool active;
 
@@ -335,7 +337,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
       if (bounds.maxWidth < 1 || bounds.maxHeight < 1) return const SizedBox();
-      final width = bounds.maxWidth.clamp(220.0, double.infinity);
+      final width = bounds.maxWidth.clamp(view.minimumWidth, double.infinity);
       final minimumHeight = _minimumHeight(context, width);
       final messageMinimum = _messageMinimum(context, width);
       return ClipRect(
