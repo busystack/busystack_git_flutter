@@ -1,4 +1,5 @@
 import 'presentation.dart';
+import 'historical_change_tree.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
@@ -1729,16 +1730,29 @@ final class _GitLogViewState extends State<GitLogView> {
   Widget _inspector() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      GitButton(
-        key: const ValueKey('git-selected-commit'),
-        onPressed: _choosing ? null : () => unawaited(_chooseInspectorCommit()),
-        child: Text(
-          _selected == null
-              ? (_inspectorOid?.abbreviated ??
-                    gitString(context, GitMessages.selectACommit))
-              : '${_selected!.subject} · ${_selected!.oid.abbreviated}',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+      GitTooltip(
+        message:
+            '${gitString(context, GitMessages.selectACommit)}${_selected == null ? '' : '\n${_selected!.subject}\n${_selected!.oid.value}'}',
+        child: Semantics(
+          label: gitString(context, GitMessages.selectACommit),
+          button: true,
+          child: GitButton(
+            key: const ValueKey('git-selected-commit'),
+            onPressed: _choosing
+                ? null
+                : () => unawaited(_chooseInspectorCommit()),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Text(
+                _selected == null
+                    ? (_inspectorOid?.abbreviated ??
+                          gitString(context, GitMessages.selectACommit))
+                    : '${_selected!.subject} · ${_selected!.oid.abbreviated}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
         ),
       ),
       if (_loading) const GitLoading(),
@@ -1792,6 +1806,64 @@ final class _GitLogViewState extends State<GitLogView> {
           liveRegion: true,
           child: const GitLabel(GitMessages.noChangedFiles),
         ),
+      );
+    }
+    if (widget.inspector) {
+      final session = widget.session;
+      final comparisons = List<GitComparison>.unmodifiable(
+        _files.map((change) => _comparison(commit, change, parent)),
+      );
+      void highlight(GitChange file) {
+        if (!current()) return;
+        setState(() => _selectedFile = file);
+        session.setViewState('inspectorFile', file.path.toJson());
+      }
+
+      return GitHistoricalChangeTree(
+        key: ValueKey(
+          'git-historical-tree:${session.repository.presentationKey}',
+        ),
+        session: session,
+        files: _files,
+        selected: _selectedFile?.path,
+        onHighlight: highlight,
+        onActivate: (file) {
+          if (!current()) return;
+          highlight(file);
+          widget.onReview?.call(_comparison(commit, file, parent), comparisons);
+        },
+        onAction: (file, action) async {
+          if (!current() ||
+              !widget.active ||
+              _presentationRoute?.isCurrent == false)
+            return;
+          switch (action) {
+            case 'review':
+              highlight(file);
+              widget.onReview?.call(
+                _comparison(commit, file, parent),
+                comparisons,
+              );
+            case 'history':
+              await session.host.present<void>(
+                context,
+                GitMessages.fileHistoryAndBlame,
+                GitFileHistoryView(
+                  session: session,
+                  path: file.path,
+                  revision: commit.oid,
+                ),
+                expanded: true,
+              );
+            case 'snapshot':
+              await session.host.present<void>(
+                context,
+                GitMessages.openSnapshot,
+                GitSnapshotView(session: session, revision: commit.oid),
+                expanded: true,
+              );
+          }
+        },
       );
     }
     return ListView.builder(
@@ -1909,7 +1981,420 @@ final class _GitLogViewState extends State<GitLogView> {
     );
   }
 
-  Widget _detailPane() {
+  Widget _detailPane() =>
+      widget.inspector ? _compactDetailPane() : _browserDetailPane();
+
+  void _inspectorParent(GitCommit commit, GitOid parent, int generation) {
+    if (!mounted ||
+        !widget.active ||
+        generation != _selectionGeneration ||
+        _selected?.oid != commit.oid)
+      return;
+    widget.session.setViewState('inspectorFile', '');
+    unawaited(_loadInspector(target: parent));
+  }
+
+  String _commitBody(GitCommit commit) {
+    final message = commit.message.trimLeft();
+    final paragraph = message.indexOf(RegExp(r'\r?\n\s*\r?\n'));
+    if (paragraph >= 0 &&
+        message
+                .substring(0, paragraph)
+                .replaceAll(RegExp(r'\s+'), ' ')
+                .trim() ==
+            commit.subject.trim()) {
+      return message.substring(paragraph).trimLeft();
+    }
+    final line = message.indexOf('\n');
+    if (line >= 0 &&
+        message.substring(0, line).trimRight() == commit.subject.trimRight()) {
+      return message.substring(line + 1).trimLeft();
+    }
+    return message.trimRight() == commit.subject.trimRight() ? '' : message;
+  }
+
+  Future<void> _commitDetails(
+    GitCommit commit,
+  ) => widget.session.host.present<void>(
+    context,
+    GitMessages.commitDetails,
+    SingleChildScrollView(
+      key: const ValueKey('git-complete-commit-information'),
+      padding: EdgeInsets.all(widget.session.host.spacing),
+      child: GitSelectionArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GitButton.icon(
+              onPressed: () =>
+                  Clipboard.setData(ClipboardData(text: commit.message)),
+              icon: const GitIcon(GitGlyph.copy),
+              label: const GitLabel(GitMessages.copyText),
+            ),
+            GitSelectableText(commit.message),
+            GitSelectableText(
+              gitString(
+                context,
+                GitMessages.authorArg0Arg1Arg2,
+                values: {
+                  'arg0': commit.author,
+                  'arg1': commit.email,
+                  'arg2': commit.date.toIso8601String(),
+                },
+              ),
+            ),
+            GitSelectableText(
+              gitString(
+                context,
+                GitMessages.committerArg0Arg1Arg2,
+                values: {
+                  'arg0': commit.committer,
+                  'arg1': commit.committerEmail,
+                  'arg2': commit.committerDate?.toIso8601String(),
+                },
+              ),
+            ),
+            GitSelectableText(commit.oid.value),
+            for (final parent in commit.parents)
+              GitSelectableText(
+                gitString(
+                  context,
+                  GitMessages.parentArg0,
+                  values: {'arg0': parent.value},
+                ),
+              ),
+            for (final reference in _references.where(
+              (ref) => ref.oid == commit.oid,
+            ))
+              GitSelectableText(reference.name),
+            if (commit.boundary)
+              const GitLabel(
+                GitMessages.shallowPartialBoundaryAParentObjectIsUnavailable,
+              ),
+          ],
+        ),
+      ),
+    ),
+    expanded: true,
+  );
+
+  Widget _compactDetailPane() {
+    final commit = _selected!;
+    final session = widget.session;
+    final generation = _selectionGeneration;
+    final body = _commitBody(commit);
+    final references = _references
+        .where((ref) => ref.oid == commit.oid)
+        .toList();
+    final differentIdentity =
+        commit.committer.isNotEmpty &&
+        (commit.committer != commit.author ||
+            commit.committerEmail != commit.email);
+    final differentDate =
+        commit.committerDate != null && commit.committerDate != commit.date;
+    final committerRows = (differentIdentity ? 1 : 0) + (differentDate ? 1 : 0);
+    final authorDetails = gitString(
+      context,
+      GitMessages.authorArg0Arg1Arg2,
+      values: {
+        'arg0': commit.author,
+        'arg1': commit.email,
+        'arg2': commit.date.toIso8601String(),
+      },
+    );
+    Widget line(
+      String text, {
+      String? tooltip,
+      TextStyle? style,
+      int maxLines = 1,
+    }) => GitTooltip(
+      message: tooltip ?? text,
+      child: Text(
+        text,
+        style: style,
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+    return LayoutBuilder(
+      builder: (context, bounds) {
+        final rowHeight = session.host.rowHeight(context);
+        // Reserve at least three native file rows. Exceptional metadata is available
+        // in the explicit details surface, never in another permanent scroll pane.
+        final budget = ((bounds.maxHeight / rowHeight).floor() - 3).clamp(
+          4,
+          10,
+        );
+        var remaining = budget - 4;
+        final showCommitter = committerRows > 0 && remaining >= committerRows;
+        if (showCommitter) remaining -= committerRows;
+        final showReferences = references.isNotEmpty && remaining > 0;
+        if (showReferences) remaining--;
+        final bodyLines = body.isEmpty ? 0 : remaining.clamp(0, 3);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              key: PageStorageKey(
+                'git-commit-information:${session.repository.key}:${commit.oid.value}',
+              ),
+              padding: EdgeInsets.all(session.host.spacing),
+              child: GitSelectionArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    line(
+                      '${gitString(context, GitMessages.author2)} · ${commit.author}',
+                      tooltip: authorDetails,
+                    ),
+                    line(
+                      gitPresentation(
+                        context,
+                      ).formatCommitDate(context, commit.date),
+                      tooltip: authorDetails,
+                      style: GitTheme.of(context).textTheme.bodySmall,
+                    ),
+                    if (showCommitter) ...[
+                      if (differentIdentity)
+                        line(
+                          '${gitString(context, GitMessages.committer)} · ${commit.committer}',
+                          tooltip: gitString(
+                            context,
+                            GitMessages.committerArg0Arg1Arg2,
+                            values: {
+                              'arg0': commit.committer,
+                              'arg1': commit.committerEmail,
+                              'arg2': commit.committerDate?.toIso8601String(),
+                            },
+                          ),
+                        ),
+                      if (commit.committerDate case final date?
+                          when differentDate)
+                        line(
+                          '${differentIdentity ? '' : '${gitString(context, GitMessages.committer)} · '}${gitPresentation(context).formatCommitDate(context, date)}',
+                          tooltip: date.toIso8601String(),
+                          style: GitTheme.of(context).textTheme.bodySmall,
+                        ),
+                    ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: line(
+                            commit.oid.abbreviated,
+                            tooltip: commit.oid.value,
+                          ),
+                        ),
+                        GitIconButton(
+                          key: const ValueKey('git-copy-commit-id'),
+                          tooltip: GitMessages.copyFullObjectID,
+                          onPressed: () => Clipboard.setData(
+                            ClipboardData(text: commit.oid.value),
+                          ),
+                          icon: const GitIcon(GitGlyph.copy),
+                        ),
+                        GitIconButton(
+                          key: const ValueKey('git-commit-details'),
+                          tooltip: GitMessages.commitDetails,
+                          onPressed: () => unawaited(_commitDetails(commit)),
+                          icon: const GitIcon(GitGlyph.expand),
+                        ),
+                        if (!_selectionOnly)
+                          Builder(
+                            builder: (anchor) => GitIconButton(
+                              key: const ValueKey('git-commit-actions'),
+                              tooltip: GitMessages.commitActions,
+                              onPressed: () {
+                                final box =
+                                    anchor.findRenderObject() as RenderBox;
+                                unawaited(
+                                  _menu(
+                                    commit,
+                                    position: box.localToGlobal(
+                                      Offset(
+                                        Directionality.of(anchor) ==
+                                                TextDirection.rtl
+                                            ? box.size.width
+                                            : 0,
+                                        box.size.height,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                              icon: const GitIcon(GitGlyph.moreHorizontal),
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (bodyLines > 0)
+                      Padding(
+                        padding: EdgeInsets.symmetric(
+                          vertical: session.host.spacing,
+                        ),
+                        child: Text(
+                          body,
+                          key: const ValueKey('git-commit-body'),
+                          maxLines: bodyLines,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    if (showReferences)
+                      line(
+                        references.map((ref) => ref.shortName).join(' · '),
+                        tooltip: references.map((ref) => ref.name).join('\n'),
+                        style: GitTheme.of(context).textTheme.bodySmall,
+                      ),
+                    if (commit.boundary)
+                      const GitLabel(
+                        GitMessages
+                            .shallowPartialBoundaryAParentObjectIsUnavailable,
+                      ),
+                    if (commit.parents.isNotEmpty)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: commit.parents.length == 1
+                            ? GitButton(
+                                key: const ValueKey('git-inspector-parent'),
+                                onPressed: () => _inspectorParent(
+                                  commit,
+                                  commit.parents.single,
+                                  generation,
+                                ),
+                                child: GitLabel(
+                                  GitMessages.parentArg0,
+                                  values: {
+                                    'arg0': commit.parents.single.abbreviated,
+                                  },
+                                ),
+                              )
+                            : GitMenuButton(
+                                key: const ValueKey('git-inspector-parent'),
+                                host: session.host,
+                                tooltip: GitMessages.parents,
+                                entries: [
+                                  for (
+                                    var i = 0;
+                                    i < commit.parents.length;
+                                    i++
+                                  )
+                                    GitMenuEntry(
+                                      'compare:$i',
+                                      gitString(
+                                        context,
+                                        GitMessages.compareParentArg0Arg1,
+                                        values: {
+                                          'arg0': i + 1,
+                                          'arg1': commit.parents[i].abbreviated,
+                                        },
+                                      ),
+                                      checked: _parent == commit.parents[i],
+                                      radio: true,
+                                      localize: false,
+                                    ),
+                                  for (
+                                    var i = 0;
+                                    i < commit.parents.length;
+                                    i++
+                                  )
+                                    GitMenuEntry(
+                                      'open:$i',
+                                      gitString(
+                                        context,
+                                        GitMessages.parentArg0,
+                                        values: {
+                                          'arg0': commit.parents[i].abbreviated,
+                                        },
+                                      ),
+                                      sectionStart: i == 0,
+                                      localize: false,
+                                    ),
+                                ],
+                                onSelected: (value) {
+                                  if (!mounted ||
+                                      generation != _selectionGeneration ||
+                                      _selected?.oid != commit.oid)
+                                    return;
+                                  final index = int.parse(
+                                    value.split(':').last,
+                                  );
+                                  if (value.startsWith('open:')) {
+                                    _inspectorParent(
+                                      commit,
+                                      commit.parents[index],
+                                      generation,
+                                    );
+                                  } else {
+                                    session.setViewState('inspectorFile', '');
+                                    unawaited(
+                                      _select(
+                                        commit,
+                                        parent: commit.parents[index],
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        gitString(
+                                          context,
+                                          GitMessages.compareParentArg0Arg1,
+                                          values: {
+                                            'arg0':
+                                                commit.parents.indexOf(
+                                                  _parent ??
+                                                      commit.parents.first,
+                                                ) +
+                                                1,
+                                            'arg1':
+                                                (_parent ??
+                                                        commit.parents.first)
+                                                    .abbreviated,
+                                          },
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    SizedBox(width: session.host.spacing),
+                                    const GitIcon(GitGlyph.down, size: 16),
+                                  ],
+                                ),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              key: const ValueKey('git-changed-files'),
+              padding: EdgeInsets.symmetric(
+                horizontal: session.host.spacing,
+                vertical: session.host.spacing / 2,
+              ),
+              child: Semantics(
+                header: true,
+                child: GitLabel(
+                  GitMessages.groupCount,
+                  values: {
+                    'group': gitString(context, GitMessages.changedFiles),
+                    'count': _files.length,
+                  },
+                ),
+              ),
+            ),
+            Expanded(child: _changedFilesPane(commit)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _browserDetailPane() {
     final commit = _selected;
     final generation = _selectionGeneration;
     if (commit == null)
@@ -1919,14 +2404,8 @@ final class _GitLogViewState extends State<GitLogView> {
       initial: .40,
       minimum: 90,
       minimumSecond: 100,
-      value: widget.session.split(
-        widget.inspector ? 'inspectorInfoSplit' : 'logInfoSplit',
-        .40,
-      ),
-      onChanged: (value) => widget.session.setViewState(
-        widget.inspector ? 'inspectorInfoSplit' : 'logInfoSplit',
-        value,
-      ),
+      value: widget.session.split('logInfoSplit', .40),
+      onChanged: (value) => widget.session.setViewState('logInfoSplit', value),
       first: SingleChildScrollView(
         key: PageStorageKey(
           'git-commit-information:${widget.session.repository.key}:${commit.oid.value}',

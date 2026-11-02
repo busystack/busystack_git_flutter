@@ -178,7 +178,7 @@ void main() {
         ),
         const Size(700, 500),
       );
-      await tester.tap(find.byTooltip('Diff display options'));
+      await tester.tap(find.byKey(const ValueKey('git-diff-overflow')));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('Ignore whitespace'),
@@ -189,16 +189,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.option('diffIgnoreWhitespace', false), isTrue);
       expect(client.mutations, isEmpty);
-      await tester.tap(find.text('Staging actions…'));
+      await tester.tap(find.byKey(const ValueKey('git-diff-overflow')));
       await tester.pumpAndSettle();
       final lines = tester.widget<ListTile>(
         find.ancestor(
-          of: find.text('Stage selected changed lines'),
+          of: find.text('Stage selected lines'),
           matching: find.byType(ListTile),
         ),
       );
       expect(lines.enabled, isFalse);
-      await tester.tap(find.text('Stage whole file'));
+      final fileEntry = find.ancestor(
+        of: find.text('Stage file'),
+        matching: find.byType(ListTile),
+      );
+      if (fileEntry.evaluate().isEmpty) {
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('Stage file'));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 300)),
       );

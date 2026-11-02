@@ -97,7 +97,7 @@ void main() {
         find.textContaining('The reviewed index or working content changed.'),
         findsOneWidget,
       );
-      expect(find.text('Stage selected changed lines'), findsNothing);
+      expect(find.text('Stage selected lines'), findsNothing);
       expect(client.mutations, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -135,7 +135,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(client.statusReads, 1);
-      expect(find.text('Stage selected changed lines'), findsOneWidget);
+      expect(find.text('Stage file'), findsOneWidget);
       expect(find.textContaining('Read-only comparison'), findsNothing);
       await tester.tap(find.byTooltip('Refresh comparison'));
       await tester.runAsync(
@@ -182,7 +182,7 @@ void main() {
       expect(find.textContaining('changed lines selected'), findsNothing);
       expect(find.text('Stage whole file'), findsNothing);
       expect(find.text('Unstage whole file'), findsNothing);
-      expect(find.text('Stage selected changed lines'), findsNothing);
+      expect(find.text('Stage selected lines'), findsNothing);
       expect(client.mutations, isEmpty);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
@@ -299,7 +299,7 @@ void main() {
         find.textContaining('The reviewed index or working content changed.'),
         findsOneWidget,
       );
-      expect(find.text('Stage selected changed lines'), findsNothing);
+      expect(find.text('Stage selected lines'), findsNothing);
       expect(client.mutations, isEmpty);
       await tester.tap(find.text('Refresh comparison'));
       await tester.runAsync(
@@ -310,7 +310,7 @@ void main() {
         find.textContaining('The reviewed index or working content changed.'),
         findsNothing,
       );
-      expect(find.text('Stage selected changed lines'), findsOneWidget);
+      expect(find.text('Stage file'), findsOneWidget);
       target.dispose();
       session.dispose();
     },

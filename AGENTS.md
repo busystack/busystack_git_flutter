@@ -35,3 +35,12 @@ Respect host inline/standard/suggested action distinctions and optional labelled
 checkbox requests. Compact sidebar hosts may put Refresh in their repository
 menu and omit its duplicate Branches entry; default workspace navigation stays
 available. Verify both native adapters whenever a presentation request changes.
+
+Git Log's compact inspector has no information/file splitter or permanent upper
+scrollbar. Full messages/exact identities remain accessible in native details.
+Historical Changed Files use the required native change-row tree and a separate
+file-menu target; they have no staging callbacks. Two-way comparisons use one
+measured toolbar and the native checked mode menu at every width. Circular
+choice bars are forbidden there, including aliases; three-way editor pane
+choices remain separate. Preserve explicit file/selected-line/hunk staging,
+version-bound callbacks, editor guards, and both consumers' native adapters.

@@ -789,5 +789,9 @@
   "discardCommitMessages": "Discard messages",
   "removeFilter": "Remove filter",
   "noCommitsYet": "No commits yet",
-  "nativeMenuUnavailable": "The native menu service is unavailable. Try again."
+  "nativeMenuUnavailable": "The native menu service is unavailable. Try again.",
+  "committer": "Committer",
+  "stageSelectedLines": "Stage selected lines",
+  "unstageSelectedLines": "Unstage selected lines",
+  "editIndexInThreeWayView": "Edit Index in Three-Way View…"
 }

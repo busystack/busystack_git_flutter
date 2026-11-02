@@ -158,13 +158,15 @@ void main() {
         );
         await tester.pump();
         if (find
-            .text('Edit HEAD | Index | Working Tree…')
+            .byKey(const ValueKey('git-diff-toolbar'))
             .evaluate()
             .isNotEmpty)
           break;
       }
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Edit HEAD | Index | Working Tree…'));
+      await tester.tap(find.byKey(const ValueKey('git-diff-overflow')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Edit Index in Three-Way View…'));
       await tester.pump();
       expect(shown, 'تحرير المحتوى · docs/日本語.md');
       await tester.pumpWidget(const SizedBox());

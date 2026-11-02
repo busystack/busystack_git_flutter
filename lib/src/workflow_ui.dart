@@ -54,6 +54,14 @@ final class GitWorkflowUi {
     GitOperationView(session: session),
     expanded: true,
   );
+  Future<void> merge() => present(
+    gitString(
+      context,
+      GitMessages.mergeIntoArg02,
+      values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
+    ),
+    GitMergeView(session: session),
+  );
   Future<void> rebase({GitOid? boundary}) => present(
     GitMessages.rebaseCommits,
     GitRebaseView(session: session, boundary: boundary),
@@ -94,6 +102,7 @@ final class GitWorkflowUi {
   Future<void> more({
     bool showBranches = true,
     bool includeRefresh = false,
+    bool showBranchOperations = true,
   }) async {
     final actions = {
       if (includeRefresh) 'refresh': GitMessages.refresh,
@@ -102,12 +111,13 @@ final class GitWorkflowUi {
       'push': GitMessages.push2,
       if (showBranches) 'branches': GitMessages.branches2,
       'remotes': GitMessages.manageRemotes,
-      'merge': gitString(
-        context,
-        GitMessages.mergeIntoArg0,
-        values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
-      ),
-      'rebase': GitMessages.rebase2,
+      if (showBranchOperations)
+        'merge': gitString(
+          context,
+          GitMessages.mergeIntoArg0,
+          values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
+        ),
+      if (showBranchOperations) 'rebase': GitMessages.rebase2,
       'conflicts': GitMessages.conflictsAndCurrentOperation,
       'stashes': GitMessages.stashes2,
       'worktrees': GitMessages.worktrees,
@@ -132,12 +142,15 @@ final class GitWorkflowUi {
                 ? !session.refreshing
                 : session.snapshot != null ||
                       const {'clone', 'revokeTrust'}.contains(e.key),
-            sectionStart: const {
-              'merge',
-              'stashes',
-              'clone',
-              'revokeTrust',
-            }.contains(e.key),
+            sectionStart:
+                e.key == 'fetch' && includeRefresh ||
+                const {
+                  'merge',
+                  'conflicts',
+                  'stashes',
+                  'clone',
+                  'revokeTrust',
+                }.contains(e.key),
           ),
       ],
     );
@@ -160,14 +173,7 @@ final class GitWorkflowUi {
           expanded: true,
         );
       case 'merge':
-        await present(
-          gitString(
-            context,
-            GitMessages.mergeIntoArg02,
-            values: {'arg0': session.snapshot?.branch ?? GitMessages.head},
-          ),
-          GitMergeView(session: session),
-        );
+        await merge();
       case 'rebase':
         await rebase();
       case 'conflicts':

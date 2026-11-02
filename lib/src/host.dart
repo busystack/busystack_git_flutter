@@ -255,6 +255,9 @@ final class GitHostScope extends InheritedWidget {
 }
 
 enum GitGlyph {
+  copy,
+  moreHorizontal,
+  options,
   back,
   branch,
   history,
@@ -630,6 +633,7 @@ final class GitMenuButton extends StatelessWidget {
     required this.onSelected,
     this.tooltip = GitMessages.actions,
     this.child,
+    this.glyph = GitGlyph.more,
     this.enabled = true,
     this.disabledReason,
   });
@@ -638,6 +642,7 @@ final class GitMenuButton extends StatelessWidget {
   final ValueChanged<String> onSelected;
   final String tooltip;
   final Widget? child;
+  final GitGlyph glyph;
   final bool enabled;
   final String? disabledReason;
   @override
@@ -645,7 +650,14 @@ final class GitMenuButton extends StatelessWidget {
     Future<void> open() async {
       final box = context.findRenderObject();
       final position = box is RenderBox && box.hasSize
-          ? box.localToGlobal(Offset(0, box.size.height))
+          ? box.localToGlobal(
+              Offset(
+                Directionality.of(context) == TextDirection.rtl
+                    ? box.size.width
+                    : 0,
+                box.size.height,
+              ),
+            )
           : null;
       final value = await host.menu(
         context,
@@ -664,7 +676,7 @@ final class GitMenuButton extends StatelessWidget {
         ? GitIconButton(
             tooltip: description,
             onPressed: available ? () => open() : null,
-            icon: const GitIcon(GitGlyph.more, size: 18),
+            icon: GitIcon(glyph, size: 18),
           )
         : GitTooltip(
             message: gitString(context, description),

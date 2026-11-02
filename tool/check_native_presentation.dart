@@ -4,6 +4,7 @@ import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/error/error.dart';
 
 /// Resolve symbols in the actual built sources, including prefixes, re-exports,
@@ -182,20 +183,44 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
     super.visitSimpleIdentifier(node);
   }
 
+  void checkComparisonChoice(AstNode node, DartType? type) {
+    if (!path.endsWith('/diff_view.dart')) return;
+    if (type is FunctionType) type = type.returnType;
+    if (type is InterfaceType &&
+        type.element.name == 'GitChoiceBar' &&
+        type.element.library.uri.toString().endsWith(
+          '/src/presentation.dart',
+        ) &&
+        type.typeArguments.length == 1 &&
+        type.typeArguments.single.isDartCoreBool &&
+        _seen.add(node.offset)) {
+      violations.add(
+        NativeUiViolation(
+          path,
+          node.offset,
+          'two-way comparison requires the native mode menu',
+        ),
+      );
+    }
+  }
+
   @override
   void visitNamedType(NamedType node) {
+    checkComparisonChoice(node, node.type);
     check(node, node.element);
     super.visitNamedType(node);
   }
 
   @override
   void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    checkComparisonChoice(node, node.staticType);
     check(node, node.constructorName.element, construction: true);
     super.visitInstanceCreationExpression(node);
   }
 
   @override
   void visitConstructorReference(ConstructorReference node) {
+    checkComparisonChoice(node, node.staticType);
     check(node, node.constructorName.element, construction: true);
     super.visitConstructorReference(node);
   }

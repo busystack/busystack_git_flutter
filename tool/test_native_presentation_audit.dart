@@ -81,6 +81,22 @@ Widget surface() => Column(children: [GitButton(onPressed: () {}, child: const T
 """);
     if ((await auditNativeGitSources([approved.path])).isNotEmpty)
       throw StateError('Rejected approved host-bound controls');
+    final comparison = File('${temp.path}/diff_view.dart');
+    for (final source in [
+      "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; final mode = git.GitChoiceBar<bool>(segments: const [], selected: const {}, onSelectionChanged: null);",
+      "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; typedef Alias = git.GitChoiceBar<bool>; final mode = Alias.new;",
+    ]) {
+      comparison.writeAsStringSync(source);
+      if ((await auditNativeGitSources([comparison.path])).isEmpty)
+        throw StateError(
+          'Two-way radio/aliased mode escaped the native menu rule',
+        );
+    }
+    comparison.writeAsStringSync(
+      "import 'package:busystack_git_flutter/busystack_git_flutter.dart'; final panes = GitChoiceBar<int>(segments: const [], selected: const {}, onSelectionChanged: null);",
+    );
+    if ((await auditNativeGitSources([comparison.path])).isNotEmpty)
+      throw StateError('Rejected the existing three-way pane choice');
     final missing = File('${temp.path}/unresolved.dart')
       ..writeAsStringSync('UndefinedWidget value = UndefinedWidget();');
     var failedClosed = false;

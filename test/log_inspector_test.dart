@@ -19,6 +19,7 @@ class _Client extends FixtureClient {
     historyCommits = [_commit('a'), _commit('b')];
   }
   final changed = <(GitOid, GitOid?)>[];
+  bool samePath = false;
   Completer<List<GitChange>>? delayed;
   Completer<HistoryPage>? delayedHistory;
   @override
@@ -77,7 +78,9 @@ class _Client extends FixtureClient {
     }
     return [
       GitChange(
-        path: RepoPath.text('dir/new-$revision.md'),
+        path: RepoPath.text(
+          samePath ? 'dir/shared.md' : 'dir/new-$revision.md',
+        ),
         originalPath: RepoPath.text('old.md'),
         index: 'R',
         worktree: ' ',
@@ -90,6 +93,7 @@ Future<GitSession> _mount(
   WidgetTester tester,
   _Client client, {
   void Function(GitComparison, List<GitComparison>)? review,
+  GitPresentMenu? menu,
 }) async {
   tester.view.physicalSize = const Size(1200, 850);
   tester.view.devicePixelRatio = 1;
@@ -99,7 +103,7 @@ Future<GitSession> _mount(
   final nativeHost = GitHost(
     presentation: const TestGitPresentation(),
     icons: testGitIcons,
-    presentMenu: testGitMenu,
+    presentMenu: menu ?? testGitMenu,
     present: <T>(context, title, child, {bool expanded = false}) =>
         showDialog<T>(
           context: context,
@@ -167,7 +171,7 @@ void main() {
         lessThan(tester.getTopLeft(info).dy),
       );
       expect(tester.getTopLeft(info).dy, lessThan(tester.getTopLeft(files).dy));
-      expect(find.text('Changed files').hitTestable(), findsOneWidget);
+      expect(find.text('Changed files (1)').hitTestable(), findsOneWidget);
       expect(find.text('new-${'a' * 40}.md').hitTestable(), findsOneWidget);
       await tester.tap(find.text('new-${'a' * 40}.md'));
       expect(opened!.left.revision, GitOid('b' * 40));
@@ -175,6 +179,12 @@ void main() {
       expect(opened!.leftPath!.utf8Path, 'old.md');
       expect(context!.single.toJson(), opened!.toJson());
       expect(client.mutations, isEmpty);
+      expect(find.byType(GitSplitter), findsNothing);
+      expect(
+        find.descendant(of: info, matching: find.byType(Scrollable)),
+        findsNothing,
+      );
+      // Metadata is content driven; dragging it cannot resize or scroll the file list.
       await tester.drag(info, const Offset(0, -200));
       await tester.pumpAndSettle();
       expect(find.text('new-${'a' * 40}.md').hitTestable(), findsOneWidget);
@@ -274,6 +284,41 @@ void main() {
     },
   );
 
+  for (final action in ['review', 'history', 'snapshot']) {
+    testWidgets(
+      'delayed historical file $action cannot retarget the same path at a new commit',
+      (tester) async {
+        final client = _Client()..samePath = true;
+        final pending = Completer<String?>();
+        final opened = <GitComparison>[];
+        final session = await _mount(
+          tester,
+          client,
+          review: (comparison, _) => opened.add(comparison),
+          menu: (_, entries, {position}) => pending.future,
+        );
+        final file = RepoPath.text('dir/shared.md');
+        await tester.tap(
+          find.byKey(ValueKey('git-historical-menu:${file.key}')),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Subject b'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Select this commit'));
+        await tester.pumpAndSettle();
+        expect(session.viewState['inspectorRevision'], 'b' * 40);
+        pending.complete(action);
+        await tester.pumpAndSettle();
+        expect(opened, isEmpty);
+        expect(find.byType(GitFileHistoryView), findsNothing);
+        expect(find.byType(GitSnapshotView), findsNothing);
+        expect(client.mutations, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'parent navigation resolves immutable history outside the one-commit inspector',
     (tester) async {

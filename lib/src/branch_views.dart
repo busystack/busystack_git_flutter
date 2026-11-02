@@ -108,6 +108,48 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
             icon: const GitIcon(GitGlyph.add),
             label: const GitLabel(GitMessages.newBranch),
           ),
+          GitMenuButton(
+            key: const ValueKey('git-branch-workflows'),
+            host: session.host,
+            tooltip: GitMessages.actions,
+            entries: [
+              GitMenuEntry(
+                'merge',
+                gitString(
+                  context,
+                  GitMessages.mergeIntoArg0,
+                  values: {'arg0': reviewed?.branch ?? GitMessages.head},
+                ),
+                enabled:
+                    !session.running &&
+                    session.canWriteMetadata &&
+                    session.snapshot?.capabilities.replaceWorkingFiles ==
+                        true &&
+                    session.snapshot?.operation.kind == GitOperationKind.none,
+                localize: false,
+              ),
+              GitMenuEntry(
+                'rebase',
+                GitMessages.rebase2,
+                enabled:
+                    !session.running &&
+                    session.canWriteMetadata &&
+                    session.snapshot?.capabilities.replaceWorkingFiles ==
+                        true &&
+                    session.snapshot?.operation.kind == GitOperationKind.none,
+              ),
+            ],
+            onSelected: (action) {
+              if (!mounted ||
+                  session.running ||
+                  !session.canWriteMetadata ||
+                  session.snapshot?.capabilities.replaceWorkingFiles != true ||
+                  session.snapshot?.operation.kind != GitOperationKind.none)
+                return;
+              final ui = GitWorkflowUi(context, session);
+              unawaited(action == 'merge' ? ui.merge() : ui.rebase());
+            },
+          ),
         ],
       ),
       Expanded(

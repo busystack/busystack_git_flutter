@@ -64,6 +64,7 @@ final class GitDiffView extends StatefulWidget {
     required this.comparison,
     this.preview = false,
     this.initialSideBySide = false,
+    this.showFileHeader = true,
     this.onPreviousFile,
     this.onNextFile,
     @visibleForTesting this.searchMatches,
@@ -74,6 +75,9 @@ final class GitDiffView extends StatefulWidget {
   final GitComparison comparison;
   final bool preview;
   final bool initialSideBySide;
+
+  /// False only when an owning content tab already identifies this comparison.
+  final bool showFileHeader;
   final VoidCallback? onPreviousFile, onNextFile;
   @override
   State<GitDiffView> createState() => _GitDiffViewState();
@@ -505,18 +509,6 @@ final class _GitDiffViewState extends State<GitDiffView> {
       );
     final comparison = widget.comparison, host = widget.session.host;
     final generation = _generation;
-    final label = TextPainter(
-      text: TextSpan(
-        text: gitString(context, GitMessages.editHEADIndexWorkingTree),
-        style: GitTheme.of(context).textTheme.labelLarge,
-      ),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
-    final compact =
-        bounds.maxWidth < label.width * 2 + host.spacing * 8 &&
-        bounds.maxHeight < host.rowHeight(context) * 16;
-    label.dispose();
     return CallbackShortcuts(
       bindings: {
         const SingleActivator(LogicalKeyboardKey.keyF, control: true):
@@ -556,185 +548,18 @@ final class _GitDiffViewState extends State<GitDiffView> {
             Padding(
               padding: EdgeInsets.all(host.spacing),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GitSelectableText(comparison.path.display),
-                      ),
-                      GitIconButton(
-                        tooltip: gitString(
-                          context,
-                          GitMessages.refreshComparison,
-                        ),
-                        onPressed: () => unawaited(_load(refreshStatus: true)),
-                        icon: const GitIcon(GitGlyph.refresh),
-                      ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: host.spacing,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (widget.onPreviousFile != null ||
-                          widget.onNextFile != null) ...[
-                        GitIconButton(
-                          tooltip: gitString(
-                            context,
-                            GitMessages.previousChangedFile,
-                          ),
-                          onPressed: widget.onPreviousFile,
-                          icon: const GitIcon(GitGlyph.previous),
-                        ),
-                        GitIconButton(
-                          tooltip: gitString(
-                            context,
-                            GitMessages.nextChangedFile,
-                          ),
-                          onPressed: widget.onNextFile,
-                          icon: const GitIcon(GitGlyph.next),
-                        ),
-                      ],
-                      GitIconButton(
-                        tooltip: gitString(
-                          context,
-                          GitMessages.previousDifference,
-                        ),
-                        onPressed: () => _jump(-1),
-                        icon: const GitIcon(GitGlyph.up, size: 18),
-                      ),
-                      GitIconButton(
-                        tooltip: gitString(context, GitMessages.nextDifference),
-                        onPressed: () => _jump(1),
-                        icon: const GitIcon(GitGlyph.down, size: 18),
-                      ),
-                      if (compact)
-                        GitMenuButton(
-                          host: host,
-                          tooltip: gitString(
-                            context,
-                            GitMessages.comparisonMode,
-                          ),
-                          entries: [
-                            GitMenuEntry(
-                              'side',
-                              GitMessages.sideBySide,
-                              checked: !_unified,
-                              radio: true,
-                            ),
-                            GitMenuEntry(
-                              'unified',
-                              GitMessages.unified,
-                              checked: _unified,
-                              radio: true,
-                            ),
-                          ],
-                          onSelected: (value) => _display(
-                            'diffUnified',
-                            value == 'unified',
-                            () => _unified = value == 'unified',
-                          ),
-                          child: GitLabel(
-                            _unified
-                                ? GitMessages.unified
-                                : GitMessages.sideBySide,
-                          ),
-                        )
-                      else
-                        GitChoiceBar<bool>(
-                          segments: [
-                            GitSegment(
-                              value: false,
-                              label: GitLabel(
-                                gitString(context, GitMessages.sideBySide),
-                              ),
-                            ),
-                            GitSegment(
-                              value: true,
-                              label: GitLabel(
-                                gitString(context, GitMessages.unified),
-                              ),
-                            ),
-                          ],
-                          selected: {_unified},
-                          onSelectionChanged: (s) => _display(
-                            'diffUnified',
-                            s.single,
-                            () => _unified = s.single,
-                          ),
-                        ),
-                      GitMenuButton(
-                        host: host,
-                        tooltip: gitString(
-                          context,
-                          GitMessages.diffDisplayOptions,
-                        ),
-                        entries: [
-                          GitMenuEntry(
-                            'wrap',
-                            GitMessages.wrap,
-                            checked: _wrap,
-                          ),
-                          GitMenuEntry(
-                            'words',
-                            GitMessages.words,
-                            checked: _words,
-                          ),
-                          GitMenuEntry(
-                            'collapse',
-                            GitMessages.collapseContext,
-                            checked: _collapse,
-                          ),
-                          GitMenuEntry(
-                            'whitespace',
-                            GitMessages.ignoreWhitespace,
-                            checked: _ignoreWhitespace,
-                          ),
-                        ],
-                        onSelected: (option) {
-                          switch (option) {
-                            case 'wrap':
-                              _display(
-                                'diffWrap',
-                                !_wrap,
-                                () => _wrap = !_wrap,
-                              );
-                            case 'words':
-                              _display(
-                                'diffWords',
-                                !_words,
-                                () => _words = !_words,
-                              );
-                            case 'collapse':
-                              _display(
-                                'diffCollapse',
-                                !_collapse,
-                                () => _collapse = !_collapse,
-                              );
-                            case 'whitespace':
-                              _display(
-                                'diffIgnoreWhitespace',
-                                !_ignoreWhitespace,
-                                () => _ignoreWhitespace = !_ignoreWhitespace,
-                              );
-                          }
-                        },
-                      ),
-                      GitIconButton(
-                        tooltip: gitString(
-                          context,
-                          GitMessages.searchComparison,
-                        ),
-                        onPressed: _openSearch,
-                        icon: const GitIcon(GitGlyph.search),
-                      ),
-                      if (_canOpenSource)
-                        GitButton(
-                          key: const ValueKey('git-diff-open-source'),
-                          onPressed: () => _openSource(generation),
-                          child: const GitLabel(GitMessages.openCurrentFile),
-                        ),
-                    ],
+                  if (widget.showFileHeader)
+                    Padding(
+                      key: const ValueKey('git-diff-file-header'),
+                      padding: EdgeInsets.only(bottom: host.spacing),
+                      child: GitSelectableText(comparison.path.display),
+                    ),
+                  _comparisonToolbar(
+                    context,
+                    generation,
+                    bounds.maxWidth - host.spacing * 2,
                   ),
                   if (_searchVisible)
                     GitTextUndo(
@@ -812,86 +637,6 @@ final class _GitDiffViewState extends State<GitDiffView> {
                       error: _searchFailure!,
                       onRefresh: _searchChanged,
                     ),
-                  if (_canStage && compact)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: GitMenuButton(
-                        host: host,
-                        tooltip: gitString(context, GitMessages.stagingActions),
-                        child: const GitLabel(GitMessages.stagingActions2),
-                        entries: [
-                          GitMenuEntry(
-                            'lines',
-                            _unstage
-                                ? GitMessages.unstageSelectedChangedLines
-                                : GitMessages.stageSelectedChangedLines,
-                            enabled: _selected.isNotEmpty,
-                          ),
-                          const GitMenuEntry(
-                            'index',
-                            GitMessages.editHEADIndexWorkingTree,
-                          ),
-                          GitMenuEntry(
-                            'file',
-                            _unstage
-                                ? GitMessages.unstageWholeFile
-                                : GitMessages.stageWholeFile,
-                          ),
-                        ],
-                        onSelected: (value) {
-                          switch (value) {
-                            case 'lines':
-                              unawaited(_applySelection(generation));
-                            case 'index':
-                              unawaited(_indexEditor(generation));
-                            case 'file':
-                              unawaited(_wholeFile(generation));
-                          }
-                        },
-                      ),
-                    )
-                  else if (_canStage)
-                    Wrap(
-                      spacing: host.spacing,
-                      children: [
-                        GitButton.primary(
-                          onPressed: _selected.isEmpty
-                              ? null
-                              : () => unawaited(_applySelection(generation)),
-                          child: Text(
-                            _unstage
-                                ? gitString(
-                                    context,
-                                    GitMessages.unstageSelectedChangedLines,
-                                  )
-                                : gitString(
-                                    context,
-                                    GitMessages.stageSelectedChangedLines,
-                                  ),
-                          ),
-                        ),
-                        GitButton.standard(
-                          onPressed: () => unawaited(_indexEditor(generation)),
-                          child: const GitLabel(
-                            GitMessages.editHEADIndexWorkingTree,
-                          ),
-                        ),
-                        GitButton(
-                          onPressed: () => unawaited(_wholeFile(generation)),
-                          child: Text(
-                            _unstage
-                                ? gitString(
-                                    context,
-                                    GitMessages.unstageWholeFile,
-                                  )
-                                : gitString(
-                                    context,
-                                    GitMessages.stageWholeFile,
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
                 ],
               ),
             ),
@@ -942,6 +687,268 @@ final class _GitDiffViewState extends State<GitDiffView> {
     );
   }
 
+  Widget _comparisonToolbar(
+    BuildContext context,
+    int generation,
+    double width,
+  ) {
+    final host = widget.session.host;
+    final gap = host.spacing / 2;
+    final iconWidth = host.rowHeight(context) + host.spacing;
+    double textWidth(String message, {bool arrow = false}) {
+      final text = TextPainter(
+        text: TextSpan(
+          text: gitString(context, message),
+          style: GitTheme.of(context).textTheme.labelLarge,
+        ),
+        textDirection: Directionality.of(context),
+        locale: Localizations.maybeLocaleOf(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final measured =
+          text.width + host.spacing * 4 + (arrow ? host.spacing * 3 : 0);
+      text.dispose();
+      return measured < iconWidth ? iconWidth : measured;
+    }
+
+    final staging = _stagingComparison && _diff != null;
+    final lines = _unstage
+        ? GitMessages.unstageSelectedLines
+        : GitMessages.stageSelectedLines;
+    final file = _unstage ? GitMessages.unstageFile : GitMessages.stageFile;
+    final mode = _unified ? GitMessages.unified : GitMessages.sideBySide;
+    final display = [
+      GitMenuEntry('wrap', GitMessages.wrap, checked: _wrap),
+      GitMenuEntry('words', GitMessages.words, checked: _words),
+      GitMenuEntry('collapse', GitMessages.collapseContext, checked: _collapse),
+      GitMenuEntry(
+        'whitespace',
+        GitMessages.ignoreWhitespace,
+        checked: _ignoreWhitespace,
+      ),
+    ];
+    final modes = [
+      GitMenuEntry(
+        'side',
+        GitMessages.sideBySide,
+        checked: !_unified,
+        radio: true,
+      ),
+      GitMenuEntry(
+        'unified',
+        GitMessages.unified,
+        checked: _unified,
+        radio: true,
+      ),
+    ];
+    final actions = <String, (String, GitGlyph?, VoidCallback?)>{
+      if (widget.onPreviousFile != null || widget.onNextFile != null) ...{
+        'previousFile': (
+          GitMessages.previousChangedFile,
+          GitGlyph.previous,
+          widget.onPreviousFile,
+        ),
+        'nextFile': (
+          GitMessages.nextChangedFile,
+          GitGlyph.next,
+          widget.onNextFile,
+        ),
+      },
+      'previousDifference': (
+        GitMessages.previousDifference,
+        GitGlyph.up,
+        _diff == null ? null : () => _jump(-1),
+      ),
+      'nextDifference': (
+        GitMessages.nextDifference,
+        GitGlyph.down,
+        _diff == null ? null : () => _jump(1),
+      ),
+      'mode': (mode, null, () {}),
+      'display': (GitMessages.diffDisplayOptions, GitGlyph.more, () {}),
+      'search': (GitMessages.searchComparison, GitGlyph.search, _openSearch),
+      'refresh': (
+        GitMessages.refreshComparison,
+        GitGlyph.refresh,
+        () => unawaited(_load(refreshStatus: true)),
+      ),
+      if (_canOpenSource)
+        'source': (
+          GitMessages.openCurrentFile,
+          GitGlyph.expand,
+          () => _openSource(generation),
+        ),
+      if (staging && _selected.isNotEmpty)
+        'lines': (
+          lines,
+          null,
+          _canStage ? () => unawaited(_applySelection(generation)) : null,
+        ),
+      if (staging)
+        'file': (
+          file,
+          null,
+          _canStage ? () => unawaited(_wholeFile(generation)) : null,
+        ),
+    };
+    double extent(String id) => id == 'mode'
+        ? textWidth(mode, arrow: true)
+        : actions[id]!.$2 == null
+        ? textWidth(actions[id]!.$1)
+        : iconWidth;
+    final visible = <String>{};
+    var remaining =
+        width - iconWidth - gap; // Native overflow always owns its target.
+    for (final id in [
+      'lines',
+      'mode',
+      'file',
+      'previousDifference',
+      'nextDifference',
+      'search',
+      'refresh',
+      'display',
+      'previousFile',
+      'nextFile',
+      'source',
+    ]) {
+      if (!actions.containsKey(id)) continue;
+      final needed = extent(id) + gap;
+      if (needed <= remaining) {
+        visible.add(id);
+        remaining -= needed;
+      }
+    }
+    void act(String id) {
+      if (!mounted || generation != _generation) return;
+      switch (id) {
+        case 'side':
+        case 'unified':
+          _display(
+            'diffUnified',
+            id == 'unified',
+            () => _unified = id == 'unified',
+          );
+        case 'wrap':
+          _display('diffWrap', !_wrap, () => _wrap = !_wrap);
+        case 'words':
+          _display('diffWords', !_words, () => _words = !_words);
+        case 'collapse':
+          _display('diffCollapse', !_collapse, () => _collapse = !_collapse);
+        case 'whitespace':
+          _display(
+            'diffIgnoreWhitespace',
+            !_ignoreWhitespace,
+            () => _ignoreWhitespace = !_ignoreWhitespace,
+          );
+        case 'index':
+          if (_canStage) unawaited(_indexEditor(generation));
+        case 'lines':
+          if (_canStage && _selected.isNotEmpty)
+            unawaited(_applySelection(generation));
+        case 'file':
+          if (_canStage) unawaited(_wholeFile(generation));
+        default:
+          actions[id]?.$3?.call();
+      }
+    }
+
+    final overflow = <GitMenuEntry>[
+      for (final action in actions.entries)
+        if (!visible.contains(action.key) &&
+            action.key != 'mode' &&
+            action.key != 'display')
+          GitMenuEntry(
+            action.key,
+            action.value.$1,
+            enabled: action.value.$3 != null,
+          ),
+      if (!visible.contains('mode')) ...[
+        const GitMenuEntry.separator(),
+        ...modes,
+      ],
+      if (!visible.contains('display')) ...[
+        const GitMenuEntry.separator(),
+        ...display,
+      ],
+      if (staging) ...[
+        const GitMenuEntry.separator(),
+        if (!visible.contains('lines') && _selected.isEmpty)
+          GitMenuEntry('lines', lines, enabled: false),
+        GitMenuEntry(
+          'index',
+          GitMessages.editIndexInThreeWayView,
+          enabled: _canStage,
+        ),
+      ],
+    ];
+    Widget control(String id) {
+      final (message, glyph, callback) = actions[id]!;
+      if (id == 'mode') {
+        return GitMenuButton(
+          key: const ValueKey('git-diff-mode'),
+          host: host,
+          tooltip: GitMessages.comparisonMode,
+          entries: modes,
+          onSelected: act,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(child: GitLabel(mode)),
+              SizedBox(width: host.spacing),
+              GitIcon(GitGlyph.down, size: host.spacing * 2),
+            ],
+          ),
+        );
+      }
+      if (id == 'display')
+        return GitMenuButton(
+          key: const ValueKey('git-diff-display-options'),
+          host: host,
+          glyph: GitGlyph.options,
+          tooltip: GitMessages.diffDisplayOptions,
+          entries: display,
+          onSelected: act,
+        );
+      if (glyph != null)
+        return GitIconButton(
+          key: ValueKey(
+            id == 'source' ? 'git-diff-open-source' : 'git-diff-$id',
+          ),
+          tooltip: message,
+          onPressed: callback,
+          icon: GitIcon(glyph),
+        );
+      return GitButton(
+        key: ValueKey('git-diff-$id'),
+        onPressed: callback,
+        child: GitLabel(message),
+      );
+    }
+
+    return Row(
+      key: const ValueKey('git-diff-toolbar'),
+      children: [
+        for (final id in actions.keys.where(visible.contains)) ...[
+          SizedBox(width: extent(id), child: control(id)),
+          SizedBox(width: gap),
+        ],
+        const Spacer(),
+        SizedBox(
+          width: iconWidth,
+          child: GitMenuButton(
+            key: const ValueKey('git-diff-overflow'),
+            host: host,
+            glyph: GitGlyph.moreHorizontal,
+            tooltip: GitMessages.actions,
+            entries: overflow,
+            onSelected: act,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _label(GitContent content) {
     final label = gitString(
       context,
@@ -955,11 +962,14 @@ final class _GitDiffViewState extends State<GitDiffView> {
             : '',
       },
     );
+    final visible = content.availability == ContentAvailability.absent
+        ? '${gitVersionLabel(context, content.version)} · \u2066${content.path.display}\u2069 · ${gitString(context, GitMessages.absentContent)}'
+        : label;
     return GitTooltip(
       message: label,
       child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+        padding: EdgeInsets.all(widget.session.host.spacing / 2),
+        child: Text(visible, maxLines: 2, overflow: TextOverflow.ellipsis),
       ),
     );
   }

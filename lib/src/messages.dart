@@ -136,6 +136,10 @@ abstract final class GitMessages {
   static const nextChangedFile = "Next changed file";
   static const previousDifference = "Previous difference";
   static const nextDifference = "Next difference";
+  static const committer = "Committer";
+  static const stageSelectedLines = "Stage selected lines";
+  static const unstageSelectedLines = "Unstage selected lines";
+  static const editIndexInThreeWayView = "Edit Index in Three-Way View…";
   static const comparisonMode = "Comparison mode";
   static const sideBySide = "Side by side";
   static const unified = "Unified";
@@ -1793,5 +1797,9 @@ abstract final class GitMessages {
     removeFilter,
     noCommitsYet,
     nativeMenuUnavailable,
+    committer,
+    stageSelectedLines,
+    unstageSelectedLines,
+    editIndexInThreeWayView,
   ];
 }

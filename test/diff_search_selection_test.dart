@@ -609,9 +609,7 @@ void main() {
     (tester) async {
       final (session, client) = await _review(tester);
       final stageFile = tester
-          .widget<TextButton>(
-            find.widgetWithText(TextButton, 'Stage whole file'),
-          )
+          .widget<TextButton>(find.widgetWithText(TextButton, 'Stage file'))
           .onPressed!;
       final stageHunk = tester
           .widget<TextButton>(
@@ -619,8 +617,8 @@ void main() {
           )
           .onPressed!;
       final openSource = tester
-          .widget<TextButton>(
-            find.widgetWithText(TextButton, 'Open current file'),
+          .widget<GitIconButton>(
+            find.byKey(const ValueKey('git-diff-open-source')),
           )
           .onPressed!;
       final firstChanged = computeTextDiff(
@@ -745,7 +743,7 @@ void main() {
         tester,
         presentationHost: presentationHost,
       );
-      await tester.tap(find.text('Open current file'));
+      await tester.tap(find.byKey(const ValueKey('git-diff-open-source')));
       expect(opened, [RepoPath.text('chapter/notes.md')]);
       await tester.pumpWidget(
         GitTestApp(
@@ -765,7 +763,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 120)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Open current file'), findsNothing);
+      expect(find.byKey(const ValueKey('git-diff-open-source')), findsNothing);
       expect(opened, hasLength(1));
     },
   );
@@ -821,7 +819,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('2 changed lines selected'), findsOneWidget);
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-      await tester.tap(find.text('Stage selected changed lines'));
+      await tester.tap(find.text('Stage selected lines'));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 100)),
       );

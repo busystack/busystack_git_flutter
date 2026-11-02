@@ -36,6 +36,9 @@ class TestGitPresentation implements GitPresentation {
   }
 
   @override
+  String formatCommitDate(BuildContext context, DateTime date) =>
+      MaterialLocalizations.of(context).formatMediumDate(date.toLocal());
+  @override
   Future<(DateTime, DateTime)?> dateRange(
     BuildContext context, {
     DateTime? start,
@@ -245,6 +248,9 @@ class TestGitPresentation implements GitPresentation {
 }
 
 const testGitIcons = {
+  GitGlyph.copy: Icons.copy,
+  GitGlyph.options: Icons.settings,
+  GitGlyph.moreHorizontal: Icons.more_horiz,
   GitGlyph.back: Icons.arrow_back,
   GitGlyph.branch: Icons.account_tree_outlined,
   GitGlyph.history: Icons.history,
