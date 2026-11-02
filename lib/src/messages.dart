@@ -137,6 +137,7 @@ abstract final class GitMessages {
   static const previousDifference = "Previous difference";
   static const nextDifference = "Next difference";
   static const viewCommitDetails = "View commit details…";
+  static const copyCommitMessage = "Copy commit message";
   static const commitHash = "Commit hash";
   static const commitReferences = "References";
   static const committer = "Committer";
@@ -1807,5 +1808,6 @@ abstract final class GitMessages {
     viewCommitDetails,
     commitHash,
     commitReferences,
+    copyCommitMessage,
   ];
 }

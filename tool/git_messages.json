@@ -796,5 +796,6 @@
   "editIndexInThreeWayView": "Edit Index in Three-Way View…",
   "viewCommitDetails": "View commit details…",
   "commitHash": "Commit hash",
-  "commitReferences": "References"
+  "commitReferences": "References",
+  "copyCommitMessage": "Copy commit message"
 }

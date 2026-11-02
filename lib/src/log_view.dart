@@ -2598,6 +2598,7 @@ final class _GitLogViewState extends State<GitLogView> {
           sectionStart: true,
         ),
         const GitMenuEntry('copy', GitMessages.copyCommitHash),
+        const GitMenuEntry('copyMessage', GitMessages.copyCommitMessage),
       ],
       position: position,
       localizeTitle: false,
@@ -2612,6 +2613,10 @@ final class _GitLogViewState extends State<GitLogView> {
     }
     if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: commit.oid.value));
+      return;
+    }
+    if (action == 'copyMessage') {
+      await Clipboard.setData(ClipboardData(text: commit.message));
       return;
     }
     if (action != null) {

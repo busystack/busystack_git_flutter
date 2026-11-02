@@ -171,6 +171,9 @@ dedicated Copy/Details icons. Details have labelled message, author, committer,
 commit, parent and reference fields. Full localized dates are normal text;
 exact timestamps remain in accessible tooltips. Parent identity is never
 fabricated at shallow boundaries. The complete message is selectable verbatim.
+The former whole-message Copy Text operation remains contextually available
+once as Copy Commit Message; it is distinct from copying selected text through
+the native text menu. Neither metadata copy operation mutates the repository.
 
 The resolved audit follows constant IconData through imported host catalogs and
 aliases and rejects MaterialIcons. It rejects expanded/dynamic presentation of
