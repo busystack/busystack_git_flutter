@@ -36,8 +36,13 @@ class TestGitPresentation implements GitPresentation {
   }
 
   @override
-  String formatCommitDate(BuildContext context, DateTime date) =>
-      MaterialLocalizations.of(context).formatMediumDate(date.toLocal());
+  String formatCommitDate(
+    BuildContext context,
+    DateTime date, {
+    bool full = false,
+  }) => full
+      ? MaterialLocalizations.of(context).formatFullDate(date.toLocal())
+      : MaterialLocalizations.of(context).formatMediumDate(date.toLocal());
   @override
   Future<(DateTime, DateTime)?> dateRange(
     BuildContext context, {

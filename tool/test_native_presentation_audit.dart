@@ -36,6 +36,39 @@ Future<void> main() async {
         throw StateError('Architecture gate accepted forbidden example $i');
       }
     }
+    final glyphCatalog = File('${temp.path}/glyph_catalog.dart')
+      ..writeAsStringSync(
+        "import 'package:flutter/material.dart' as m; class NativeCatalog { static const branch = m.Icons.fork_right; }",
+      );
+    final indirectGlyph = File('${temp.path}/indirect_glyph.dart')
+      ..writeAsStringSync(
+        "import 'glyph_catalog.dart' as approved; const alias = approved.NativeCatalog.branch; final gitGlyph = alias;",
+      );
+    if ((await auditNativeGitSources([indirectGlyph.path])).isEmpty) {
+      throw StateError(
+        'Material glyph hidden in an approved-looking catalog passed',
+      );
+    }
+    // The shared fixture graph has no Yaru dependency. Test a legitimate native
+    // IconData directly, without borrowing either application's implementation.
+    glyphCatalog.writeAsStringSync(
+      "import 'package:flutter/widgets.dart'; class NativeCatalog { static const branch = IconData(1, fontFamily: 'YaruIcons', fontPackage: 'yaru'); }",
+    );
+    if ((await auditNativeGitSources([indirectGlyph.path])).isNotEmpty) {
+      throw StateError('Legitimate native glyph was rejected');
+    }
+    for (final expanded in ['true', 'false', 'variable']) {
+      final metadata = File('${temp.path}/metadata_$expanded.dart')
+        ..writeAsStringSync(
+          "import 'package:flutter/widgets.dart'; import 'package:busystack_git_flutter/src/host.dart'; import 'package:busystack_git_flutter/src/commit_details.dart'; typedef Details = GitCommitDetails; Future<void> show(BuildContext c, GitHost host, Details content, bool variable) async { await host.present<void>(c, 'details', content, expanded: $expanded); }",
+        );
+      final errors = await auditNativeGitSources([metadata.path]);
+      if (errors.isNotEmpty != (expanded != 'false')) {
+        throw StateError(
+          'Compact commit metadata enforcement failed: $expanded',
+        );
+      }
+    }
     final design = File('${temp.path}/lib/src/app/busymark_design.dart');
     design.parent.createSync(recursive: true);
     design.writeAsStringSync('''

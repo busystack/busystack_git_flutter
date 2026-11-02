@@ -1,5 +1,6 @@
 import 'presentation.dart';
 import 'historical_change_tree.dart';
+import 'commit_details.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
@@ -2013,71 +2014,17 @@ final class _GitLogViewState extends State<GitLogView> {
     return message.trimRight() == commit.subject.trimRight() ? '' : message;
   }
 
-  Future<void> _commitDetails(
-    GitCommit commit,
-  ) => widget.session.host.present<void>(
-    context,
-    GitMessages.commitDetails,
-    SingleChildScrollView(
-      key: const ValueKey('git-complete-commit-information'),
-      padding: EdgeInsets.all(widget.session.host.spacing),
-      child: GitSelectionArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GitButton.icon(
-              onPressed: () =>
-                  Clipboard.setData(ClipboardData(text: commit.message)),
-              icon: const GitIcon(GitGlyph.copy),
-              label: const GitLabel(GitMessages.copyText),
-            ),
-            GitSelectableText(commit.message),
-            GitSelectableText(
-              gitString(
-                context,
-                GitMessages.authorArg0Arg1Arg2,
-                values: {
-                  'arg0': commit.author,
-                  'arg1': commit.email,
-                  'arg2': commit.date.toIso8601String(),
-                },
-              ),
-            ),
-            GitSelectableText(
-              gitString(
-                context,
-                GitMessages.committerArg0Arg1Arg2,
-                values: {
-                  'arg0': commit.committer,
-                  'arg1': commit.committerEmail,
-                  'arg2': commit.committerDate?.toIso8601String(),
-                },
-              ),
-            ),
-            GitSelectableText(commit.oid.value),
-            for (final parent in commit.parents)
-              GitSelectableText(
-                gitString(
-                  context,
-                  GitMessages.parentArg0,
-                  values: {'arg0': parent.value},
-                ),
-              ),
-            for (final reference in _references.where(
-              (ref) => ref.oid == commit.oid,
-            ))
-              GitSelectableText(reference.name),
-            if (commit.boundary)
-              const GitLabel(
-                GitMessages.shallowPartialBoundaryAParentObjectIsUnavailable,
-              ),
-          ],
+  Future<void> _commitDetails(GitCommit commit) =>
+      widget.session.host.present<void>(
+        context,
+        GitMessages.commitDetails,
+        GitCommitDetails(
+          commit: commit,
+          references: List.unmodifiable(
+            _references.where((ref) => ref.oid == commit.oid),
+          ),
         ),
-      ),
-    ),
-    expanded: true,
-  );
+      );
 
   Widget _compactDetailPane() {
     final commit = _selected!;
@@ -2185,20 +2132,6 @@ final class _GitLogViewState extends State<GitLogView> {
                             commit.oid.abbreviated,
                             tooltip: commit.oid.value,
                           ),
-                        ),
-                        GitIconButton(
-                          key: const ValueKey('git-copy-commit-id'),
-                          tooltip: GitMessages.copyFullObjectID,
-                          onPressed: () => Clipboard.setData(
-                            ClipboardData(text: commit.oid.value),
-                          ),
-                          icon: const GitIcon(GitGlyph.copy),
-                        ),
-                        GitIconButton(
-                          key: const ValueKey('git-commit-details'),
-                          tooltip: GitMessages.commitDetails,
-                          onPressed: () => unawaited(_commitDetails(commit)),
-                          icon: const GitIcon(GitGlyph.expand),
                         ),
                         if (!_selectionOnly)
                           Builder(
@@ -2660,10 +2593,11 @@ final class _GitLogViewState extends State<GitLogView> {
             }.contains(action),
           ),
         const GitMenuEntry(
-          'copy',
-          GitMessages.copyFullObjectID,
+          'details',
+          GitMessages.viewCommitDetails,
           sectionStart: true,
         ),
+        const GitMenuEntry('copy', GitMessages.copyCommitHash),
       ],
       position: position,
       localizeTitle: false,
@@ -2672,6 +2606,10 @@ final class _GitLogViewState extends State<GitLogView> {
         generation != _generation ||
         historyRevision != _historyRevision)
       return;
+    if (action == 'details') {
+      await _commitDetails(commit);
+      return;
+    }
     if (action == 'copy') {
       await Clipboard.setData(ClipboardData(text: commit.oid.value));
       return;

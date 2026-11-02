@@ -190,7 +190,7 @@
   "toggleBranchesPane": "Toggle branches pane",
   "filterBranchesAndTags": "Filter branches and tags",
   "commitArg0": "Commit {arg0}",
-  "commitDetails": "Commit details…",
+  "commitDetails": "Commit details",
   "referenceArg0": "Reference: {arg0}",
   "selectThisCommit": "Select this commit",
   "branchOrTag": "Branch or tag",
@@ -225,7 +225,7 @@
   "revertCommit": "Revert commit",
   "interactiveRebaseAfterThisBoundary": "Interactive rebase after this boundary",
   "resetCurrentBranch": "Reset current branch",
-  "copyFullObjectID": "Copy full object ID",
+  "copyCommitHash": "Copy commit hash",
   "goToCommitReference2": "Go to commit/reference",
   "enterACommitIDOrReferenceToRevealInLog": "Enter a commit ID or reference to reveal in Log.",
   "theRequestedRevisionIsUnavailable": "The requested revision is unavailable.",
@@ -793,5 +793,8 @@
   "committer": "Committer",
   "stageSelectedLines": "Stage selected lines",
   "unstageSelectedLines": "Unstage selected lines",
-  "editIndexInThreeWayView": "Edit Index in Three-Way View…"
+  "editIndexInThreeWayView": "Edit Index in Three-Way View…",
+  "viewCommitDetails": "View commit details…",
+  "commitHash": "Commit hash",
+  "commitReferences": "References"
 }

@@ -150,3 +150,33 @@ and [Git rev-parse](https://git-scm.com/docs/git-rev-parse).
 The pinned local Yaru checkbox/check-button APIs were inspected without changes.
 BusyMark's host components and the explicit product requirements remain the
 presentation authority; no upstream dependency or runtime pin changes apply.
+
+## Commit metadata remediation (2026-11-02)
+
+The rendering chain is part of the contract, not a wrapper allowlist:
+
+| Git request | BusyMark rendering path | Observable rule |
+| --- | --- | --- |
+| Commit details | GitCommitDetails → GitHost.present (compact) → showBusyMarkModalDialog → BusyMarkDialogShell → Yaru-themed Dialog | dialogWide maximum width, natural short-record height; only host-owned scrolling for long records |
+| Selectable fields | GitSelectableText → BusyMarkGitPresentation.selectable → SelectableText with GitTextContextMenu | exact original message, keyboard/context copy, no permanent Copy Text control |
+| Context actions | GitIconButton → BusyMarkGitPresentation.iconAction → BusyMarkHeaderIconButton → IconButton with official Yaru defaults and semantic rectangular focus | flat resting state, native hover/press/focus/disabled states and separate row targets |
+| Inline text actions | GitButton.inline → BusyMarkPushButton.flat → Yaru-themed TextButton | native typography/geometry and neutral resting fill; a TextButton class name alone is insufficient |
+| Commit controls | standard/suggested GitButton → existing BusyMarkPushButton → themed FilledButton/ElevatedButton | approved primary/secondary native treatment, not feature-local Material appearance |
+| Git branch glyph | BusyMarkGlyphs.branch → official YaruIcons.share three-node graph | native Yaru font/package; existing GTK branch-menu artwork remains first-party |
+| Historical row actions | GitHistoricalChangeTree → GitMenuButton(moreHorizontal) → host flat icon action/native menu | horizontal contextual glyph, not the generic three-line primary-menu glyph |
+
+Commit Actions owns one Copy Commit Hash action (complete immutable ID) and
+View Commit Details. The inspector shows an abbreviated identity without
+dedicated Copy/Details icons. Details have labelled message, author, committer,
+commit, parent and reference fields. Full localized dates are normal text;
+exact timestamps remain in accessible tooltips. Parent identity is never
+fabricated at shallow boundaries. The complete message is selectable verbatim.
+
+The resolved audit follows constant IconData through imported host catalogs and
+aliases and rejects MaterialIcons. It rejects expanded/dynamic presentation of
+typed commit metadata, with forbidden and legitimate self-test examples. Actual
+host tests measure the painted dialog Material surface (the Dialog widget's
+route wrapper spans the window), natural height, long-content reachability,
+native copying, all historical actions, glyphs and disjoint target geometry.
+Shared/BusyFiles compact presentation retains each host's own dialog/navigation;
+large history browsers and three-way editors retain expanded surfaces.

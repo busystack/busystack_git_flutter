@@ -136,6 +136,9 @@ abstract final class GitMessages {
   static const nextChangedFile = "Next changed file";
   static const previousDifference = "Previous difference";
   static const nextDifference = "Next difference";
+  static const viewCommitDetails = "View commit details…";
+  static const commitHash = "Commit hash";
+  static const commitReferences = "References";
   static const committer = "Committer";
   static const stageSelectedLines = "Stage selected lines";
   static const unstageSelectedLines = "Unstage selected lines";
@@ -257,7 +260,7 @@ abstract final class GitMessages {
   static const toggleBranchesPane = "Toggle branches pane";
   static const filterBranchesAndTags = "Filter branches and tags";
   static const commitArg0 = "Commit {arg0}";
-  static const commitDetails = "Commit details…";
+  static const commitDetails = "Commit details";
   static const referenceArg0 = "Reference: {arg0}";
   static const selectThisCommit = "Select this commit";
   static const branchOrTag = "Branch or tag";
@@ -296,7 +299,7 @@ abstract final class GitMessages {
   static const interactiveRebaseAfterThisBoundary =
       "Interactive rebase after this boundary";
   static const resetCurrentBranch = "Reset current branch";
-  static const copyFullObjectID = "Copy full object ID";
+  static const copyCommitHash = "Copy commit hash";
   static const goToCommitReference2 = "Go to commit/reference";
   static const enterACommitIDOrReferenceToRevealInLog =
       "Enter a commit ID or reference to reveal in Log.";
@@ -1231,7 +1234,7 @@ abstract final class GitMessages {
     revertCommit,
     interactiveRebaseAfterThisBoundary,
     resetCurrentBranch,
-    copyFullObjectID,
+    copyCommitHash,
     goToCommitReference2,
     enterACommitIDOrReferenceToRevealInLog,
     theRequestedRevisionIsUnavailable,
@@ -1801,5 +1804,8 @@ abstract final class GitMessages {
     stageSelectedLines,
     unstageSelectedLines,
     editIndexInThreeWayView,
+    viewCommitDetails,
+    commitHash,
+    commitReferences,
   ];
 }

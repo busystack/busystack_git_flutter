@@ -10,7 +10,11 @@ import 'host.dart';
 abstract interface class GitPresentation {
   ThemeData theme(BuildContext context);
   TextStyle? codeStyle(BuildContext context);
-  String formatCommitDate(BuildContext context, DateTime date);
+  String formatCommitDate(
+    BuildContext context,
+    DateTime date, {
+    bool full = false,
+  });
   GitColors colors(BuildContext context);
   Future<(DateTime, DateTime)?> dateRange(
     BuildContext context, {

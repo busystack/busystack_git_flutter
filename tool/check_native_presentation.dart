@@ -105,6 +105,27 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
   final _seen = <int>{};
   void check(AstNode node, Element? element, {bool construction = false}) {
     if (element == null) return;
+    // Follow resolved constants through the host glyph catalog and aliases.
+    // Being declared in a permitted design file cannot authorize Material artwork.
+    final variable = element is PropertyAccessorElement
+        ? element.variable
+        : element is VariableElement
+        ? element
+        : null;
+    final type = variable?.type;
+    if (type is InterfaceType && type.element.name == 'IconData') {
+      final icon = variable?.computeConstantValue();
+      if (icon?.getField('fontFamily')?.toStringValue() == 'MaterialIcons' &&
+          _seen.add(node.offset)) {
+        violations.add(
+          NativeUiViolation(
+            path,
+            node.offset,
+            'Material Git glyph through host mapping',
+          ),
+        );
+      }
+    }
     final library = element.library?.uri.toString() ?? '';
     final nativeDesign = library.endsWith('/src/app/busymark_design.dart');
     if (nativeDesign && element.name == 'showBusyMarkMenu') {
@@ -223,6 +244,41 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
     checkComparisonChoice(node, node.staticType);
     check(node, node.constructorName.element, construction: true);
     super.visitConstructorReference(node);
+  }
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    final target = node.target?.staticType;
+    if (node.methodName.name == 'present' &&
+        target is InterfaceType &&
+        target.element.name == 'GitHost' &&
+        target.element.library.uri.toString().endsWith('/src/host.dart')) {
+      final arguments = node.argumentList.arguments;
+      final details = arguments.where((a) => a is! NamedExpression).any((a) {
+        final type = a.staticType;
+        return type is InterfaceType &&
+            type.element.name == 'GitCommitDetails' &&
+            type.element.library.uri.toString().endsWith(
+              '/src/commit_details.dart',
+            );
+      });
+      if (details) {
+        for (final argument in arguments.whereType<NamedExpression>()) {
+          if (argument.name.label.name == 'expanded' &&
+              !(argument.expression is BooleanLiteral &&
+                  !(argument.expression as BooleanLiteral).value)) {
+            violations.add(
+              NativeUiViolation(
+                path,
+                argument.offset,
+                'commit metadata requires compact host presentation',
+              ),
+            );
+          }
+        }
+      }
+    }
+    super.visitMethodInvocation(node);
   }
 }
 

@@ -44,3 +44,12 @@ measured toolbar and the native checked mode menu at every width. Circular
 choice bars are forbidden there, including aliases; three-way editor pane
 choices remain separate. Preserve explicit file/selected-line/hunk staging,
 version-bound callbacks, editor guards, and both consumers' native adapters.
+
+Commit metadata uses compact host presentation, with natural content height and
+host-owned overflow. No expanded metadata modal, permanent Copy/Details icons,
+or Copy Text button belongs in the inspector. Commit Actions owns View Commit
+Details and the single Copy Commit Hash operation. Historical row menus request
+the horizontal contextual glyph explicitly. Resolve host icon constants too:
+an approved catalog/wrapper cannot authorize MaterialIcons. Rendered host tests
+must measure the painted dialog surface and complete selectable metadata, not
+the full-window Dialog route wrapper or only class names.
