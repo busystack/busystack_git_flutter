@@ -108,3 +108,45 @@ zero in the typed snapshot. Parser, background status and JSON handoff preserve
 this bit; old packets remain honestly unknown. Discovery, mutation/preconditions,
 Git invocations and transaction semantics are unchanged. BusyMark renders
 unknown counts as question marks with localized accessible descriptions.
+
+## Commit refinement (2026-11-01, graphical review)
+
+The branch-management control uses the existing neutral, borderless TextButton
+style of BusyMark's non-Git native popup selector, through
+`BusyMarkPushButton.flat`. It remains an ordinary button opening the complete
+Branches modal, without copying the selector's interaction. Inline requests
+must not map to filled standard buttons. Resting fills, interaction states,
+localized truncation and actual modal/menu destinations are tested.
+
+BusyMark's Commit repository menu contains Refresh and excludes its duplicate
+Branches entry. F5 and the dedicated branch keyboard commands remain. Other
+hosts retain the default repository menu and workspace toolbar. Workspace
+identity owns the full-path tooltip. The earlier branch-path-tooltip and
+standalone-Refresh mapping above is superseded by this refinement.
+
+Git change rows use the Files-tree metrics with an explicit sibling action
+column, separated by the existing xs gap. The native row activation/selection
+surface ends before the stage/unstage hit region. Disabled actions, disclosure,
+selection and file activation retain their independent handlers.
+
+BusyMarkCheckbox's labelled form uses official YaruCheckButton/YaruCheckbox,
+with its native geometry, state painting, label activation, focus and merged
+semantics. Existing unlabelled non-Git checkboxes remain unchanged. Amend uses
+this labelled form; its draft/transaction logic is untouched. BusyFiles maps
+optional labelled requests to its established BusyFilesCheckOption; its current
+workspace amend layout is retained.
+
+The exclusive trust sidebar is concise. The native confirmation identifies the
+repository and distinguishes limited passive metadata from authorization of
+potentially executable hooks, filters, credential helpers and signing tools.
+Neither UI copy nor choosing trust authorizes a queued operation.
+
+Interaction references consulted for this correction:
+[GNOME buttons](https://developer.gnome.org/hig/patterns/controls/buttons.html),
+[menus](https://developer.gnome.org/hig/patterns/controls/menus.html),
+[dialogs](https://developer.gnome.org/hig/patterns/feedback/dialogs.html),
+[checkboxes](https://developer.gnome.org/hig/patterns/controls/checkboxes.html),
+and [Git rev-parse](https://git-scm.com/docs/git-rev-parse).
+The pinned local Yaru checkbox/check-button APIs were inspected without changes.
+BusyMark's host components and the explicit product requirements remain the
+presentation authority; no upstream dependency or runtime pin changes apply.

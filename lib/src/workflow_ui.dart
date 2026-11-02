@@ -91,12 +91,16 @@ final class GitWorkflowUi {
     if (folder != null) await session.host.openFolder?.call(folder);
   }
 
-  Future<void> more() async {
+  Future<void> more({
+    bool showBranches = true,
+    bool includeRefresh = false,
+  }) async {
     final actions = {
+      if (includeRefresh) 'refresh': GitMessages.refresh,
       'fetch': GitMessages.fetch2,
       'pull': GitMessages.pull,
       'push': GitMessages.push2,
-      'branches': GitMessages.branches2,
+      if (showBranches) 'branches': GitMessages.branches2,
       'remotes': GitMessages.manageRemotes,
       'merge': gitString(
         context,
@@ -121,12 +125,13 @@ final class GitWorkflowUi {
           GitMenuEntry(
             e.key,
             session.snapshot != null ||
-                    const {'clone', 'revokeTrust'}.contains(e.key)
+                    const {'clone', 'revokeTrust', 'refresh'}.contains(e.key)
                 ? e.value
                 : '${session.host.message(e.value)} · ${session.loading ? gitString(context, GitMessages.waitingForRepositoryStatus) : gitString(context, GitMessages.repositoryStatusUnavailableRefresh)}',
-            enabled:
-                session.snapshot != null ||
-                const {'clone', 'revokeTrust'}.contains(e.key),
+            enabled: e.key == 'refresh'
+                ? !session.refreshing
+                : session.snapshot != null ||
+                      const {'clone', 'revokeTrust'}.contains(e.key),
             sectionStart: const {
               'merge',
               'stashes',
@@ -138,6 +143,8 @@ final class GitWorkflowUi {
     );
     if (!context.mounted || action == null) return;
     switch (action) {
+      case 'refresh':
+        await session.refresh(clearOperationFailure: true);
       case 'branches':
         await branches();
       case 'push':

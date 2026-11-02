@@ -33,6 +33,7 @@ final class GitCommitView extends StatelessWidget {
     this.notice,
     this.layout = GitCommitLayout.workspace,
     this.trackingDescription,
+    this.branchActionLabel,
     this.minimumWidth = 220,
     this.active = true,
     this.reviewContext,
@@ -44,6 +45,7 @@ final class GitCommitView extends StatelessWidget {
   final Widget? notice;
   final GitCommitLayout layout;
   final double minimumWidth;
+  final String? branchActionLabel;
   final String Function(GitSnapshot snapshot)? trackingDescription;
   final bool active;
 
@@ -524,6 +526,28 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     required double messageMinimum,
   }) {
     final snapshot = session.snapshot;
+    final branchButton = GitTooltip(
+      message: view.branchActionLabel ?? session.repository.root,
+      child: Semantics(
+        label: view.branchActionLabel,
+        child: GitButton.icon(
+          onPressed: () => _leaveReview(view.onBranches),
+          icon: GitIcon(GitGlyph.branch, size: 16),
+          label: Text(
+            snapshot?.branch ??
+                (snapshot?.head == null
+                    ? gitString(context, GitMessages.repository)
+                    : gitString(
+                        context,
+                        GitMessages.detachedArg0,
+                        values: {'arg0': snapshot!.head!.abbreviated},
+                      )),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
     return FocusTraversalGroup(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -536,27 +560,12 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                 Row(
                   children: [
                     Expanded(
-                      child: GitTooltip(
-                        message: session.repository.root,
-                        child: GitButton.icon(
-                          onPressed: () => _leaveReview(view.onBranches),
-                          icon: GitIcon(GitGlyph.branch, size: 16),
-                          label: Text(
-                            snapshot?.branch ??
-                                (snapshot?.head == null
-                                    ? gitString(context, GitMessages.repository)
-                                    : gitString(
-                                        context,
-                                        GitMessages.detachedArg0,
-                                        values: {
-                                          'arg0': snapshot!.head!.abbreviated,
-                                        },
-                                      )),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ),
+                      child: _sidebar
+                          ? Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: branchButton,
+                            )
+                          : branchButton,
                     ),
                     SizedBox(width: host.spacing),
                     if (!_sidebar)
@@ -565,16 +574,17 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                         onPressed: () => _leaveReview(view.onLog),
                         icon: GitIcon(GitGlyph.history, size: 18),
                       ),
-                    GitIconButton(
-                      tooltip: gitString(context, GitMessages.refresh),
-                      onPressed: session.refreshing
-                          ? null
-                          : () => unawaited(
-                              session.refresh(clearOperationFailure: true),
-                            ),
-                      icon: const GitIcon(GitGlyph.refresh, size: 18),
-                    ),
-                    SizedBox(width: host.spacing),
+                    if (!_sidebar)
+                      GitIconButton(
+                        tooltip: gitString(context, GitMessages.refresh),
+                        onPressed: session.refreshing
+                            ? null
+                            : () => unawaited(
+                                session.refresh(clearOperationFailure: true),
+                              ),
+                        icon: const GitIcon(GitGlyph.refresh, size: 18),
+                      ),
+                    if (!_sidebar) SizedBox(width: host.spacing),
                     Builder(
                       builder: (anchor) => GitIconButton(
                         tooltip: gitString(
@@ -732,49 +742,72 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                   children: [
                     Row(
                       children: [
-                        Semantics(
-                          label: gitString(
-                            context,
-                            _amend
-                                ? GitMessages.amendRevision
-                                : GitMessages.amendLastCommit,
-                            values: {
-                              'revision': _amend
-                                  ? _amendTarget?.abbreviated ?? ''
-                                  : snapshot?.head?.abbreviated ?? '',
-                            },
-                          ),
-                          checked: _amend,
-                          enabled: !session.running && snapshot?.head != null,
-                          onTap: session.running || snapshot?.head == null
-                              ? null
-                              : () => unawaited(_setAmend(!_amend)),
-                          child: ExcludeSemantics(
+                        if (_sidebar)
+                          Expanded(
                             child: GitCheckbox(
+                              label: gitString(
+                                context,
+                                _amend
+                                    ? GitMessages.amendRevision
+                                    : GitMessages.amendLastCommit,
+                                values: {
+                                  'revision': _amend
+                                      ? _amendTarget?.abbreviated ?? ''
+                                      : snapshot?.head?.abbreviated ?? '',
+                                },
+                              ),
                               value: _amend,
                               onChanged:
                                   session.running || snapshot?.head == null
                                   ? null
                                   : (value) => unawaited(_setAmend(value!)),
                             ),
-                          ),
-                        ),
-                        Expanded(
-                          child: ExcludeSemantics(
-                            child: GitLabel(
+                          )
+                        else ...[
+                          Semantics(
+                            label: gitString(
+                              context,
                               _amend
                                   ? GitMessages.amendRevision
                                   : GitMessages.amendLastCommit,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                               values: {
                                 'revision': _amend
                                     ? _amendTarget?.abbreviated ?? ''
                                     : snapshot?.head?.abbreviated ?? '',
                               },
                             ),
+                            checked: _amend,
+                            enabled: !session.running && snapshot?.head != null,
+                            onTap: session.running || snapshot?.head == null
+                                ? null
+                                : () => unawaited(_setAmend(!_amend)),
+                            child: ExcludeSemantics(
+                              child: GitCheckbox(
+                                value: _amend,
+                                onChanged:
+                                    session.running || snapshot?.head == null
+                                    ? null
+                                    : (value) => unawaited(_setAmend(value!)),
+                              ),
+                            ),
                           ),
-                        ),
+                          Expanded(
+                            child: ExcludeSemantics(
+                              child: GitLabel(
+                                _amend
+                                    ? GitMessages.amendRevision
+                                    : GitMessages.amendLastCommit,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                values: {
+                                  'revision': _amend
+                                      ? _amendTarget?.abbreviated ?? ''
+                                      : snapshot?.head?.abbreviated ?? '',
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
                         GitMenuButton(
                           host: session.host,
                           onSelected: (value) => _options(value),

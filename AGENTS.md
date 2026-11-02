@@ -30,3 +30,8 @@ native tree geometry and accessibility agree. BusyMark uses its existing flat
 header action and sidebar tree treatment; compact circular actions are rejected
 by resolved symbol identity even when aliased. Preserve BusyFiles' workspace
 layout and descendant navigation when changing shared Commit presentation.
+
+Respect host inline/standard/suggested action distinctions and optional labelled
+checkbox requests. Compact sidebar hosts may put Refresh in their repository
+menu and omit its duplicate Branches entry; default workspace navigation stays
+available. Verify both native adapters whenever a presentation request changes.

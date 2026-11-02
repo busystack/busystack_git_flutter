@@ -68,6 +68,18 @@ void main() {
       await session.start();
       await GitWorkflowUi(current, session).more();
       expect(entries.firstWhere((e) => e.id == 'stashes').enabled, isTrue);
+      expect(entries.any((e) => e.id == 'branches'), isTrue);
+      expect(entries.any((e) => e.id == 'refresh'), isFalse);
+      await GitWorkflowUi(
+        current,
+        session,
+      ).more(showBranches: false, includeRefresh: true);
+      expect(entries.any((e) => e.id == 'branches'), isFalse);
+      expect(entries.firstWhere((e) => e.id == 'refresh').enabled, isTrue);
+      // The default consumer menu retains its original destinations.
+      await GitWorkflowUi(current, session).more();
+      expect(entries.any((e) => e.id == 'branches'), isTrue);
+
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       session.dispose();

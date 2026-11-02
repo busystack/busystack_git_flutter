@@ -100,11 +100,17 @@ class TestGitPresentation implements GitPresentation {
     ),
   );
   @override
-  Widget checkbox(BuildContext context, GitCheckbox c) => Checkbox(
-    value: c.value,
-    tristate: c.value == null,
-    onChanged: c.onChanged,
-  );
+  Widget checkbox(BuildContext context, GitCheckbox c) => c.label == null
+      ? Checkbox(
+          value: c.value,
+          tristate: c.value == null,
+          onChanged: c.onChanged,
+        )
+      : CheckboxListTile(
+          title: Text(c.label!),
+          value: c.value,
+          onChanged: c.onChanged,
+        );
   @override
   Widget choice<T>(BuildContext context, GitChoice<T> c) =>
       c.initialValue != null

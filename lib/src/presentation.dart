@@ -158,7 +158,15 @@ final class GitTextField extends StatelessWidget {
 }
 
 final class GitCheckbox extends StatelessWidget {
-  const GitCheckbox({super.key, required this.value, required this.onChanged});
+  const GitCheckbox({
+    super.key,
+    required this.value,
+    required this.onChanged,
+    this.label,
+  });
+
+  /// A desktop check choice whose native label shares the activation target.
+  final String? label;
   final bool? value;
   final ValueChanged<bool?>? onChanged;
   @override
