@@ -114,6 +114,66 @@ Widget surface() => Column(children: [GitButton(onPressed: () {}, child: const T
 """);
     if ((await auditNativeGitSources([approved.path])).isNotEmpty)
       throw StateError('Rejected approved host-bound controls');
+    final hiddenWrapper = File('${temp.path}/approved_wrapper.dart')
+      ..writeAsStringSync('''
+import 'package:flutter/material.dart' as material;
+import 'package:flutter/widgets.dart' as widgets;
+class ApprovedLookingWrapper extends widgets.StatelessWidget {
+  const ApprovedLookingWrapper({super.key});
+  @override
+  widgets.Widget build(widgets.BuildContext context) =>
+      material.TextButton(onPressed: () {}, child: const widgets.Text('bad'));
+}
+class UnrelatedMaterialControl extends widgets.StatelessWidget {
+  const UnrelatedMaterialControl({super.key});
+  @override
+  widgets.Widget build(widgets.BuildContext context) =>
+      material.IconButton(onPressed: () {}, icon: const widgets.Icon(material.Icons.add));
+}
+''');
+    final hostChain = File('${temp.path}/host_chain.dart')
+      ..writeAsStringSync('''
+import 'package:flutter/widgets.dart' as widgets;
+import 'approved_wrapper.dart';
+class GitHostAdapter {
+  widgets.Widget button() => const ApprovedLookingWrapper();
+}
+''');
+    final hiddenHostViolation = await auditFirstPartyPresentationChain(
+      hostChain.path,
+      ['GitHostAdapter'],
+    );
+    if (!hiddenHostViolation.any((error) => error.symbol == 'TextButton')) {
+      throw StateError(
+        'First-party Material hidden behind an approved-looking wrapper passed',
+      );
+    }
+    if (hiddenHostViolation.any((error) => error.symbol == 'IconButton')) {
+      throw StateError('Unreachable non-Git host UI polluted the Git audit');
+    }
+    hiddenWrapper.writeAsStringSync('''
+import 'package:flutter/widgets.dart';
+class NativeAction extends StatelessWidget {
+  const NativeAction({super.key});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () {},
+    child: const Text('approved'),
+  );
+}
+''');
+    hostChain.writeAsStringSync('''
+import 'package:flutter/widgets.dart';
+import 'approved_wrapper.dart';
+class GitHostAdapter {
+  Widget button() => const NativeAction();
+}
+''');
+    if ((await auditFirstPartyPresentationChain(hostChain.path, [
+      'GitHostAdapter',
+    ])).isNotEmpty) {
+      throw StateError('Legitimate first-party native implementation failed');
+    }
     final comparison = File('${temp.path}/diff_view.dart');
     for (final source in [
       "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; final mode = git.GitChoiceBar<bool>(segments: const [], selected: const {}, onSelectionChanged: null);",

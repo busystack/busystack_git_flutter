@@ -98,7 +98,7 @@ final class NativeUiViolation {
       '$path:$offset: prohibited native Git reference: $symbol';
 }
 
-final class _NativeVisitor extends RecursiveAstVisitor<void> {
+class _NativeVisitor extends RecursiveAstVisitor<void> {
   _NativeVisitor(this.path);
   final String path;
   final violations = <NativeUiViolation>[];
@@ -282,6 +282,314 @@ final class _NativeVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
+/// Audits the first-party implementation behind a host presentation adapter.
+///
+/// Feature-source checks stop at the required [GitPresentation] boundary. This
+/// second pass starts at concrete host roots and follows resolved references to
+/// declarations anywhere in the same first-party package. Consequently, a BusyStack wrapper
+/// cannot conceal a prohibited Flutter Material construction merely by having
+/// an approved-looking name. Upstream packages remain outside this construction
+/// boundary: their supported public widgets may have implementation details of
+/// their own and are not modified or reclassified here.
+Future<List<NativeUiViolation>> auditFirstPartyPresentationChain(
+  String input,
+  List<String> rootClasses,
+) async {
+  final file = File(input);
+  if (!file.existsSync() || !input.endsWith('.dart')) {
+    throw ArgumentError('Missing host presentation source: $input');
+  }
+  if (rootClasses.isEmpty) {
+    throw ArgumentError('At least one host presentation root is required.');
+  }
+  final path = file.resolveSymbolicLinksSync();
+  final packageRoot = _findPackageRoot(file);
+  final packageLibrary = Directory(
+    '${packageRoot.path}${Platform.pathSeparator}lib',
+  );
+  final includedPaths = packageLibrary.existsSync()
+      ? [packageLibrary.resolveSymbolicLinksSync()]
+      : packageRoot
+            .listSync(followLinks: false)
+            .whereType<File>()
+            .where((entry) => entry.path.endsWith('.dart'))
+            .map((entry) => entry.resolveSymbolicLinksSync())
+            .toList();
+  if (!includedPaths.contains(path)) includedPaths.add(path);
+  final collection = AnalysisContextCollection(includedPaths: includedPaths);
+  try {
+    final index = _FirstPartyIndex(collection, packageRoot, path);
+    final declarations = await index.declarationsFor(path);
+    final roots = <AstNode>[];
+    for (final selector in rootClasses) {
+      final separator = selector.indexOf('.');
+      final className = separator < 0
+          ? selector
+          : selector.substring(0, separator);
+      final memberName = separator < 0
+          ? null
+          : selector.substring(separator + 1);
+      final root = declarations.classesByName[className];
+      if (root == null) {
+        throw StateError(
+          'Host presentation root $selector moved; update the required audit.',
+        );
+      }
+      if (memberName == null) {
+        roots.add(root);
+        continue;
+      }
+      final members = root.body.members
+          .whereType<MethodDeclaration>()
+          .where((member) => member.name.lexeme == memberName)
+          .toList();
+      if (members.length != 1) {
+        throw StateError(
+          'Host presentation root $selector moved; update the required audit.',
+        );
+      }
+      roots.add(members.single);
+    }
+
+    final pending = <_PendingFirstPartyDeclaration>[
+      for (final root in roots)
+        _PendingFirstPartyDeclaration(path: path, node: root),
+    ];
+    final visited = <String>{};
+    final violations = <NativeUiViolation>[];
+    while (pending.isNotEmpty) {
+      final declaration = pending.removeLast();
+      final node = declaration.node;
+      final visitKey = '${declaration.path}:${node.offset}:${node.runtimeType}';
+      if (!visited.add(visitKey)) continue;
+      final visitor = _FirstPartyChainVisitor(declaration.path);
+      node.accept(visitor);
+      violations.addAll(visitor.violations);
+      for (final element in visitor.followedElements) {
+        final target = await index.declarationFor(element);
+        if (target != null) pending.add(target);
+      }
+    }
+    return violations;
+  } finally {
+    await collection.dispose();
+  }
+}
+
+Directory _findPackageRoot(File source) {
+  var directory = source.absolute.parent;
+  while (true) {
+    if (File(
+      '${directory.path}${Platform.pathSeparator}pubspec.yaml',
+    ).existsSync()) {
+      return directory;
+    }
+    final parent = directory.parent;
+    if (parent.path == directory.path) return source.absolute.parent;
+    directory = parent;
+  }
+}
+
+final class _PendingFirstPartyDeclaration {
+  const _PendingFirstPartyDeclaration({required this.path, required this.node});
+  final String path;
+  final AstNode node;
+}
+
+final class _FirstPartyIndex {
+  _FirstPartyIndex(this.collection, this.packageRoot, this.hostPath);
+
+  final AnalysisContextCollection collection;
+  final Directory packageRoot;
+  final String hostPath;
+  final Map<String, _FirstPartyDeclarations> _units = {};
+
+  bool _contains(String path) {
+    final root = packageRoot.resolveSymbolicLinksSync();
+    final candidate = File(path).resolveSymbolicLinksSync();
+    return candidate == root ||
+        candidate.startsWith('$root${Platform.pathSeparator}');
+  }
+
+  Future<_FirstPartyDeclarations> declarationsFor(String path) async {
+    final resolvedPath = File(path).resolveSymbolicLinksSync();
+    final cached = _units[resolvedPath];
+    if (cached != null) return cached;
+    final result = await collection
+        .contextFor(hostPath)
+        .currentSession
+        .getResolvedUnit(resolvedPath);
+    if (result is! ResolvedUnitResult) {
+      throw StateError(
+        'Cannot resolve host presentation source: $resolvedPath',
+      );
+    }
+    final errors = result.diagnostics.where(
+      (error) => error.diagnosticCode.severity == DiagnosticSeverity.ERROR,
+    );
+    if (errors.isNotEmpty) {
+      throw StateError(
+        'Unresolved host presentation source $resolvedPath: ${errors.join('; ')}',
+      );
+    }
+    final declarations = _FirstPartyDeclarations();
+    result.unit.accept(declarations);
+    _units[resolvedPath] = declarations;
+    return declarations;
+  }
+
+  Future<_PendingFirstPartyDeclaration?> declarationFor(Element element) async {
+    final base = element.baseElement;
+    final source = base.firstFragment.libraryFragment?.source.fullName;
+    if (source == null || !_contains(source)) return null;
+    final declarations = await declarationsFor(source);
+    AstNode? declaration;
+    if (base is ConstructorElement) {
+      declaration =
+          declarations.classesByElement[base.enclosingElement.baseElement.id];
+    } else {
+      declaration = declarations.byElement[base.id];
+      if (declaration == null && base is PropertyAccessorElement) {
+        declaration = declarations.byElement[base.variable.baseElement.id];
+      }
+    }
+    if (declaration == null) return null;
+    return _PendingFirstPartyDeclaration(
+      path: File(source).resolveSymbolicLinksSync(),
+      node: declaration,
+    );
+  }
+}
+
+final class _FirstPartyDeclarations extends RecursiveAstVisitor<void> {
+  final Map<int, AstNode> byElement = {};
+  final Map<int, ClassDeclaration> classesByElement = {};
+  final Map<String, ClassDeclaration> classesByName = {};
+
+  void _record(Element? element, AstNode node) {
+    if (element == null) return;
+    byElement[element.baseElement.id] = node;
+  }
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    final element = node.declaredFragment?.element;
+    _record(element, node);
+    if (element != null) {
+      classesByElement[element.baseElement.id] = node;
+      classesByName[node.namePart.typeName.lexeme] = node;
+    }
+    super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitConstructorDeclaration(ConstructorDeclaration node) {
+    _record(node.declaredFragment?.element, node);
+    super.visitConstructorDeclaration(node);
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    _record(node.declaredFragment?.element, node);
+    super.visitFunctionDeclaration(node);
+  }
+
+  @override
+  void visitMethodDeclaration(MethodDeclaration node) {
+    _record(node.declaredFragment?.element, node);
+    super.visitMethodDeclaration(node);
+  }
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final element = node.declaredFragment?.element;
+    _record(
+      element,
+      node.parent is VariableDeclarationList ? node.parent! : node,
+    );
+    if (element is PropertyInducingElement) {
+      _record(
+        element.getter,
+        node.parent is VariableDeclarationList ? node.parent! : node,
+      );
+      _record(
+        element.setter,
+        node.parent is VariableDeclarationList ? node.parent! : node,
+      );
+    }
+    super.visitVariableDeclaration(node);
+  }
+}
+
+final class _FirstPartyChainVisitor extends _NativeVisitor {
+  _FirstPartyChainVisitor(super.path);
+
+  final _hostSeen = <int>{};
+  final followedElements = <Element>[];
+
+  @override
+  void check(AstNode node, Element? element, {bool construction = false}) {
+    if (element == null) return;
+    final variable = element is PropertyAccessorElement
+        ? element.variable
+        : element is VariableElement
+        ? element
+        : null;
+    final type = variable?.type;
+    if (type is InterfaceType && type.element.name == 'IconData') {
+      final icon = variable?.computeConstantValue();
+      if (icon?.getField('fontFamily')?.toStringValue() == 'MaterialIcons' &&
+          _hostSeen.add(node.offset)) {
+        violations.add(
+          NativeUiViolation(
+            path,
+            node.offset,
+            'Material Git glyph through host mapping',
+          ),
+        );
+      }
+    }
+    final library = element.library?.uri.toString() ?? '';
+    if (!library.startsWith('package:flutter/src/material/')) return;
+    final owner = element is ConstructorElement
+        ? element.enclosingElement
+        : element;
+    final name = owner.name;
+    if ((construction || element is ExecutableElement) &&
+        forbiddenMaterial.contains(name) &&
+        _hostSeen.add(node.offset)) {
+      violations.add(NativeUiViolation(path, node.offset, name ?? '?'));
+    }
+  }
+
+  void _follow(Element? element) {
+    if (element == null) return;
+    // A class name used as a static namespace or type annotation does not
+    // execute the whole class. Constructors are followed separately below,
+    // and the referenced static member has its own resolved identifier.
+    if (element.baseElement is InterfaceElement) return;
+    followedElements.add(element);
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    _follow(node.element);
+    super.visitSimpleIdentifier(node);
+  }
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    _follow(node.constructorName.element);
+    super.visitInstanceCreationExpression(node);
+  }
+
+  @override
+  void visitConstructorReference(ConstructorReference node) {
+    _follow(node.constructorName.element);
+    super.visitConstructorReference(node);
+  }
+}
+
 Future<List<NativeUiViolation>> auditNativeGitSources(
   List<String> inputs,
 ) async {
@@ -329,9 +637,40 @@ Future<List<NativeUiViolation>> auditNativeGitSources(
 }
 
 Future<void> main(List<String> args) async {
-  final violations = await auditNativeGitSources(
-    args.isEmpty ? ['lib/src'] : args,
-  );
+  String? hostSource;
+  final hostRoots = <String>[];
+  final featureInputs = <String>[];
+  var hostOnly = false;
+  for (var index = 0; index < args.length; index++) {
+    switch (args[index]) {
+      case '--host-only':
+        hostOnly = true;
+      case '--host-source':
+        if (++index >= args.length) {
+          throw ArgumentError('--host-source requires a Dart file.');
+        }
+        hostSource = args[index];
+      case '--host-root':
+        if (++index >= args.length) {
+          throw ArgumentError('--host-root requires a class name.');
+        }
+        hostRoots.add(args[index]);
+      default:
+        featureInputs.add(args[index]);
+    }
+  }
+  final violations = hostOnly
+      ? <NativeUiViolation>[]
+      : await auditNativeGitSources(
+          featureInputs.isEmpty ? ['lib/src'] : featureInputs,
+        );
+  if (hostSource != null) {
+    violations.addAll(
+      await auditFirstPartyPresentationChain(hostSource, hostRoots),
+    );
+  } else if (hostRoots.isNotEmpty) {
+    throw ArgumentError('--host-root requires --host-source.');
+  }
   for (final violation in violations) {
     stderr.writeln(violation);
   }

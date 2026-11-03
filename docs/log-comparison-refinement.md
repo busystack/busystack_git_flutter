@@ -23,7 +23,7 @@ engine and Git semantics do not change. BusyFiles retains its workspace layout.
 | Three-way index editing and guarded Apply | Native staging menu opens existing editor, unchanged draft/undo/dismissal guards |
 
 Native references: BusyMark's Files tree / `BusyMarkSidebarTreeRow`, flat
-`BusyMarkPushButton.flat`, Writerside header's `BusyMarkHeaderIconButton`, and
+`BusyMarkGitActionButton`, Writerside header's `BusyMarkHeaderIconButton`, and
 native menu service. The inspector requests those through the existing shared
 presentation contract; no application imports or palette/control fallbacks are
 added. Human-readable commit dates use required host localization, while the
@@ -38,7 +38,7 @@ Native appearance and real transaction/regression checks remain required.
 
 | Request | BusyMark / BusyFiles implementation |
 | --- | --- |
-| Flat selected-commit and mode buttons | Existing host inline action; BusyMarkPushButton.flat / BusyFiles native inline button |
+| Flat selected-commit and mode buttons | Existing host inline action; BusyMarkGitActionButton / BusyFiles native inline button |
 | Historical rows and separate trailing actions | Existing required changeRow; BusyMarkSidebarTreeRow / BusyFiles tree-row adapter |
 | Copy, Commit Actions, Display Options | Required semantic copy/moreHorizontal/options glyphs mapped to existing host glyph catalogs |
 | Human-readable metadata dates | Required formatCommitDate in each approved design boundary, host localized date/time and 12/24-hour preference |

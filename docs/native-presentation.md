@@ -9,20 +9,22 @@ repository-specific AGENTS.md files at this baseline. No engine change is planne
 
 | Git control category | BusyMark implementation | BusyFiles implementation |
 | --- | --- | --- |
-| Actions | BusyMarkPushButton standard/suggested | BusyFilesPushButton standard/suggested |
-| Icon actions | BusyMarkHeaderIconButton (flat native header shape) | BusyFilesToolbarButton |
-| Text/search/message/editor inputs | BusyMarkGroupedTextEntry, extended for existing editor controllers | BusyFilesTextField, extended for existing editor controllers |
+| Actions | BusyMarkGitActionButton, native primitive interaction with Yaru semantic tokens | BusyFilesPushButton standard/suggested |
+| Icon actions | BusyMarkHeaderIconButton backed by public YaruIconButton | BusyFilesToolbarButton |
+| Text/search/message/editor inputs | BusyMarkGitTextEntry, EditableText plus approved Yaru surface | BusyFilesTextField, extended for existing editor controllers |
 | Check choices | BusyMarkCheckbox | BusyFilesCheckbox |
 | Selectors | BusyMarkPopupSelector / BusyMarkMenuButton | BusyFilesSelectionButton / BusyFilesNativeMenuButton / BusyFilesModeSelector |
 | Rows | BusyMarkSidebarRecordRow / native row surfaces | BusyFilesActionRow / native row surfaces |
-| Dialogs | showBusyMarkModalDialog, BusyMarkDialogShell/titlebar | BusyFilesDialog/titlebar and existing modal presenter |
-| Scrollbars | Existing Yaru scrollbar theme in the BusyMark design boundary | Existing Yaru scrollbar theme in the BusyFiles design boundary |
+| Dialogs | showBusyMarkModalDialog, BusyMarkGitDialogShell/titlebar | BusyFilesDialog/titlebar and existing modal presenter |
+| Scrollbars | BusyMark-themed RawScrollbar in the Git adapter | Existing Yaru scrollbar theme in the BusyFiles design boundary |
 | Notices/progress | Native surface colors, Yaru control implementations | BusyFilesFeedbackBanner, BusyFilesSpinner/Progress |
 | Typography, colors, focus, glyphs | BusyMark design, theme and glyph catalogs | BusyFiles design, surface and glyph catalogs |
 
-These are existing Linux implementations, including the approved foundations
-inside their design modules. A feature-level stock Material control is not
-approved by inheritance or by renaming it. The inspected modules do not expose a
+These are the required Linux mappings. A design-module location or BusyMark
+class name is not approval: BusyMark's complete adapter-to-widget chain is
+resolved and must not directly construct prohibited Material controls.
+Supported public Yaru components may retain their official upstream
+implementation dependencies. The inspected modules do not expose a
 Fluent adapter; Windows acceptance requires a verified supported host adapter.
 
 ## Action destinations to preserve
@@ -60,12 +62,19 @@ existing header menu control. Generic menus with a Flutter fallback are rejected
 in Git source by resolved constructor/helper identity.
 
 The resolved analyzer gate visits constructor calls and tear-offs, types and
-helper references, including prefixes and typedef aliases. It rejects all Material widget constructors (including controls not in the explicit
-helper/palette list), dialog/menu helpers, Material palette/icons and feature-created local
-palettes/themes. Every Git source is checked; there are no feature-file
-exceptions. The gate's own fixtures include forbidden aliased constructors,
-helpers, fallback paths and a legitimate native-required host menu. Unresolved
-code and empty/missing input sets fail closed.
+helper references, including prefixes and typedef aliases. It rejects all
+Material widget constructors (including controls not in the explicit
+helper/palette list), dialog/menu helpers, Material palette/icons and
+feature-created local palettes/themes. Every Git source is checked; there are
+no feature-file exceptions. A second resolved pass begins at each concrete
+host adapter root and follows first-party declarations across that host package
+transitively, so an approved-looking wrapper cannot conceal `TextButton`,
+`IconButton`, `Material`, `InkWell`, `Dialog`, or another prohibited control.
+BusyMark requires the complete `BusyMarkGitPresentation` and
+`BusyMarkGitDialogShell` roots. The gate's own fixtures include forbidden
+aliased constructors, helpers, fallback paths, a wrapper-hidden control, and a
+legitimate primitive/Yaru implementation. Unresolved code and empty/missing
+input sets fail closed.
 
 Both consumers run this gate over the shared sources they materialize and their
 Git integration sources. The source archives include the gate, its tests and the
@@ -111,9 +120,8 @@ unknown counts as question marks with localized accessible descriptions.
 
 ## Commit refinement (2026-11-01, graphical review)
 
-The branch-management control uses the existing neutral, borderless TextButton
-style of BusyMark's non-Git native popup selector, through
-`BusyMarkPushButton.flat`. It remains an ordinary button opening the complete
+The branch-management control uses BusyMark's neutral native inline action
+through `BusyMarkGitActionButton`. It remains an ordinary button opening the complete
 Branches modal, without copying the selector's interaction. Inline requests
 must not map to filled standard buttons. Resting fills, interaction states,
 localized truncation and actual modal/menu destinations are tested.
@@ -157,11 +165,12 @@ The rendering chain is part of the contract, not a wrapper allowlist:
 
 | Git request | BusyMark rendering path | Observable rule |
 | --- | --- | --- |
-| Commit details | GitCommitDetails → GitHost.present (compact) → showBusyMarkModalDialog → BusyMarkDialogShell → Yaru-themed Dialog | dialogWide maximum width, natural short-record height; only host-owned scrolling for long records |
-| Selectable fields | GitSelectableText → BusyMarkGitPresentation.selectable → SelectableText with GitTextContextMenu | exact original message, keyboard/context copy, no permanent Copy Text control |
-| Context actions | GitIconButton → BusyMarkGitPresentation.iconAction → BusyMarkHeaderIconButton → IconButton with official Yaru defaults and semantic rectangular focus | flat resting state, native hover/press/focus/disabled states and separate row targets |
-| Inline text actions | GitButton.inline → BusyMarkPushButton.flat → Yaru-themed TextButton | native typography/geometry and neutral resting fill; a TextButton class name alone is insufficient |
-| Commit controls | standard/suggested GitButton → existing BusyMarkPushButton → themed FilledButton/ElevatedButton | approved primary/secondary native treatment, not feature-local Material appearance |
+| Commit details | GitCommitDetails → GitHost.present (compact) → showBusyMarkModalDialog → BusyMarkGitDialogShell/YaruBorderContainer | dialogWide maximum width, natural short-record height; only host-owned scrolling for long records |
+| Selectable fields | GitSelectableText → BusyMarkGitPresentation.selectable → SelectableRegion + Text with GitTextContextMenu | exact original message, keyboard/context copy, no permanent Copy Text control |
+| Context actions | GitIconButton → BusyMarkGitPresentation.iconAction → BusyMarkHeaderIconButton → public YaruIconButton and external YaruFocusBorder | flat resting state, native hover/press/focus/disabled states and separate row targets |
+| Inline text actions | GitButton.inline → BusyMarkGitActionButton → Flutter interaction primitives plus Yaru semantic tokens/focus | native typography/geometry and neutral resting fill, with no first-party Material button construction |
+| Commit controls | standard/suggested GitButton → BusyMarkGitActionButton | approved primary/secondary native treatment with no first-party FilledButton/ElevatedButton construction |
+| Change rows | GitChangeRow → BusyMarkSidebarTreeRow → BusyMarkSidebarRowSurface | primitive pointer/focus/semantics surface plus Yaru focus border; no first-party Material/InkWell construction |
 | Git branch glyph | BusyMarkGlyphs.branch → official YaruIcons.share three-node graph | native Yaru font/package; existing GTK branch-menu artwork remains first-party |
 | Historical row actions | GitHistoricalChangeTree → GitMenuButton(moreHorizontal) → host flat icon action/native menu | horizontal contextual glyph, not the generic three-line primary-menu glyph |
 
@@ -176,10 +185,11 @@ once as Copy Commit Message; it is distinct from copying selected text through
 the native text menu. Neither metadata copy operation mutates the repository.
 
 The resolved audit follows constant IconData through imported host catalogs and
-aliases and rejects MaterialIcons. It rejects expanded/dynamic presentation of
+aliases and rejects MaterialIcons. The host-chain pass resolves the entire
+BusyMark adapter rather than selected wrappers or methods. It rejects expanded/dynamic presentation of
 typed commit metadata, with forbidden and legitimate self-test examples. Actual
-host tests measure the painted dialog Material surface (the Dialog widget's
-route wrapper spans the window), natural height, long-content reachability,
+host tests measure the painted BusyMarkGitDialogShell/Yaru surface rather than
+the full-window route wrapper, natural height, long-content reachability,
 native copying, all historical actions, glyphs and disjoint target geometry.
 Shared/BusyFiles compact presentation retains each host's own dialog/navigation;
 large history browsers and three-way editors retain expanded surfaces.

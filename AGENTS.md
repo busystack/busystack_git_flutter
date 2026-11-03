@@ -5,13 +5,19 @@ The parent BusyStack engineering and official-toolchain policy remains binding.
 Git production views must use the required `GitPresentation` host contract.
 No stock Material controls, constructor tear-offs, palette/icons, invocation
 helpers or menu/dialog fallback paths belong in Git feature code. Native
-construction stays in the existing approved host design implementations:
-`busymark_design.dart` and `busyfiles_design.dart`. A newly named feature wrapper
-is not an approved design boundary. See the shared package's
+construction stays in the existing approved host design implementations, but
+their filenames and class names are not an exemption. The audit must start at
+each concrete host adapter and follow all reachable first-party
+implementations. BusyMark's Git chain may use supported public Yaru controls,
+but it must not directly construct prohibited Material controls behind
+approved-looking wrappers. A newly named feature wrapper is not an approved
+design boundary. See the shared package's
 `docs/native-presentation.md` for the exact mappings and action destinations.
 
 Run `tool/check_native_presentation.dart` and its self-test from the shared
-package, and audit each consumer's actual Git sources with that tool. Run the
+package, and audit each consumer's actual Git sources with that tool. BusyMark
+must audit the complete `BusyMarkGitPresentation` class and
+`BusyMarkGitDialogShell`, not a selected method allowlist. Run the
 same gate against materialized pinned sources in consumer verification.
 Resolve symbols; import prefixes, aliases, re-exports and helper references
 cannot be exceptions. Missing native provisioning must fail, never fall back.
