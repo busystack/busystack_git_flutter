@@ -5,7 +5,11 @@ import 'presentation_fixture.dart' show host;
 // Deliberately test-only stock widgets keep the existing behavioral assertions
 // independent of either host. Consumer tests exercise the real native adapters.
 class TestGitPresentation implements GitPresentation {
-  const TestGitPresentation();
+  const TestGitPresentation({
+    this.entryActionPlacement = GitEntryActionPlacement.trailing,
+  });
+  @override
+  final GitEntryActionPlacement entryActionPlacement;
   @override
   ThemeData theme(BuildContext context) => Theme.of(context);
   @override
@@ -156,16 +160,19 @@ class TestGitPresentation implements GitPresentation {
         onSelectionChanged: control.onSelectionChanged,
       );
   @override
-  Widget row(BuildContext context, GitActionRow c) => ListTile(
-    contentPadding: c.contentPadding,
-    title: c.title,
-    subtitle: c.subtitle,
-    leading: c.leading,
-    trailing: c.trailing,
-    dense: c.dense,
-    enabled: c.enabled,
-    selected: c.selected,
-    onTap: c.onTap,
+  Widget row(BuildContext context, GitActionRow c) => GestureDetector(
+    onSecondaryTapUp: c.onSecondaryTapUp,
+    child: ListTile(
+      contentPadding: c.contentPadding,
+      title: c.title,
+      subtitle: c.subtitle,
+      leading: c.leading,
+      trailing: c.trailing,
+      dense: c.dense,
+      enabled: c.enabled,
+      selected: c.selected,
+      onTap: c.onTap,
+    ),
   );
   @override
   double changeRowTextInset(BuildContext context, int depth) => depth * 16 + 24;

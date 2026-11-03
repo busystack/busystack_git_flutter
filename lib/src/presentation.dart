@@ -8,6 +8,9 @@ import 'host.dart';
 /// Required native control boundary, implemented by each application's existing
 /// design system. There is deliberately no default or Material implementation.
 abstract interface class GitPresentation {
+  /// Native entry actions are contextual in BusyMark; BusyFiles retains its
+  /// established trailing controls. Feature controls never guess or fall back.
+  GitEntryActionPlacement get entryActionPlacement;
   ThemeData theme(BuildContext context);
   TextStyle? codeStyle(BuildContext context);
   String formatCommitDate(
@@ -53,6 +56,8 @@ abstract final class GitTheme {
   static ThemeData of(BuildContext context) =>
       gitPresentation(context).theme(context);
 }
+
+enum GitEntryActionPlacement { contextMenu, trailing }
 
 enum GitActionStyle { standard, suggested, inline }
 
@@ -191,6 +196,7 @@ final class GitActionRow extends StatelessWidget {
     this.selected = false,
     this.enabled = true,
     this.onTap,
+    this.onSecondaryTapUp,
   });
   final Widget? title;
   final Widget? subtitle;
@@ -201,6 +207,7 @@ final class GitActionRow extends StatelessWidget {
   final bool selected;
   final bool enabled;
   final VoidCallback? onTap;
+  final GestureTapUpCallback? onSecondaryTapUp;
   @override
   Widget build(BuildContext context) =>
       gitPresentation(context).row(context, this);

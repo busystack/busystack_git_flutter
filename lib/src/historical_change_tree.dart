@@ -104,7 +104,7 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
     final files = [...widget.files]..sort((a, b) => a.path.compareTo(b.path));
     for (final file in files) {
       var directory = '';
-      var depth = 1;
+      var depth = 0;
       var hidden = false;
       // RepoPath display is losslessly escaped and never used as a Git pathspec.
       for (final part in file.path.parent.split('/')) {
@@ -312,10 +312,17 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                       },
                       onSecondaryTapUp: file == null
                           ? null
-                          : (details) => unawaited(
-                              _menu(file, position: details.globalPosition),
-                            ),
-                      trailing: file == null
+                          : (details) {
+                              _focus.requestFocus();
+                              _highlight(rows, index);
+                              unawaited(
+                                _menu(file, position: details.globalPosition),
+                              );
+                            },
+                      trailing:
+                          file == null ||
+                              gitPresentation(context).entryActionPlacement ==
+                                  GitEntryActionPlacement.contextMenu
                           ? null
                           : Focus(
                               onFocusChange: (focused) {

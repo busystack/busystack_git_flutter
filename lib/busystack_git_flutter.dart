@@ -22,3 +22,5 @@ export 'src/messages.dart';
 export 'src/value_labels.dart';
 
 export 'src/presentation.dart';
+
+export 'src/context_menu_keys.dart' show GitContextMenuKeys;

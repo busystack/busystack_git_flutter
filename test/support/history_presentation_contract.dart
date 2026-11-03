@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'presentation_fixture.dart' show FixtureClient, repo;
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Measured against actual consumer controls, including their painted surfaces.
@@ -66,7 +67,7 @@ void historyPresentationContract({
     testWidgets(
       'reference rows honor density and separate trailing actions $brightness',
       (tester) async {
-        var selected = 0, actions = 0;
+        var selected = 0, actions = 0, contexts = 0;
         await mount(
           tester,
           Column(
@@ -76,6 +77,7 @@ void historyPresentationContract({
                 dense: true,
                 title: const Text('feature/long-reference'),
                 onTap: () => selected++,
+                onSecondaryTapUp: (_) => contexts++,
                 trailing: GitIconButton(
                   tooltip: 'Reference actions',
                   icon: const GitIcon(GitGlyph.moreHorizontal),
@@ -86,6 +88,13 @@ void historyPresentationContract({
                 key: const ValueKey('standard'),
                 title: const Text('Standard row'),
                 onTap: () {},
+              ),
+              GitActionRow(
+                enabled: false,
+                dense: true,
+                title: const Text('Disabled reference'),
+                onTap: () => selected++,
+                onSecondaryTapUp: (_) => contexts++,
               ),
             ],
           ),
@@ -103,6 +112,23 @@ void historyPresentationContract({
         expect(selected, 0);
         await tester.tap(find.text('feature/long-reference'));
         await tester.pump();
+        expect(selected, 1);
+        final secondary = await tester.startGesture(
+          tester.getCenter(find.text('feature/long-reference')),
+          buttons: kSecondaryMouseButton,
+        );
+        await secondary.up();
+        await tester.pump();
+        expect(contexts, 1);
+        expect(selected, 1, reason: 'Secondary activation never selects');
+        final disabled = await tester.startGesture(
+          tester.getCenter(find.text('Disabled reference')),
+          buttons: kSecondaryMouseButton,
+        );
+        await disabled.up();
+        await tester.tap(find.text('Disabled reference'));
+        await tester.pump();
+        expect(contexts, 1);
         expect(selected, 1);
         expect(tester.takeException(), isNull);
       },

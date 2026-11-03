@@ -251,3 +251,46 @@ regressions cover selector routing, initial selection, confirmation/cancellation
 branch glyphs and retained history actions. These assertions do not replace real
 native captures or the existing resolved-construction enforcement. Acceptance
 must report separately whether the test runner and native display were available.
+
+## Seven-sidebar consistency contract (2026-11-03)
+
+This revision supersedes the earlier BusyMark sibling action-column and inline
+branch-button requirements. `GitPresentation.entryActionPlacement` is required:
+BusyMark declares `contextMenu`; BusyFiles declares `trailing`. This is a host
+native equivalent, not an optional fallback. Shared Commit, historical-file and
+reference entries only construct trailing controls for the latter. All existing
+entry action destinations remain in their context menus. View-level commands,
+disclosure controls, status markers and metadata remain visible in both hosts.
+
+BusyMark change rows reuse Files' horizontal sidebar insets, depth base/step,
+disclosure slot/gap, row surface and scaled status extent. Historical tree roots
+start at depth zero. Tree and information-rich record entries share
+BusyMarkSidebarRowSurface for hover, pressed, selected, focus and disabled
+behavior; neither constructs first-party Material, InkWell, YaruListTile or an
+entry menu button. Standard TOC hierarchy uses the Files geometry. Record
+content uses natural single/secondary-line height, preserving clipboard previews
+and date-grouped history event information.
+
+`GitActionRow.onSecondaryTapUp` reaches the actual host row. BusyMark requests
+row focus without invoking primary activation. Reference-row Menu/Shift+F10
+uses the same native operation list and a direction-aware row anchor. The shared
+release-safe `GitContextMenuKeys` is also exported for existing BusyMark sidebar
+rows. Clipboard History retains collection-owned focus and forwards the keyboard
+context command to the selected record's native action; navigation and paste
+keys retain their original destinations. Menu dismissal restores live focus.
+No Flutter popup route is used when the native menu service is unavailable.
+
+Commit's branch and Git Log's commit identities use compact neutral native rows,
+opening the complete original Branches/history modal. Parent navigation remains
+secondary metadata with parent-specific comparisons, including merge parents.
+The commit hash is bounded so long references cannot displace the subject.
+Opening context menus causes no comparison activation or repository mutation.
+Commit menu mutation also revalidates session, snapshot and index identity after
+native dismissal; files that appeared after review are never added to a group.
+
+The existing constructor gate is paired with BusyMark's resolved sidebar gate
+and actual host tests for geometry, states, keyboard release, native menu packets
+and side effects. Native packet probes replace only the transport in tests, and
+never render fake GTK menus. These assertions do not substitute for running the
+actual application and judging all seven populated sidebars. Restricted-session
+build/source results must remain separate from native and release acceptance.

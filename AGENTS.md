@@ -44,8 +44,10 @@ available. Verify both native adapters whenever a presentation request changes.
 
 Git Log's compact inspector has no information/file splitter or permanent upper
 scrollbar. Full messages/exact identities remain accessible in native details.
-Historical Changed Files use the required native change-row tree and a separate
-file-menu target; they have no staging callbacks. Two-way comparisons use one
+Historical Changed Files use the required native change-row tree and host-owned
+contextual entry actions; they have no staging callbacks. BusyMark uses secondary
+click and keyboard menus without visible entry action controls; BusyFiles retains
+its trailing native controls. Two-way comparisons use one
 measured toolbar and the native checked mode menu at every width. Circular
 choice bars are forbidden there, including aliases; three-way editor pane
 choices remain separate. Preserve explicit file/selected-line/hunk staging,
@@ -54,8 +56,10 @@ version-bound callbacks, editor guards, and both consumers' native adapters.
 Commit metadata uses compact host presentation, with natural content height and
 host-owned overflow. No expanded metadata modal, permanent Copy/Details icons,
 or Copy Text button belongs in the inspector. Commit Actions owns View Commit
-Details and the single Copy Commit Hash operation. Historical row menus request
-the horizontal contextual glyph explicitly. Resolve host icon constants too:
+Details and the single Copy Commit Hash operation. Where a host permits visible
+entry controls, historical row menus request the horizontal contextual glyph.
+The required entryActionPlacement contract must never be silently ignored.
+Resolve host icon constants too:
 an approved catalog/wrapper cannot authorize MaterialIcons. Rendered host tests
 must measure the painted dialog surface and complete selectable metadata, not
 the full-window Dialog route wrapper or only class names.

@@ -530,22 +530,42 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
       message: view.branchActionLabel ?? session.repository.root,
       child: Semantics(
         label: view.branchActionLabel,
-        child: GitButton.icon(
-          onPressed: () => _leaveReview(view.onBranches),
-          icon: GitIcon(GitGlyph.branch, size: 16),
-          label: Text(
-            snapshot?.branch ??
-                (snapshot?.head == null
-                    ? gitString(context, GitMessages.repository)
-                    : gitString(
-                        context,
-                        GitMessages.detachedArg0,
-                        values: {'arg0': snapshot!.head!.abbreviated},
-                      )),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
+        child:
+            gitPresentation(context).entryActionPlacement ==
+                GitEntryActionPlacement.contextMenu
+            ? GitActionRow(
+                dense: true,
+                leading: const GitIcon(GitGlyph.branch, size: 16),
+                title: Text(
+                  snapshot?.branch ??
+                      (snapshot?.head == null
+                          ? gitString(context, GitMessages.repository)
+                          : gitString(
+                              context,
+                              GitMessages.detachedArg0,
+                              values: {'arg0': snapshot!.head!.abbreviated},
+                            )),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => _leaveReview(view.onBranches),
+              )
+            : GitButton.icon(
+                onPressed: () => _leaveReview(view.onBranches),
+                icon: GitIcon(GitGlyph.branch, size: 16),
+                label: Text(
+                  snapshot?.branch ??
+                      (snapshot?.head == null
+                          ? gitString(context, GitMessages.repository)
+                          : gitString(
+                              context,
+                              GitMessages.detachedArg0,
+                              values: {'arg0': snapshot!.head!.abbreviated},
+                            )),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
       ),
     );
     return FocusTraversalGroup(
@@ -1755,7 +1775,11 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                 );
                               },
                               trailing:
-                                  row.group != GitMessages.conflicts &&
+                                  gitPresentation(
+                                            context,
+                                          ).entryActionPlacement ==
+                                          GitEntryActionPlacement.trailing &&
+                                      row.group != GitMessages.conflicts &&
                                       (change == null || !change.conflicted)
                                   ? GitIconButton(
                                       tooltip: row.group == GitMessages.staged
@@ -2058,6 +2082,23 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     final session = widget.session, reviewed = widget.session.snapshot!;
     final selection = Set<String>.from(_selected), change = row.change;
     final writable = !session.running && session.canWriteMetadata;
+    if (position == null) {
+      final box = context.findRenderObject();
+      if (box is RenderBox && box.hasSize) {
+        final bottom =
+            ((rows.indexOf(row) + 1) * session.host.rowHeight(context) -
+                    (_scroll.hasClients ? _scroll.offset : 0))
+                .clamp(0.0, box.size.height);
+        position = box.localToGlobal(
+          Offset(
+            Directionality.of(context) == TextDirection.rtl
+                ? box.size.width
+                : 0,
+            bottom,
+          ),
+        );
+      }
+    }
     final action = await session.host.menu(
       context,
       row.label,
@@ -2075,7 +2116,11 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           GitMenuEntry(
             'stage',
             row.group == GitMessages.staged
-                ? GitMessages.unstageSelectedFiles
+                ? change != null && selection.length == 1
+                      ? GitMessages.unstageFile
+                      : GitMessages.unstageSelectedFiles
+                : change != null && selection.length == 1
+                ? GitMessages.stageFile
                 : GitMessages.stageSelectedFiles,
             enabled: writable,
           ),
@@ -2096,7 +2141,12 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       position: position,
       localizeTitle: false,
     );
-    if (!mounted || action == null) return;
+    if (!mounted ||
+        action == null ||
+        widget.session != session ||
+        session.snapshot?.token != reviewed.token ||
+        session.snapshot?.indexToken != reviewed.indexToken)
+      return;
     switch (action) {
       case 'review':
         _activate(row);

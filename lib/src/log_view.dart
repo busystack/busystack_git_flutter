@@ -1684,20 +1684,37 @@ final class _GitLogViewState extends State<GitLogView> {
         child: Semantics(
           label: gitString(context, GitMessages.selectACommit),
           button: true,
-          child: GitButton(
+          child: GitActionRow(
             key: const ValueKey('git-selected-commit'),
-            onPressed: _choosing
-                ? null
-                : () => unawaited(_chooseInspectorCommit()),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: Text(
-                _selected == null
-                    ? (_inspectorOid?.abbreviated ??
-                          gitString(context, GitMessages.selectACommit))
-                    : '${_selected!.subject} · ${_selected!.oid.abbreviated}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+            dense: true,
+            leading: const GitIcon(GitGlyph.history, size: 16),
+            onTap: _choosing ? null : () => unawaited(_chooseInspectorCommit()),
+            title: LayoutBuilder(
+              builder: (context, bounds) => Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _selected?.subject ??
+                          gitString(context, GitMessages.selectACommit),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_selected?.oid ?? _inspectorOid case final oid?) ...[
+                    SizedBox(width: widget.session.host.spacing),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: bounds.maxWidth * .30,
+                      ),
+                      child: Text(
+                        oid.abbreviated,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GitTheme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -1916,11 +1933,15 @@ final class _GitLogViewState extends State<GitLogView> {
                       overflow: TextOverflow.ellipsis,
                     ),
               selected: _selectedFile?.path == file.path,
-              trailing: GitMenuButton(
-                host: session.host,
-                entries: entries,
-                onSelected: (value) => unawaited(action(value)),
-              ),
+              trailing:
+                  gitPresentation(context).entryActionPlacement ==
+                      GitEntryActionPlacement.contextMenu
+                  ? null
+                  : GitMenuButton(
+                      host: session.host,
+                      entries: entries,
+                      onSelected: (value) => unawaited(action(value)),
+                    ),
               onTap: activate,
             ),
           ),
@@ -2135,21 +2156,25 @@ final class _GitLogViewState extends State<GitLogView> {
                       Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: commit.parents.length == 1
-                            ? GitButton(
+                            ? GitActionRow(
+                                dense: true,
                                 key: const ValueKey('git-inspector-parent'),
-                                onPressed: () => _inspectorParent(
+                                onTap: () => _inspectorParent(
                                   commit,
                                   commit.parents.single,
                                   generation,
                                 ),
-                                child: GitLabel(
+                                title: GitLabel(
                                   GitMessages.parentArg0,
+                                  style: GitTheme.of(
+                                    context,
+                                  ).textTheme.bodySmall,
                                   values: {
                                     'arg0': commit.parents.single.abbreviated,
                                   },
                                 ),
                               )
-                            : GitMenuButton(
+                            : _GitParentMenuRow(
                                 key: const ValueKey('git-inspector-parent'),
                                 host: session.host,
                                 tooltip: GitMessages.parents,
@@ -2897,11 +2922,12 @@ Widget _logBranchReference(
     if (action != null && isCurrent()) await actions.act(ref, action);
   }
 
-  return GestureDetector(
-    onSecondaryTapUp: chooseOnly
-        ? null
-        : (details) => unawaited(menu(details.globalPosition)),
+  return _GitReferenceContextMenu(
+    open: chooseOnly ? null : menu,
     child: GitActionRow(
+      onSecondaryTapUp: chooseOnly
+          ? null
+          : (details) => unawaited(menu(details.globalPosition)),
       dense: true,
       leading: GitIcon(
         ref.current
@@ -2913,7 +2939,10 @@ Widget _logBranchReference(
       ),
       title: Text(ref.shortName, maxLines: 1, overflow: TextOverflow.ellipsis),
       selected: selected == ref.name,
-      trailing: chooseOnly
+      trailing:
+          chooseOnly ||
+              gitPresentation(context).entryActionPlacement ==
+                  GitEntryActionPlacement.contextMenu
           ? null
           : GitMenuButton(
               host: session.host,
@@ -2927,6 +2956,89 @@ Widget _logBranchReference(
               onSelected: (action) => unawaited(actions.act(ref, action)),
             ),
       onTap: () => onChoose(ref.name),
+    ),
+  );
+}
+
+final class _GitReferenceContextMenu extends StatefulWidget {
+  const _GitReferenceContextMenu({required this.open, required this.child});
+  final Future<void> Function(Offset)? open;
+  final Widget child;
+  @override
+  State<_GitReferenceContextMenu> createState() =>
+      _GitReferenceContextMenuState();
+}
+
+class _GitReferenceContextMenuState extends State<_GitReferenceContextMenu> {
+  final _keys = GitContextMenuKeys();
+  @override
+  void dispose() {
+    _keys.clear();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    canRequestFocus: false,
+    onFocusChange: (focused) {
+      if (!focused) _keys.clear();
+    },
+    onKeyEvent: (_, event) =>
+        _keys.handle(
+          event,
+          widget.open == null
+              ? null
+              : () {
+                  final box = context.findRenderObject();
+                  if (box is RenderBox && box.hasSize) {
+                    unawaited(
+                      widget.open!(
+                        box.localToGlobal(
+                          Offset(
+                            Directionality.of(context) == TextDirection.rtl
+                                ? box.size.width
+                                : 0,
+                            box.size.height,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                },
+        )
+        ? KeyEventResult.handled
+        : KeyEventResult.ignored,
+    child: widget.child,
+  );
+}
+
+final class _GitParentMenuRow extends StatelessWidget {
+  const _GitParentMenuRow({
+    super.key,
+    required this.host,
+    required this.tooltip,
+    required this.entries,
+    required this.onSelected,
+    required this.child,
+  });
+  final GitHost host;
+  final String tooltip;
+  final List<GitMenuEntry> entries;
+  final ValueChanged<String> onSelected;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => GitTooltip(
+    message: gitString(context, tooltip),
+    child: GitActionRow(
+      dense: true,
+      title: DefaultTextStyle.merge(
+        style: GitTheme.of(context).textTheme.bodySmall,
+        child: child,
+      ),
+      onTap: () async {
+        final value = await host.menu(context, tooltip, entries);
+        if (context.mounted && value != null) onSelected(value);
+      },
     ),
   );
 }
