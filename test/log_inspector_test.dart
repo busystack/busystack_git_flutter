@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:busystack_git_flutter/src/native_table.dart';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -199,6 +200,18 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
       await tester.pumpAndSettle();
       expect(find.byType(GitLogView), findsNWidgets(2));
+      final table = tester.widget<GitNativeTable>(
+        find.byType(GitNativeTable).last,
+      );
+      expect(table.rowAt(table.selected.single).id, 'a' * 40);
+      expect(
+        find.text(GitMessages.commitDetails),
+        findsNothing,
+        reason:
+            'The selector must not expose the obsolete expanded details route',
+      );
+      expect(find.byKey(const ValueKey('git-history-toolbar')), findsOneWidget);
+
       await tester.tap(find.text('Subject b'));
       await tester.pumpAndSettle();
       expect(session.viewState['inspectorRevision'], 'a' * 40);
@@ -218,6 +231,45 @@ void main() {
       expect(find.byType(GitLogView), findsOneWidget);
     },
   );
+  testWidgets(
+    'selector keeps contextual historical operations and compact details',
+    (tester) async {
+      final menus = <GitMenuEntry>[];
+      final client = _Client();
+      await _mount(
+        tester,
+        client,
+        menu: (_, entries, {position}) async {
+          menus.addAll(entries);
+          return null;
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+      await tester.pumpAndSettle();
+      final table = tester.widget<GitNativeTable>(
+        find.byType(GitNativeTable).last,
+      );
+      table.onRequest(const GitNativeTableRequest('context', 0, 0));
+      await tester.pumpAndSettle();
+      expect(
+        menus.map((e) => e.label),
+        containsAll([
+          GitMessages.viewCommitDetails,
+          GitMessages.copyCommitHash,
+          GitMessages.createBranch2,
+          GitMessages.createTag,
+          GitMessages.compareRevisions,
+          GitMessages.openSnapshot,
+          GitMessages.cherryPickOperation,
+          GitMessages.revertCommit,
+          GitMessages.interactiveRebaseAfterThisBoundary,
+          GitMessages.resetCurrentBranch,
+        ]),
+      );
+      expect(client.mutations, isEmpty);
+    },
+  );
+
   testWidgets(
     'unavailable immutable history is never replaced by another commit',
     (tester) async {

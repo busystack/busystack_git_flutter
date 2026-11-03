@@ -193,3 +193,61 @@ the full-window route wrapper, natural height, long-content reachability,
 native copying, all historical actions, glyphs and disjoint target geometry.
 Shared/BusyFiles compact presentation retains each host's own dialog/navigation;
 large history browsers and three-way editors retain expanded surfaces.
+
+## History selector and property mappings (2026-11-03)
+
+The selector owns candidate browsing and explicit confirmation only. Its toolbar
+is one measured row: message/author/path entries and date when space permits;
+a native Filters/secondary-command menu at smaller widths or larger text sizes.
+Refresh and branch navigation form the adjacent command group. The menu retains
+Reset Filters, Go to Commit/Reference, HEAD, ordered cherry-pick and two-revision
+comparison. Commit-row context menus retain the historical Git operations and
+compact View Commit Details. There is no selector button opening the old 500px
+`_detailPane()` surface. Confirm/cancel and immutable comparisons are unchanged.
+
+| Shared request | BusyMark native mapping | BusyFiles native mapping |
+| --- | --- | --- |
+| `isDense` field | Single-line native entry, titlebar-item minimum, natural scaled content height | Existing grouped entry with compact vertical insets and icon constraints |
+| Label/hint | Compact: inline placeholder plus persistent semantic label; standard: label above editor and separate hint | Compact: inline placeholder plus persistent semantic label; standard: existing grouped InputDecorator |
+| Prefix/suffix | Logical start/end siblings of editor | Existing entry prefix/suffix slots |
+| `contentPadding` field | Requested directional insets on the single native surface | Requested directional insets on the single native surface; internal decorator stays unpadded |
+| `alignLabelWithHint`, vertical alignment | Standard label is always above multiline content; hint honors requested vertical alignment; supplied editor requests use top alignment | Forwarded to the existing entry/decorator |
+| Disabled/read-only | Disabled excludes pointer/focus and dims text; read-only retains selection/focus/copy | Existing entry disabled/read-only behavior |
+| Editing properties | Original controller, focus, selection, composing range, undo/scroll controllers, callbacks, line limits, direction, alignment and editing options are forwarded | Same, through existing native entry |
+| Dense row | Sidebar row geometry with compact insets and natural scaled content | Existing sidebar `YaruMasterTile` with BusyFiles sidebar geometry |
+| Row insets | `GitCheckRow` forwards its insets to `GitActionRow`; native row uses them | Dense sidebar theme/standard native action row use them |
+| Row states | Existing sidebar selected/hover/pressed/focus surface and semantic selected/enabled state | Existing native master/action row states and semantic selected/enabled state |
+| Trailing action | Separate sibling outside row selection target | Separate sibling outside row selection target |
+| Choice expansion | Full allocated width when `isExpanded` is requested | Same through the native push-button content |
+| Choice underline | Native action surface owns boundary/focus; the supplied empty underline requests no additional decoration | Same native equivalent |
+| Choice-bar artwork | Current supplied segments are text-only; BusyMark uses labelled native radio choices | Current supplied segments are text-only native tabs |
+| Progress stroke/label | Forwarded to official Yaru progress controls | Forwarded to official Yaru progress controls |
+| Tooltip, scrollbar, activation, notices | Existing host tooltip/scrollbar/focus/native notice controls | Existing host equivalents |
+| Localized sizing/RTL | TextPainter uses active text scale and direction; natural content sizing and directional insets/start/end slots | Same; native entry/row layouts inherit direction |
+| Menu positioning | Existing global pointer anchor or control bottom at logical start, passed with direction to native service | Existing native presenter with the same anchor contract |
+
+Rows request the horizontal glyph explicitly for branch/reference and historical
+file actions. Other menu defaults are unchanged. Diff semantic foregrounds still
+come from each host's Yaru semantic colors. Backgrounds are host-owned translucent
+treatments: word changes 20%, staged/unstaged 16%, conflict 24%; ordinary line
+backgrounds multiply the word treatment by 0.4 rather than replacing its opacity.
+The editor renderer consumes the supplied staged/unstaged/conflict treatment
+without making it opaque. Search uses the host accent background, active matches
+retain bold/underline, native selection retains its own treatment, and +/- line
+markers and labelled staging/conflict contexts retain non-color meaning.
+
+BusyMark feedback follows `BusyMarkToastOverlay`. BusyFiles Git feedback calls
+`busyFilesMessage` through `ScaffoldMessenger`, as do its existing non-Git browser
+and recovery flows. This is the established in-window BusyFiles feedback control;
+the daemon's freedesktop notification coordinator serves background operation
+and activation events, with a different message/destination contract. Routing
+these short Git messages through that daemon would change their semantics. No
+Git-only Snackbar construction or substitute notification path is introduced.
+
+The consumer contract tests execute actual adapters and inspect field/row sizes,
+requested icons, editing state, directional padding, disabled/read-only behavior,
+line and word rendering, and light/dark background contrast. Additional shared
+regressions cover selector routing, initial selection, confirmation/cancellation,
+branch glyphs and retained history actions. These assertions do not replace real
+native captures or the existing resolved-construction enforcement. Acceptance
+must report separately whether the test runner and native display were available.

@@ -157,6 +157,7 @@ class TestGitPresentation implements GitPresentation {
       );
   @override
   Widget row(BuildContext context, GitActionRow c) => ListTile(
+    contentPadding: c.contentPadding,
     title: c.title,
     subtitle: c.subtitle,
     leading: c.leading,

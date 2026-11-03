@@ -187,6 +187,7 @@ final class GitActionRow extends StatelessWidget {
     this.leading,
     this.trailing,
     this.dense = false,
+    this.contentPadding,
     this.selected = false,
     this.enabled = true,
     this.onTap,
@@ -195,6 +196,7 @@ final class GitActionRow extends StatelessWidget {
   final Widget? subtitle;
   final Widget? leading;
   final Widget? trailing;
+  final EdgeInsetsGeometry? contentPadding;
   final bool dense;
   final bool selected;
   final bool enabled;
@@ -387,6 +389,7 @@ final class GitCheckRow extends StatelessWidget {
     title: title,
     subtitle: subtitle,
     dense: dense,
+    contentPadding: contentPadding,
     enabled: onChanged != null,
     onTap: onChanged == null ? null : () => onChanged!(!(value ?? false)),
     leading: GitCheckbox(value: value, onChanged: onChanged),
@@ -498,6 +501,13 @@ final class GitColors {
       unstagedBackground,
       conflictBackground,
       searchBackground;
+
+  /// Hosts supply word-level backgrounds, already treated for readable text.
+  /// Line emphasis reduces that treatment without discarding host opacity.
+  Color get addedLineBackground =>
+      addedBackground.withValues(alpha: addedBackground.a * .4);
+  Color get removedLineBackground =>
+      removedBackground.withValues(alpha: removedBackground.a * .4);
   Color get transparent => surface.withValues(alpha: 0);
   static GitColors of(BuildContext context) =>
       gitPresentation(context).colors(context);

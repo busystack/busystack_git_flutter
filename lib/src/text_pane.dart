@@ -53,15 +53,9 @@ final class GitHighlightedTextController extends TextEditingController {
             : GitHighlightKind.conflict;
       }
       return switch (kind) {
-        GitHighlightKind.staged => colors.stagedBackground.withValues(
-          alpha: .55,
-        ),
-        GitHighlightKind.unstaged => colors.unstagedBackground.withValues(
-          alpha: .55,
-        ),
-        GitHighlightKind.conflict => colors.conflictBackground.withValues(
-          alpha: .65,
-        ),
+        GitHighlightKind.staged => colors.stagedBackground,
+        GitHighlightKind.unstaged => colors.unstagedBackground,
+        GitHighlightKind.conflict => colors.conflictBackground,
         null => null,
       };
     }

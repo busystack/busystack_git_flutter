@@ -119,6 +119,28 @@ Future<void> _context(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'history reference actions explicitly request the horizontal native glyph',
+    (tester) async {
+      await _mount(tester, _BranchClient(), menu: (_) async => null);
+      final actions = find.byWidgetPredicate(
+        (widget) =>
+            widget is GitMenuButton &&
+            widget.tooltip == 'Actions for refs/heads/feature',
+      );
+      expect(actions, findsOneWidget);
+      expect(
+        tester.widget<GitMenuButton>(actions).glyph,
+        GitGlyph.moreHorizontal,
+      );
+      final row = find.ancestor(
+        of: actions,
+        matching: find.byType(GitActionRow),
+      );
+      expect(tester.widget<GitActionRow>(row).dense, isTrue);
+    },
+  );
+
+  testWidgets(
     'branch click filters; actual context menu exposes directed safe operations',
     (tester) async {
       final client = _BranchClient();

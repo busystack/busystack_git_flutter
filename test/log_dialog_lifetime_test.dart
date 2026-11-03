@@ -441,12 +441,9 @@ void main() {
         final (first, _, _, answer) = await _mount(
           tester,
           compact: !goTo,
-          menuChoice: 'author',
+          menuChoice: goTo ? 'goto' : 'author',
         );
-        if (goTo)
-          await tester.tap(find.text(GitMessages.goToCommitReference));
-        else
-          await tester.tap(find.byTooltip(GitMessages.filterLog));
+        await tester.tap(find.byTooltip(GitMessages.filterLog));
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip(GitMessages.refreshLog));
         await tester.pumpAndSettle();

@@ -1118,10 +1118,8 @@ final class _GitDiffViewState extends State<GitDiffView> {
     return _selected.contains(index)
         ? colors.selection
         : switch (_diff!.edits[index].kind) {
-            TextEditKind.add => colors.addedBackground.withValues(alpha: .3),
-            TextEditKind.remove => colors.removedBackground.withValues(
-              alpha: .3,
-            ),
+            TextEditKind.add => colors.addedLineBackground,
+            TextEditKind.remove => colors.removedLineBackground,
             _ => GitColors.of(context).transparent,
           };
   }
