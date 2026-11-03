@@ -660,13 +660,6 @@ final class _GitLogViewState extends State<GitLogView> {
                           ),
                         ),
                       if (_navigationReference != null)
-                        GitButton(
-                          onPressed: () => unawaited(_load()),
-                          child: const GitLabel(
-                            GitMessages.restoreHistoryFilters,
-                          ),
-                        ),
-                      if (_navigationReference != null)
                         GitFilterLabel(
                           label: Text(
                             gitString(
@@ -816,6 +809,8 @@ final class _GitLogViewState extends State<GitLogView> {
         const GitMenuEntry('date', GitMessages.date),
       ],
       GitMenuEntry('reset', GitMessages.resetFilters, sectionStart: !inline),
+      if (_navigationReference != null)
+        const GitMenuEntry('restore', GitMessages.restoreHistoryFilters),
       const GitMenuEntry(
         'goto',
         GitMessages.goToCommitReference,
@@ -849,6 +844,8 @@ final class _GitLogViewState extends State<GitLogView> {
           unawaited(_dates());
         case 'reset':
           _resetFilters();
+        case 'restore':
+          unawaited(_load());
         case 'goto':
           unawaited(_goto());
         case 'head':
