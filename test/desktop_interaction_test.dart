@@ -226,6 +226,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Go to commit/reference…'));
       await tester.pumpAndSettle();
       final input = find.descendant(

@@ -69,8 +69,9 @@ Future<(_Client, _Client, ValueNotifier<_Binding>, Completer<String?>)> _mount(
               : answer.future)
           as T?;
     },
-    presentMenu: (_, entries, {position}) async =>
-        pendingMenu == null ? menuChoice : await pendingMenu.future,
+    presentMenu: (_, entries, {position}) async => pendingMenu == null
+        ? menuChoice ?? (entries.any((e) => e.id == 'goto') ? 'goto' : null)
+        : await pendingMenu.future,
     openDocument: (_, _, {snapshot}) async {},
     prepareMutation: (_, _) async => true,
     chooseDirectory: (_) async => null,
@@ -186,7 +187,7 @@ void main() {
         final before = tester.state(
           find.byType(GitLogView, skipOffstage: false),
         );
-        await tester.tap(find.byTooltip('Filter Log'));
+        await tester.tap(find.byKey(const ValueKey('git-history-actions')));
         await tester.pumpAndSettle();
         await _transition(tester, binding, transition);
         expect(
@@ -220,7 +221,8 @@ void main() {
 
   testWidgets('Go to dialog cannot revive after active ABA', (tester) async {
     final (first, _, binding, answer) = await _mount(tester);
-    await tester.tap(find.text('Go to commit/reference…'));
+    await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+
     await tester.pumpAndSettle();
     await _transition(tester, binding, 'activeABA');
     final reads = first.historyFilters.length;
@@ -405,6 +407,8 @@ void main() {
       final element = tester.element(find.byType(GitLogView));
       final state = tester.state(find.byType(GitLogView));
       final route = ModalRoute.of(element)!;
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Go to commit/reference…'));
       await tester.pump();
       final reads = client.historyFilters.length;
@@ -443,7 +447,7 @@ void main() {
           compact: !goTo,
           menuChoice: goTo ? 'goto' : 'author',
         );
-        await tester.tap(find.byTooltip(GitMessages.filterLog));
+        await tester.tap(find.byKey(const ValueKey('git-history-actions')));
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip(GitMessages.refreshLog));
         await tester.pumpAndSettle();
@@ -480,9 +484,9 @@ void main() {
       menuChoice: 'author',
       dialogAnswers: queue,
     );
-    await tester.tap(find.byTooltip(GitMessages.filterLog));
+    await tester.tap(find.byKey(const ValueKey('git-history-actions')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip(GitMessages.filterLog));
+    await tester.tap(find.byKey(const ValueKey('git-history-actions')));
     await tester.pumpAndSettle();
     expect(queue, isEmpty);
     newer.complete('newer author');
@@ -591,7 +595,7 @@ void main() {
           pendingMenu: menu,
         );
         final before = tester.state(find.byType(GitLogView));
-        await tester.tap(find.byTooltip(GitMessages.filterLog));
+        await tester.tap(find.byKey(const ValueKey('git-history-actions')));
         await tester.pumpAndSettle();
         await _transition(tester, binding, transition);
         expect(

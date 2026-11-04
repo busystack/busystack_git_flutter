@@ -11,6 +11,63 @@ void historyPresentationContract({
 }) {
   for (final brightness in Brightness.values) {
     testWidgets(
+      'compact action requests retain distinct native roles $brightness',
+      (tester) async {
+        await mount(
+          tester,
+          Column(
+            children: [
+              GitButton.standard(
+                key: const ValueKey('normal-action'),
+                onPressed: () {},
+                child: const Text('Action'),
+              ),
+              GitButton.standard(
+                key: const ValueKey('compact-action'),
+                compact: true,
+                onPressed: () {},
+                child: const Text('Action'),
+              ),
+              GitButton(
+                key: const ValueKey('inline-action'),
+                compact: true,
+                onPressed: () {},
+                child: const Text('Metadata'),
+              ),
+              GitButton.primary(
+                key: const ValueKey('suggested-action'),
+                compact: true,
+                onPressed: () {},
+                child: const Text('Select this commit'),
+              ),
+              const GitButton.standard(
+                key: ValueKey('disabled-action'),
+                compact: true,
+                onPressed: null,
+                child: Text('Disabled'),
+              ),
+            ],
+          ),
+          brightness,
+        );
+        final compact = find.byKey(const ValueKey('compact-action'));
+        expect(tester.getSize(compact).height, lessThanOrEqualTo(40));
+        expect(
+          tester.getSize(compact).height,
+          lessThanOrEqualTo(
+            tester.getSize(find.byKey(const ValueKey('normal-action'))).height,
+          ),
+        );
+        expect(
+          tester.getSize(find.byKey(const ValueKey('suggested-action'))).height,
+          closeTo(tester.getSize(compact).height, 2),
+        );
+        await tester.tap(find.text('Disabled'), warnIfMissed: false);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
       'history fields honor native density and adornments $brightness',
       (tester) async {
         final controller = TextEditingController();
@@ -54,7 +111,7 @@ void historyPresentationContract({
         await tester.tap(find.byKey(const ValueKey('dense')));
         const value = TextEditingValue(
           text: '入力 composing',
-          selection: TextSelection(baseOffset: 1, extentOffset: 4),
+          selection: TextSelection.collapsed(offset: 1),
           composing: TextRange(start: 0, end: 2),
         );
         tester.testTextInput.updateEditingValue(value);

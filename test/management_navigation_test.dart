@@ -1,5 +1,6 @@
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/presentation_fixture.dart';
@@ -121,11 +122,16 @@ void main() {
         );
         await tester.tap(find.text('Repository actions'));
         await tester.pumpAndSettle();
-        final rowMenu = find.byTooltip(
-          action == 'branches' ? 'Actions for refs/heads/linked' : 'Actions',
-        );
-        expect(rowMenu, findsOneWidget);
-        await tester.tap(rowMenu);
+        if (action == 'branches') {
+          await tester.tap(
+            find.widgetWithText(GitActionRow, 'linked'),
+            buttons: kSecondaryMouseButton,
+          );
+        } else {
+          final rowMenu = find.byTooltip('Actions');
+          expect(rowMenu, findsOneWidget);
+          await tester.tap(rowMenu);
+        }
         await tester.pumpAndSettle();
         expect(opened, linked.root);
         expect(hostRouteCurrent, isTrue);

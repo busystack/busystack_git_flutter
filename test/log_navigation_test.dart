@@ -74,6 +74,8 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Retained ancestor'));
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+        await tester.pumpAndSettle();
         await tester.tap(find.text('Go to commit/reference…'));
         await tester.pumpAndSettle();
         final input = find.descendant(
@@ -120,6 +122,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Retained ancestor'));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Back to HEAD'));
       await tester.pumpAndSettle();
       expect(find.text(client.head.oid.value), findsOneWidget);
@@ -156,6 +160,8 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Go to commit/reference…'));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -178,6 +184,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(client.distant.oid.value), findsOneWidget);
       expect(find.widgetWithText(TextField, 'Only older'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Restore history filters'));
       await tester.pumpAndSettle();
       expect(find.text(client.distant.oid.value), findsNothing);
@@ -209,6 +217,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+      await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text('Go to commit/reference…'));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -220,6 +230,8 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byKey(const ValueKey('git-history-actions')));
       await tester.pump(const Duration(milliseconds: 300));
       await tester.tap(find.text('Go to commit/reference…'));
       await tester.pump();

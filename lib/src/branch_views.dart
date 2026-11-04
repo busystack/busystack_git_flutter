@@ -1,4 +1,5 @@
 import 'presentation.dart';
+import 'reference_context_menu.dart';
 import 'messages.dart';
 import 'host.dart';
 import 'dart:async';
@@ -26,6 +27,15 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
   List<GitReference> refs = [];
   GitSnapshot? reviewed;
   String search = '';
+  String? selectedReference;
+  final _search = TextEditingController();
+  final _searchKey = GlobalKey();
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     _session = widget.session;
@@ -69,169 +79,258 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
   }
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      states(refresh: refresh),
-      if (session.snapshot != null && !session.canWriteMetadata)
-        const GitLabel(
-          GitMessages
-              .repositoryMetadataIsReadOnlyBranchInspectionAndComparisonRemain,
+  Widget build(BuildContext context) {
+    final host = session.host, spacing = session.host.spacing;
+    final searchField = GitTextField(
+      key: _searchKey,
+      controller: _search,
+      decoration: GitFieldDecoration(
+        prefixIcon: const GitIcon(GitGlyph.search, size: 16),
+        labelText: gitString(context, GitMessages.searchBranchesAndTags),
+        isDense: true,
+      ),
+      onChanged: (value) => setState(() => search = value),
+    );
+    final create = GitButton.icon(
+      key: const ValueKey('git-new-branch'),
+      variant: GitActionStyle.standard,
+      compact: true,
+      onPressed:
+          loading ||
+              reviewed?.head == null ||
+              !session.canWriteMetadata ||
+              session.snapshot?.capabilities.replaceWorkingFiles != true
+          ? null
+          : () => unawaited(createBranch()),
+      icon: const GitIcon(GitGlyph.add, size: 16),
+      label: const GitLabel(GitMessages.newBranch),
+    );
+    final workflows = GitMenuButton(
+      key: const ValueKey('git-branch-workflows'),
+      host: session.host,
+      tooltip: GitMessages.actions,
+      glyph: GitGlyph.moreHorizontal,
+      entries: [
+        GitMenuEntry(
+          'merge',
+          gitString(
+            context,
+            GitMessages.mergeIntoArg0,
+            values: {'arg0': reviewed?.branch ?? GitMessages.head},
+          ),
+          enabled:
+              !session.running &&
+              session.canWriteMetadata &&
+              session.snapshot?.capabilities.replaceWorkingFiles == true &&
+              session.snapshot?.operation.kind == GitOperationKind.none,
+          localize: false,
         ),
-      if (session.canWriteMetadata &&
-          session.snapshot?.capabilities.replaceWorkingFiles == false)
-        const GitLabel(
-          GitMessages.workingFilesAreUnavailableOrReadOnlyBranchSwitchingAnd,
+        GitMenuEntry(
+          'rebase',
+          GitMessages.rebase2,
+          enabled:
+              !session.running &&
+              session.canWriteMetadata &&
+              session.snapshot?.capabilities.replaceWorkingFiles == true &&
+              session.snapshot?.operation.kind == GitOperationKind.none,
         ),
-      Row(
+      ],
+      onSelected: (action) {
+        if (!mounted ||
+            session.running ||
+            !session.canWriteMetadata ||
+            session.snapshot?.capabilities.replaceWorkingFiles != true ||
+            session.snapshot?.operation.kind != GitOperationKind.none)
+          return;
+        final ui = GitWorkflowUi(context, session);
+        unawaited(action == 'merge' ? ui.merge() : ui.rebase());
+      },
+    );
+    final groups = const ['refs/heads/', 'refs/remotes/', 'refs/tags/'];
+    return GitReferenceNavigation(
+      builder: (results) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: GitTextField(
-              decoration: GitFieldDecoration(
-                prefixIcon: GitIcon(GitGlyph.search),
-                labelText: gitString(
-                  context,
-                  GitMessages.searchBranchesAndTags,
-                ),
-              ),
-              onChanged: (value) => setState(() => search = value),
+          states(refresh: refresh),
+          GitTooltip(
+            message: session.repository.root,
+            child: Text(
+              session.repository.root
+                  .split(RegExp(r'[/\\]'))
+                  .where((part) => part.isNotEmpty)
+                  .last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GitTheme.of(context).textTheme.bodySmall,
             ),
           ),
-          GitButton.icon(
-            onPressed:
-                loading ||
-                    reviewed?.head == null ||
-                    !session.canWriteMetadata ||
-                    session.snapshot?.capabilities.replaceWorkingFiles != true
-                ? null
-                : () => unawaited(createBranch()),
-            icon: const GitIcon(GitGlyph.add),
-            label: const GitLabel(GitMessages.newBranch),
-          ),
-          GitMenuButton(
-            key: const ValueKey('git-branch-workflows'),
-            host: session.host,
-            tooltip: GitMessages.actions,
-            entries: [
-              GitMenuEntry(
-                'merge',
-                gitString(
-                  context,
-                  GitMessages.mergeIntoArg0,
-                  values: {'arg0': reviewed?.branch ?? GitMessages.head},
+          SizedBox(height: spacing),
+          if (session.snapshot != null && !session.canWriteMetadata)
+            const GitLabel(
+              GitMessages
+                  .repositoryMetadataIsReadOnlyBranchInspectionAndComparisonRemain,
+            ),
+          if (session.canWriteMetadata &&
+              session.snapshot?.capabilities.replaceWorkingFiles == false)
+            const GitLabel(
+              GitMessages
+                  .workingFilesAreUnavailableOrReadOnlyBranchSwitchingAnd,
+            ),
+          LayoutBuilder(
+            builder: (context, bounds) {
+              final painter = TextPainter(
+                text: TextSpan(
+                  text: gitString(context, GitMessages.newBranch),
+                  style: GitTheme.of(context).textTheme.labelLarge,
                 ),
-                enabled:
-                    !session.running &&
-                    session.canWriteMetadata &&
-                    session.snapshot?.capabilities.replaceWorkingFiles ==
-                        true &&
-                    session.snapshot?.operation.kind == GitOperationKind.none,
-                localize: false,
-              ),
-              GitMenuEntry(
-                'rebase',
-                GitMessages.rebase2,
-                enabled:
-                    !session.running &&
-                    session.canWriteMetadata &&
-                    session.snapshot?.capabilities.replaceWorkingFiles ==
-                        true &&
-                    session.snapshot?.operation.kind == GitOperationKind.none,
-              ),
-            ],
-            onSelected: (action) {
-              if (!mounted ||
-                  session.running ||
-                  !session.canWriteMetadata ||
-                  session.snapshot?.capabilities.replaceWorkingFiles != true ||
-                  session.snapshot?.operation.kind != GitOperationKind.none)
-                return;
-              final ui = GitWorkflowUi(context, session);
-              unawaited(action == 'merge' ? ui.merge() : ui.rebase());
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+              )..layout();
+              final compact =
+                  bounds.maxWidth <
+                  painter.width + host.rowHeight(context) * 7 + spacing * 5;
+              painter.dispose();
+              if (compact)
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    gitReferenceSearchNavigation(
+                      controller: _search,
+                      results: results,
+                      child: searchField,
+                    ),
+                    SizedBox(height: spacing),
+                    Row(
+                      children: [
+                        create,
+                        SizedBox(width: spacing),
+                        workflows,
+                      ],
+                    ),
+                  ],
+                );
+              return Row(
+                children: [
+                  Expanded(
+                    child: gitReferenceSearchNavigation(
+                      controller: _search,
+                      results: results,
+                      child: searchField,
+                    ),
+                  ),
+                  SizedBox(width: spacing),
+                  create,
+                  SizedBox(width: spacing),
+                  workflows,
+                ],
+              );
             },
+          ),
+          SizedBox(height: spacing),
+          Flexible(
+            child: gitReferenceResults(
+              focus: results,
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final prefix in groups) ...[
+                    Padding(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: spacing,
+                        vertical: spacing,
+                      ),
+                      child: Text(
+                        gitString(context, switch (prefix) {
+                          'refs/heads/' => GitMessages.localBranches,
+                          'refs/remotes/' => GitMessages.remoteBranches,
+                          _ => GitMessages.tags,
+                        }),
+                        style: GitTheme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    for (final reference in refs.where(
+                      (e) =>
+                          e.name.startsWith(prefix) &&
+                          e.name.toLowerCase().contains(search.toLowerCase()),
+                    ))
+                      _reference(reference, prefix),
+                  ],
+                ],
+              ),
+            ),
           ),
         ],
       ),
-      Expanded(
-        child: ListView(
-          children: [
-            for (final prefix in const [
-              'refs/heads/',
-              'refs/remotes/',
-              'refs/tags/',
-            ]) ...[
-              Padding(
-                padding: EdgeInsets.all(session.host.spacing),
-                child: Text(switch (prefix) {
-                  'refs/heads/' => gitString(
-                    context,
-                    GitMessages.localBranches,
-                  ),
-                  'refs/remotes/' => gitString(
-                    context,
-                    GitMessages.remoteBranches,
-                  ),
-                  _ => gitString(context, GitMessages.tags),
-                }, style: GitTheme.of(context).textTheme.titleSmall),
-              ),
-              for (final reference in refs.where(
-                (e) =>
-                    e.name.startsWith(prefix) &&
-                    e.name.toLowerCase().contains(search.toLowerCase()),
-              ))
-                GitActionRow(
-                  dense: true,
-                  leading: GitIcon(
-                    reference.current
-                        ? GitGlyph.check
-                        : prefix == 'refs/tags/'
-                        ? GitGlyph.tag
-                        : GitGlyph.branch,
-                    size: 18,
-                  ),
-                  title: Text(reference.name.substring(prefix.length)),
-                  subtitle: Text(
-                    [
-                      if (reference.upstream != null)
-                        gitString(
-                          context,
-                          GitMessages.tracksArg0,
-                          values: {'arg0': reference.upstream},
-                        ),
-                      if (reference.worktreePath != null)
-                        gitString(
-                          context,
-                          GitMessages.checkedOutAtArg0,
-                          values: {'arg0': reference.worktreePath},
-                        ),
-                      reference.oid.abbreviated,
-                    ].join(' · '),
-                  ),
-                  trailing: Builder(
-                    builder: (_) {
-                      final actions = _actions;
-                      return GitMenuButton(
-                        host: session.host,
-                        enabled: !loading,
-                        disabledReason: GitMessages.refreshingBranchMetadata,
-                        onSelected: (action) =>
-                            unawaited(actions.act(reference, action)),
-                        entries: actions.entries(reference),
-                        tooltip: gitString(
-                          context,
-                          GitMessages.actionsForArg0,
-                          values: {'arg0': reference.name},
-                        ),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ],
+    );
+  }
+
+  Widget _reference(GitReference reference, String prefix) {
+    final actions = _actions;
+    Future<void> menu(Offset position) async {
+      if (loading || !actions.isCurrent()) return;
+      final result = await session.host.menu(
+        context,
+        reference.shortName,
+        actions.entries(reference),
+        position: position,
+        localizeTitle: false,
+      );
+      if (result != null && actions.isCurrent())
+        await actions.act(reference, result);
+    }
+
+    final metadata = [
+      if (reference.upstream != null)
+        gitString(
+          context,
+          GitMessages.tracksArg0,
+          values: {'arg0': reference.upstream},
+        ),
+      if (reference.worktreePath != null)
+        gitString(
+          context,
+          GitMessages.checkedOutAtArg0,
+          values: {'arg0': reference.worktreePath},
+        ),
+      reference.oid.abbreviated,
+    ].join(' · ');
+    return GitReferenceContextMenu(
+      key: ValueKey(reference.name),
+      open: loading ? null : menu,
+      child: GitTooltip(
+        message: '${reference.name}\n$metadata',
+        child: GitActionRow(
+          dense: true,
+          selected: selectedReference == reference.name,
+          onTap: () => setState(() => selectedReference = reference.name),
+          onSecondaryTapUp: (details) =>
+              unawaited(menu(details.globalPosition)),
+          leading: GitIcon(
+            reference.current
+                ? GitGlyph.check
+                : prefix == 'refs/tags/'
+                ? GitGlyph.tag
+                : GitGlyph.branch,
+            size: 16,
+          ),
+          title: Text(
+            reference.shortName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            metadata,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GitTheme.of(context).textTheme.bodySmall,
+          ),
         ),
       ),
-    ],
-  );
+    );
+  }
+
   GitBranchActions get _actions {
     final state = reviewed, references = refs;
     return GitBranchActions(

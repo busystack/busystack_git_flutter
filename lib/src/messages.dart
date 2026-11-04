@@ -1,5 +1,6 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const selectAnotherCommit = "Select another commit…";
   static const removeFilter = "Remove filter";
   static const noCommitsYet = "No commits yet";
   static const nativeMenuUnavailable =
@@ -1809,5 +1810,6 @@ abstract final class GitMessages {
     commitHash,
     commitReferences,
     copyCommitMessage,
+    selectAnotherCommit,
   ];
 }

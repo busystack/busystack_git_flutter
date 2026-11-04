@@ -119,24 +119,28 @@ Future<void> _context(WidgetTester tester) async {
 
 void main() {
   testWidgets(
-    'history reference actions explicitly request the horizontal native glyph',
+    'history references are dense contextual rows without permanent action controls',
     (tester) async {
-      await _mount(tester, _BranchClient(), menu: (_) async => null);
-      final actions = find.byWidgetPredicate(
-        (widget) =>
-            widget is GitMenuButton &&
-            widget.tooltip == 'Actions for refs/heads/feature',
+      final menus = <List<GitMenuEntry>>[];
+      await _mount(
+        tester,
+        _BranchClient(),
+        menu: (entries) async {
+          menus.add(entries);
+          return null;
+        },
       );
-      expect(actions, findsOneWidget);
       expect(
-        tester.widget<GitMenuButton>(actions).glyph,
-        GitGlyph.moreHorizontal,
+        find.byWidgetPredicate(
+          (w) => w is GitMenuButton && w.tooltip.startsWith('Actions for '),
+        ),
+        findsNothing,
       );
-      final row = find.ancestor(
-        of: actions,
-        matching: find.byType(GitActionRow),
-      );
+      final row = find.widgetWithText(GitActionRow, 'feature');
       expect(tester.widget<GitActionRow>(row).dense, isTrue);
+      await _context(tester);
+      expect(menus, hasLength(1));
+      expect(menus.single.any((e) => e.id == 'switch'), isTrue);
     },
   );
 

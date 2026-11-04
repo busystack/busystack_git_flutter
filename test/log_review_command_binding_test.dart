@@ -37,7 +37,9 @@ Future<(ValueNotifier<GitSession>, GitSession, List<String>)> _mount(
 
     present: <T>(context, title, child, {bool expanded = false}) async =>
         input == null ? null : await input.future as T?,
-    presentMenu: (_, entries, {position}) => menu?.future ?? Future.value(),
+    presentMenu: (_, entries, {position}) => entries.any((e) => e.id == 'goto')
+        ? Future.value('goto')
+        : menu?.future ?? Future.value(),
     openDocument: (_, _, {snapshot}) async {},
     prepareMutation: (_, _) async => true,
     chooseDirectory: (_) async => null,
@@ -116,7 +118,8 @@ void main() {
   ) async {
     final input = Completer<String?>();
     final (selected, second, _) = await _mount(tester, input: input);
-    await tester.tap(find.text('Go to commit/reference…'));
+    await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+
     await tester.pump();
     selected.value = second;
     await tester.pumpAndSettle();

@@ -797,5 +797,6 @@
   "viewCommitDetails": "View commit details…",
   "commitHash": "Commit hash",
   "commitReferences": "References",
-  "copyCommitMessage": "Copy commit message"
+  "copyCommitMessage": "Copy commit message",
+  "selectAnotherCommit": "Select another commit…"
 }

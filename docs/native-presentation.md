@@ -197,8 +197,9 @@ large history browsers and three-way editors retain expanded surfaces.
 ## History selector and property mappings (2026-11-03)
 
 The selector owns candidate browsing and explicit confirmation only. Its toolbar
-is one measured row: message/author/path entries and date when space permits;
-a native Filters/secondary-command menu at smaller widths or larger text sizes.
+keeps message/author/path entries visible at every width. A measured wide row
+wraps into field and command rows at narrow widths or larger text sizes; the
+native overflow retains filter editors and secondary commands.
 Refresh and branch navigation form the adjacent command group. The menu retains
 Reset Filters, Go to Commit/Reference, HEAD, ordered cherry-pick and two-revision
 comparison. Commit-row context menus retain the historical Git operations and
@@ -226,8 +227,9 @@ compact View Commit Details. There is no selector button opening the old 500px
 | Localized sizing/RTL | TextPainter uses active text scale and direction; natural content sizing and directional insets/start/end slots | Same; native entry/row layouts inherit direction |
 | Menu positioning | Existing global pointer anchor or control bottom at logical start, passed with direction to native service | Existing native presenter with the same anchor contract |
 
-Rows request the horizontal glyph explicitly for branch/reference and historical
-file actions. Other menu defaults are unchanged. Diff semantic foregrounds still
+Branch/reference entries use shared mouse and keyboard context menus without
+permanent action buttons in either host. Historical file entry controls follow
+the host placement policy and request the horizontal glyph explicitly. Other menu defaults are unchanged. Diff semantic foregrounds still
 come from each host's Yaru semantic colors. Backgrounds are host-owned translucent
 treatments: word changes 20%, staged/unstaged 16%, conflict 24%; ordinary line
 backgrounds multiply the word treatment by 0.4 rather than replacing its opacity.
@@ -258,7 +260,8 @@ This revision supersedes the earlier BusyMark sibling action-column and inline
 branch-button requirements. `GitPresentation.entryActionPlacement` is required:
 BusyMark declares `contextMenu`; BusyFiles declares `trailing`. This is a host
 native equivalent, not an optional fallback. Shared Commit, historical-file and
-reference entries only construct trailing controls for the latter. All existing
+historical file entries only construct trailing controls for the latter. Branch
+and reference entries use contextual commands in both hosts. All existing
 entry action destinations remain in their context menus. View-level commands,
 disclosure controls, status markers and metadata remain visible in both hosts.
 
@@ -280,8 +283,11 @@ context command to the selected record's native action; navigation and paste
 keys retain their original destinations. Menu dismissal restores live focus.
 No Flutter popup route is used when the native menu service is unavailable.
 
-Commit's branch and Git Log's commit identities use compact neutral native rows,
-opening the complete original Branches/history modal. Parent navigation remains
+Commit's branch identity opens the complete original Branches modal. Git Log's
+selected subject is a neutral information row without activation, hover-button
+treatment or a semantic tap action. Its separate view-level Actions menu owns
+Select another commit… and all applicable commit commands. The menu opens the
+authoritative history selector, initialized from the inspector selection. Parent navigation remains
 secondary metadata with parent-specific comparisons, including merge parents.
 The commit hash is bounded so long references cannot displace the subject.
 Opening context menus causes no comparison activation or repository mutation.
@@ -294,3 +300,44 @@ and side effects. Native packet probes replace only the transport in tests, and
 never render fake GTK menus. These assertions do not substitute for running the
 actual application and judging all seven populated sidebars. Restricted-session
 build/source results must remain separate from native and release acceptance.
+
+## Compact native Git navigation (2026-11-04)
+
+`GitButton.compact` requests desktop toolbar/dialog insets without changing the
+Commit footer's default geometry. Standard New branch… and Date actions use
+native neutral push surfaces; Select this commit uses the suggested role;
+metadata parent navigation uses neutral inline treatment. Both hosts implement
+and measure the request. BusyMark uses the installed Yaru 10.2.0 public theme
+borders, titlebar-item minimum (34 logical pixels) and button radius. Dense
+fields have one themed border, one line of text and no permanent label row.
+
+BusyMark text entry keeps EditableText's controller, focus, composition, undo,
+selection and editing callbacks. The public TextSelectionGestureDetectorBuilder
+and desktop selection controls provide pointer selection and native editing.
+The decorative placeholder excludes semantics; the editor exposes one persistent
+accessible name. Informational sidebar surfaces register no no-op tap callback.
+
+Branches uses explicit host spacing between flexible search and natural-size
+commands, wrapping the commands below search when measured labels need it.
+Repository basename and full-path tooltip preserve identity under the concise
+Branches title. Row metadata truncates on one line with complete tooltips.
+Content determines height up to 68% of the host's available screen; long lists
+scroll in that bound. A keyed controller preserves selection/composition across
+responsive rearrangement. Down moves from search into the reference focus scope;
+Up/Down traverse results and Menu/Shift+F10 opens the same native commands as
+secondary click. Selection itself never switches or merges a branch.
+
+The inspector header is outside the entry-action placement policy: its
+information row has no trailing action; the adjacent menu is a view command.
+There is no duplicate commit selector or metadata Actions button. Commit hash,
+parents and explicit merge-parent comparisons remain in metadata/Changed Files.
+The full graph, filters, immutable comparison identity, cancellation/generation
+checks and reviewed mutation operations retain their existing implementations.
+
+BusyMark's measured visual contract runs against production Branches and Log
+views in both themes, four locales, two widths and enlarged text. The same test
+fails all 19 cases on the original checkouts, including missing gaps, oversized
+controls, painted button surfaces, activating subjects and hidden filters.
+Source audit adversarial fixtures separately reject prohibited Material fallbacks
+and alias/wrapper escapes. Real GTK screenshots and sealed build receipts come
+from `busymark/tools/git_native_smoke.py`; human inspection remains required.

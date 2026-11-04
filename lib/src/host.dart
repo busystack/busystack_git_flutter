@@ -681,6 +681,7 @@ final class GitMenuButton extends StatelessWidget {
         : GitTooltip(
             message: gitString(context, description),
             child: GitButton(
+              compact: true,
               onPressed: available ? () => open() : null,
               child: child!,
             ),

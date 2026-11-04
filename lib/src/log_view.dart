@@ -1,4 +1,5 @@
 import 'presentation.dart';
+import 'reference_context_menu.dart';
 import 'historical_change_tree.dart';
 import 'commit_details.dart';
 import 'messages.dart';
@@ -708,6 +709,7 @@ final class _GitLogViewState extends State<GitLogView> {
                   Align(
                     alignment: AlignmentDirectional.centerEnd,
                     child: GitButton.primary(
+                      compact: true,
                       onPressed:
                           _loading ||
                               _selected == null ||
@@ -802,11 +804,12 @@ final class _GitLogViewState extends State<GitLogView> {
             commandExtent * 4 +
             spacing * 5;
     final filters = <GitMenuEntry>[
+      // Keep the existing native filter editors available in overflow at narrow
+      // widths/enlarged text, alongside the directly editable primary fields.
       if (!inline) ...[
         const GitMenuEntry('message', GitMessages.message),
         const GitMenuEntry('author', GitMessages.author),
         const GitMenuEntry('path', GitMessages.path),
-        const GitMenuEntry('date', GitMessages.date),
       ],
       GitMenuEntry('reset', GitMessages.resetFilters, sectionStart: !inline),
       if (_navigationReference != null)
@@ -873,68 +876,90 @@ final class _GitLogViewState extends State<GitLogView> {
       }
     }
 
-    return Row(
-      key: const ValueKey('git-history-toolbar'),
-      children: [
-        if (inline) ...[
-          for (var i = 0; i < fields.length; i++) ...[
-            SizedBox(
-              width: fieldWidths[i],
-              child: GitTextField(
-                controller: fields[i].$1,
-                decoration: GitFieldDecoration(
-                  labelText: gitString(context, fields[i].$2),
-                  isDense: true,
-                ),
-                onSubmitted: (_) => unawaited(_load()),
-              ),
-            ),
-            SizedBox(width: spacing),
+    Widget field(int i) => GitTextField(
+      key: ValueKey('git-history-filter-$i'),
+      controller: fields[i].$1,
+      decoration: GitFieldDecoration(
+        labelText: gitString(context, fields[i].$2),
+        isDense: true,
+      ),
+      onSubmitted: (_) => unawaited(_load()),
+    );
+    final commands = <Widget>[
+      GitButton.standard(
+        compact: true,
+        onPressed: () => unawaited(_dates()),
+        child: GitLabel(
+          _since == null && _until == null
+              ? GitMessages.date
+              : GitMessages.dateFilter,
+        ),
+      ),
+      SizedBox(width: spacing),
+      GitMenuButton(
+        host: host,
+        entries: filters,
+        onSelected: selected,
+        key: const ValueKey('git-history-actions'),
+        tooltip: GitMessages.actions,
+        glyph: GitGlyph.moreHorizontal,
+      ),
+      SizedBox(width: spacing),
+      GitIconButton(
+        tooltip: GitMessages.refreshLog,
+        onPressed: _loading ? null : () => unawaited(_load()),
+        icon: const GitIcon(GitGlyph.refresh),
+      ),
+      SizedBox(width: spacing),
+      GitIconButton(
+        tooltip: canShowBranches
+            ? GitMessages.toggleBranchesPane
+            : GitMessages.filterBranchesAndTags,
+        onPressed: canShowBranches
+            ? () => setState(() => _branches = !_branches)
+            : () => unawaited(_showBranchFilter()),
+        icon: const GitIcon(GitGlyph.branch),
+      ),
+    ];
+    Widget inputs() => LayoutBuilder(
+      builder: (context, bounds) {
+        final minWidth = fields
+            .map((f) => _textWidth(gitString(context, f.$2)) + spacing * 4)
+            .reduce((a, b) => a > b ? a : b);
+        final columns = ((bounds.maxWidth + spacing) / (minWidth + spacing))
+            .floor()
+            .clamp(1, 3);
+        final extent = (bounds.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (var i = 0; i < fields.length; i++)
+              SizedBox(width: extent, child: field(i)),
           ],
-          GitButton(
-            onPressed: () => unawaited(_dates()),
-            child: Text(
-              gitString(
-                context,
-                _since == null && _until == null
-                    ? GitMessages.date
-                    : GitMessages.dateFilter,
-              ),
-            ),
-          ),
-          SizedBox(width: spacing),
+        );
+      },
+    );
+    return Column(
+      key: const ValueKey('git-history-toolbar'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (inline)
+          Row(
+            children: [
+              for (var i = 0; i < fields.length; i++) ...[
+                Expanded(child: field(i)),
+                SizedBox(width: spacing),
+              ],
+              ...commands,
+            ],
+          )
+        else ...[
+          inputs(),
+          SizedBox(height: spacing),
+          Row(children: [const Spacer(), ...commands]),
         ],
-        if (inline) const Spacer(),
-        GitMenuButton(
-          host: host,
-          entries: filters,
-          onSelected: selected,
-          tooltip: gitString(context, GitMessages.filterLog),
-          glyph: GitGlyph.options,
-          child: inline ? null : GitLabel(GitMessages.filters),
-        ),
-        if (!inline) const Spacer(),
-        SizedBox(
-          height: host.rowHeight(context),
-          child: GitSeparator(vertical: true, width: spacing * 2),
-        ),
-        GitIconButton(
-          tooltip: gitString(context, GitMessages.refreshLog),
-          onPressed: _loading ? null : () => unawaited(_load()),
-          icon: const GitIcon(GitGlyph.refresh),
-        ),
-        GitIconButton(
-          tooltip: gitString(
-            context,
-            canShowBranches
-                ? GitMessages.toggleBranchesPane
-                : GitMessages.filterBranchesAndTags,
-          ),
-          onPressed: canShowBranches
-              ? () => setState(() => _branches = !_branches)
-              : () => unawaited(_showBranchFilter()),
-          icon: const GitIcon(GitGlyph.branch),
-        ),
       ],
     );
   }
@@ -1678,47 +1703,53 @@ final class _GitLogViewState extends State<GitLogView> {
   Widget _inspector() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      GitTooltip(
-        message:
-            '${gitString(context, GitMessages.selectACommit)}${_selected == null ? '' : '\n${_selected!.subject}\n${_selected!.oid.value}'}',
-        child: Semantics(
-          label: gitString(context, GitMessages.selectACommit),
-          button: true,
-          child: GitActionRow(
-            key: const ValueKey('git-selected-commit'),
-            dense: true,
-            leading: const GitIcon(GitGlyph.history, size: 16),
-            onTap: _choosing ? null : () => unawaited(_chooseInspectorCommit()),
-            title: LayoutBuilder(
-              builder: (context, bounds) => Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _selected?.subject ??
-                          gitString(context, GitMessages.selectACommit),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (_selected?.oid ?? _inspectorOid case final oid?) ...[
-                    SizedBox(width: widget.session.host.spacing),
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: bounds.maxWidth * .30,
-                      ),
-                      child: Text(
-                        oid.abbreviated,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GitTheme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ],
-                ],
+      Row(
+        key: const ValueKey('git-commit-header'),
+        children: [
+          Expanded(
+            child: GitActionRow(
+              key: const ValueKey('git-selected-commit'),
+              dense: true,
+              leading: const GitIcon(GitGlyph.history, size: 16),
+              title: GitTooltip(
+                message:
+                    _selected?.subject ??
+                    gitString(context, GitMessages.selectACommit),
+                child: Text(
+                  _selected?.subject ??
+                      gitString(context, GitMessages.selectACommit),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
           ),
-        ),
+          Builder(
+            builder: (anchor) => GitIconButton(
+              key: const ValueKey('git-commit-actions'),
+              tooltip: GitMessages.actions,
+              onPressed: _choosing
+                  ? null
+                  : () {
+                      final box = anchor.findRenderObject() as RenderBox;
+                      unawaited(
+                        _menu(
+                          _selected,
+                          position: box.localToGlobal(
+                            Offset(
+                              Directionality.of(anchor) == TextDirection.rtl
+                                  ? box.size.width
+                                  : 0,
+                              box.size.height,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+              icon: const GitIcon(GitGlyph.moreHorizontal),
+            ),
+          ),
+        ],
       ),
       if (_loading) const GitLoading(),
       if (_failure != null)
@@ -2093,42 +2124,7 @@ final class _GitLogViewState extends State<GitLogView> {
                           style: GitTheme.of(context).textTheme.bodySmall,
                         ),
                     ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: line(
-                            commit.oid.abbreviated,
-                            tooltip: commit.oid.value,
-                          ),
-                        ),
-                        if (!_selectionOnly)
-                          Builder(
-                            builder: (anchor) => GitIconButton(
-                              key: const ValueKey('git-commit-actions'),
-                              tooltip: GitMessages.commitActions,
-                              onPressed: () {
-                                final box =
-                                    anchor.findRenderObject() as RenderBox;
-                                unawaited(
-                                  _menu(
-                                    commit,
-                                    position: box.localToGlobal(
-                                      Offset(
-                                        Directionality.of(anchor) ==
-                                                TextDirection.rtl
-                                            ? box.size.width
-                                            : 0,
-                                        box.size.height,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                              icon: const GitIcon(GitGlyph.moreHorizontal),
-                            ),
-                          ),
-                      ],
-                    ),
+                    line(commit.oid.abbreviated, tooltip: commit.oid.value),
                     if (bodyLines > 0)
                       Padding(
                         padding: EdgeInsets.symmetric(
@@ -2524,7 +2520,7 @@ final class _GitLogViewState extends State<GitLogView> {
     );
   }
 
-  Future<void> _menu(GitCommit commit, {Offset? position}) async {
+  Future<void> _menu(GitCommit? commit, {Offset? position}) async {
     if (!mounted ||
         !widget.active ||
         _presentationRoute?.isActive == false ||
@@ -2537,40 +2533,50 @@ final class _GitLogViewState extends State<GitLogView> {
     final onCommitAction = widget.onCommitAction;
     final action = await session.host.menu(
       context,
-      commit.subject,
+      commit?.subject ?? GitMessages.actions,
       [
-        for (final action in [
-          GitMessages.createBranch2,
-          GitMessages.createTag,
-          GitMessages.compareRevisions,
-          GitMessages.openSnapshot,
-          GitMessages.cherryPickOperation,
-          GitMessages.revertCommit,
-          GitMessages.interactiveRebaseAfterThisBoundary,
-          GitMessages.resetCurrentBranch,
-        ])
+        if (widget.inspector)
           GitMenuEntry(
-            action,
-            action,
-            enabled:
-                const {
-                  GitMessages.compareRevisions,
-                  GitMessages.openSnapshot,
-                }.contains(action) ||
-                !session.running && session.canWriteMetadata,
-            sectionStart: const {
-              GitMessages.cherryPickOperation,
-              GitMessages.revertCommit,
-              GitMessages.resetCurrentBranch,
-            }.contains(action),
+            'selectCommit',
+            GitMessages.selectAnotherCommit,
+            enabled: !_choosing,
           ),
-        const GitMenuEntry(
-          'details',
-          GitMessages.viewCommitDetails,
-          sectionStart: true,
-        ),
-        const GitMenuEntry('copy', GitMessages.copyCommitHash),
-        const GitMenuEntry('copyMessage', GitMessages.copyCommitMessage),
+        if (commit != null) ...[
+          for (final action in [
+            GitMessages.createBranch2,
+            GitMessages.createTag,
+            GitMessages.compareRevisions,
+            GitMessages.openSnapshot,
+            GitMessages.cherryPickOperation,
+            GitMessages.revertCommit,
+            GitMessages.interactiveRebaseAfterThisBoundary,
+            GitMessages.resetCurrentBranch,
+          ])
+            GitMenuEntry(
+              action,
+              action,
+              enabled:
+                  const {
+                    GitMessages.compareRevisions,
+                    GitMessages.openSnapshot,
+                  }.contains(action) ||
+                  !session.running && session.canWriteMetadata,
+              sectionStart: const {
+                GitMessages.createBranch2,
+                GitMessages.compareRevisions,
+                GitMessages.cherryPickOperation,
+                GitMessages.interactiveRebaseAfterThisBoundary,
+                GitMessages.resetCurrentBranch,
+              }.contains(action),
+            ),
+          const GitMenuEntry(
+            'details',
+            GitMessages.viewCommitDetails,
+            sectionStart: true,
+          ),
+          const GitMenuEntry('copy', GitMessages.copyCommitHash),
+          const GitMenuEntry('copyMessage', GitMessages.copyCommitMessage),
+        ],
       ],
       position: position,
       localizeTitle: false,
@@ -2579,6 +2585,11 @@ final class _GitLogViewState extends State<GitLogView> {
         generation != _generation ||
         historyRevision != _historyRevision)
       return;
+    if (action == 'selectCommit') {
+      await _chooseInspectorCommit();
+      return;
+    }
+    if (commit == null) return;
     if (action == 'details') {
       await _commitDetails(commit);
       return;
@@ -2833,53 +2844,63 @@ Widget _logBranches(
   required Widget Function(GitReference, String) referenceBuilder,
 }) {
   final filter = search.text.toLowerCase();
-  return Column(
-    children: [
-      GitTextField(
-        controller: search,
-        decoration: GitFieldDecoration(
-          labelText: gitString(context, GitMessages.branchOrTag),
-          prefixIcon: GitIcon(GitGlyph.search),
-          isDense: true,
-        ),
-        onChanged: (_) => onSearchChanged(),
-      ),
-      Expanded(
-        child: ListView(
-          children: [
-            GitActionRow(
-              dense: true,
-              title: const GitLabel(GitMessages.allReferences),
-              selected: selected == null,
-              onTap: () => onChoose(null),
+  return GitReferenceNavigation(
+    builder: (results) => Column(
+      children: [
+        gitReferenceSearchNavigation(
+          controller: search,
+          results: results,
+          child: GitTextField(
+            controller: search,
+            decoration: GitFieldDecoration(
+              labelText: gitString(context, GitMessages.searchBranchesAndTags),
+              prefixIcon: GitIcon(GitGlyph.search),
+              isDense: true,
             ),
-            for (final group in [
-              GitMessages.local,
-              GitMessages.remote,
-              GitMessages.tags,
-            ])
-              GitExpander(
-                initiallyExpanded: true,
-                title: GitLabel(group),
-                children: [
-                  for (final ref in references.where(
-                    (ref) =>
-                        ref.name.startsWith(
-                          group == GitMessages.local
-                              ? 'refs/heads/'
-                              : group == GitMessages.remote
-                              ? 'refs/remotes/'
-                              : 'refs/tags/',
-                        ) &&
-                        ref.shortName.toLowerCase().contains(filter),
-                  ))
-                    referenceBuilder(ref, group),
-                ],
-              ),
-          ],
+            onChanged: (_) => onSearchChanged(),
+          ),
         ),
-      ),
-    ],
+        SizedBox(height: GitHostScope.of(context)!.spacing),
+        Expanded(
+          child: gitReferenceResults(
+            focus: results,
+            child: ListView(
+              children: [
+                GitActionRow(
+                  dense: true,
+                  title: const GitLabel(GitMessages.allReferences),
+                  selected: selected == null,
+                  onTap: () => onChoose(null),
+                ),
+                for (final group in [
+                  GitMessages.local,
+                  GitMessages.remote,
+                  GitMessages.tags,
+                ])
+                  GitExpander(
+                    initiallyExpanded: true,
+                    title: GitLabel(group),
+                    children: [
+                      for (final ref in references.where(
+                        (ref) =>
+                            ref.name.startsWith(
+                              group == GitMessages.local
+                                  ? 'refs/heads/'
+                                  : group == GitMessages.remote
+                                  ? 'refs/remotes/'
+                                  : 'refs/tags/',
+                            ) &&
+                            ref.shortName.toLowerCase().contains(filter),
+                      ))
+                        referenceBuilder(ref, group),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -2922,7 +2943,8 @@ Widget _logBranchReference(
     if (action != null && isCurrent()) await actions.act(ref, action);
   }
 
-  return _GitReferenceContextMenu(
+  return GitReferenceContextMenu(
+    key: ValueKey(ref.name),
     open: chooseOnly ? null : menu,
     child: GitActionRow(
       onSecondaryTapUp: chooseOnly
@@ -2939,76 +2961,8 @@ Widget _logBranchReference(
       ),
       title: Text(ref.shortName, maxLines: 1, overflow: TextOverflow.ellipsis),
       selected: selected == ref.name,
-      trailing:
-          chooseOnly ||
-              gitPresentation(context).entryActionPlacement ==
-                  GitEntryActionPlacement.contextMenu
-          ? null
-          : GitMenuButton(
-              host: session.host,
-              tooltip: gitString(
-                context,
-                GitMessages.actionsForArg0,
-                values: {'arg0': ref.name},
-              ),
-              glyph: GitGlyph.moreHorizontal,
-              entries: actions.entries(ref),
-              onSelected: (action) => unawaited(actions.act(ref, action)),
-            ),
       onTap: () => onChoose(ref.name),
     ),
-  );
-}
-
-final class _GitReferenceContextMenu extends StatefulWidget {
-  const _GitReferenceContextMenu({required this.open, required this.child});
-  final Future<void> Function(Offset)? open;
-  final Widget child;
-  @override
-  State<_GitReferenceContextMenu> createState() =>
-      _GitReferenceContextMenuState();
-}
-
-class _GitReferenceContextMenuState extends State<_GitReferenceContextMenu> {
-  final _keys = GitContextMenuKeys();
-  @override
-  void dispose() {
-    _keys.clear();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Focus(
-    canRequestFocus: false,
-    onFocusChange: (focused) {
-      if (!focused) _keys.clear();
-    },
-    onKeyEvent: (_, event) =>
-        _keys.handle(
-          event,
-          widget.open == null
-              ? null
-              : () {
-                  final box = context.findRenderObject();
-                  if (box is RenderBox && box.hasSize) {
-                    unawaited(
-                      widget.open!(
-                        box.localToGlobal(
-                          Offset(
-                            Directionality.of(context) == TextDirection.rtl
-                                ? box.size.width
-                                : 0,
-                            box.size.height,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                },
-        )
-        ? KeyEventResult.handled
-        : KeyEventResult.ignored,
-    child: widget.child,
   );
 }
 

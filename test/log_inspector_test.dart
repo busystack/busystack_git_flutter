@@ -104,7 +104,10 @@ Future<GitSession> _mount(
   final nativeHost = GitHost(
     presentation: const TestGitPresentation(),
     icons: testGitIcons,
-    presentMenu: menu ?? testGitMenu,
+    presentMenu: (context, entries, {position}) async {
+      if (entries.any((e) => e.id == 'selectCommit')) return 'selectCommit';
+      return (menu ?? testGitMenu)(context, entries, position: position);
+    },
     present: <T>(context, title, child, {bool expanded = false}) =>
         showDialog<T>(
           context: context,
@@ -197,7 +200,7 @@ void main() {
       final client = _Client();
       var opened = 0;
       final session = await _mount(tester, client, review: (_, _) => opened++);
-      await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+      await tester.tap(find.byKey(const ValueKey('git-commit-actions')));
       await tester.pumpAndSettle();
       expect(find.byType(GitLogView), findsNWidgets(2));
       final table = tester.widget<GitNativeTable>(
@@ -219,7 +222,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
       expect(session.viewState['inspectorRevision'], 'a' * 40);
-      await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+      await tester.tap(find.byKey(const ValueKey('git-commit-actions')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Subject b'));
       await tester.pumpAndSettle();
@@ -244,7 +247,7 @@ void main() {
           return null;
         },
       );
-      await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+      await tester.tap(find.byKey(const ValueKey('git-commit-actions')));
       await tester.pumpAndSettle();
       final table = tester.widget<GitNativeTable>(
         find.byType(GitNativeTable).last,
@@ -312,7 +315,7 @@ void main() {
         ),
       );
       await tester.pump();
-      await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+      await tester.tap(find.byKey(const ValueKey('git-commit-actions')));
       await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
       await tester.tap(find.text('Subject b'));
@@ -354,7 +357,7 @@ void main() {
           find.byKey(ValueKey('git-historical-menu:${file.key}')),
         );
         await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('git-selected-commit')));
+        await tester.tap(find.byKey(const ValueKey('git-commit-actions')));
         await tester.pumpAndSettle();
         await tester.tap(find.text('Subject b'));
         await tester.pumpAndSettle();

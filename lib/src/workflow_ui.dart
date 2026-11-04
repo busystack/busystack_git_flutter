@@ -22,10 +22,13 @@ final class GitWorkflowUi {
   GitWorkflowClient get workflows => session.client as GitWorkflowClient;
   Future<void> branches() => _folderDialog(
     GitMessages.branches,
-    (open) => SizedBox(
-      height: MediaQuery.sizeOf(context).height * .62,
+    (open) => ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * .68,
+      ),
       child: GitBranchesView(session: session, onOpenFolder: open),
     ),
+    showRepositoryInTitle: false,
   );
   Future<void> push() => present(
     GitMessages.pushCommits,
@@ -86,10 +89,13 @@ final class GitWorkflowUi {
     String title,
     Widget Function(ValueChanged<String>) build, {
     bool expanded = false,
+    bool showRepositoryInTitle = true,
   }) async {
     final folder = await session.host.present<String>(
       context,
-      '${session.host.message(title)} · ${session.repository.root}',
+      showRepositoryInTitle
+          ? '${session.host.message(title)} · ${session.repository.root}'
+          : session.host.message(title),
       Builder(
         builder: (dialogContext) =>
             build((folder) => Navigator.of(dialogContext).pop(folder)),

@@ -67,6 +67,7 @@ final class GitButton extends StatelessWidget {
     required this.onPressed,
     required this.child,
     this.variant = GitActionStyle.inline,
+    this.compact = false,
   });
   GitButton.icon({
     super.key,
@@ -74,6 +75,7 @@ final class GitButton extends StatelessWidget {
     required Widget icon,
     required Widget label,
     this.variant = GitActionStyle.inline,
+    this.compact = false,
   }) : child = Row(
          mainAxisSize: MainAxisSize.min,
          children: [
@@ -86,15 +88,20 @@ final class GitButton extends StatelessWidget {
     super.key,
     required this.onPressed,
     required this.child,
+    this.compact = false,
   }) : variant = GitActionStyle.suggested;
   const GitButton.standard({
     super.key,
     required this.onPressed,
     required this.child,
+    this.compact = false,
   }) : variant = GitActionStyle.standard;
   final VoidCallback? onPressed;
   final Widget child;
   final GitActionStyle variant;
+
+  /// Desktop toolbar/dialog action insets; unrelated footer actions keep their geometry.
+  final bool compact;
   @override
   Widget build(BuildContext context) =>
       gitPresentation(context).button(context, this);

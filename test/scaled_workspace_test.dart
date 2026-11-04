@@ -259,21 +259,23 @@ void main() {
       tester.getSize(find.byType(GitNativeTable)).height,
       greaterThan(200),
     );
-    expect(find.byType(TextField).hitTestable(), findsNothing);
-    await tester.tap(find.byTooltip('Filter Log'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Message…'));
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), 'reviewed subject');
+    expect(find.byType(TextField).hitTestable(), findsNWidgets(3));
+    final message = find.widgetWithText(TextField, 'Message');
+    await tester.enterText(message, 'reviewed subject');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     expect(client.historyFilters.last.message, 'reviewed subject');
-    expect(find.text('Filters (1)…'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(message).controller!.text,
+      'reviewed subject',
+    );
     expect(client.mutations, isEmpty);
-    await tester.tap(find.text('Reset filters'));
+    await tester.tap(find.byKey(const ValueKey('git-history-actions')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(GitMessages.resetFilters));
     await tester.pumpAndSettle();
     expect(client.historyFilters.last.message, isEmpty);
-    expect(find.text('Filters…'), findsOneWidget);
+    expect(tester.widget<TextField>(message).controller!.text, isEmpty);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

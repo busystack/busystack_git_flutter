@@ -66,6 +66,7 @@ void main() {
             final base = host();
             final opened = <GitComparison>[];
             final menus = <GitMenuEntry>[];
+            var allowStaging = !keyboard;
             final configured = GitHost(
               presentation: const TestGitPresentation(
                 entryActionPlacement: GitEntryActionPlacement.contextMenu,
@@ -79,7 +80,7 @@ void main() {
               drafts: base.drafts,
               presentMenu: (_, entries, {position}) async {
                 menus.addAll(entries);
-                return 'stage';
+                return allowStaging ? 'stage' : null;
               },
             );
             final session = GitSession(
@@ -118,7 +119,8 @@ void main() {
             if (keyboard) {
               await tester.tap(row, buttons: kSecondaryMouseButton);
               await tester.pumpAndSettle();
-              client.mutations.clear();
+              expect(client.mutations, isEmpty);
+              allowStaging = true;
               menus.clear();
               await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
               await tester.sendKeyEvent(LogicalKeyboardKey.f10);
