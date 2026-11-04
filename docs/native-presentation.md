@@ -341,3 +341,9 @@ controls, painted button surfaces, activating subjects and hidden filters.
 Source audit adversarial fixtures separately reject prohibited Material fallbacks
 and alias/wrapper escapes. Real GTK screenshots and sealed build receipts come
 from `busymark/tools/git_native_smoke.py`; human inspection remains required.
+
+History's three primary filters also retain keyed editor subtrees while moving
+between the wide row and wrapped field group. This preserves the actual editor,
+focus node, selection, undo state and IME connection; retaining only controller
+text is insufficient. Shared and BusyMark regressions resize with a live
+composing range and assert the same editor/focus and complete editing value.

@@ -50,6 +50,7 @@ final class _GitLogViewState extends State<GitLogView> {
       _author = TextEditingController(),
       _path = TextEditingController(),
       _referenceSearch = TextEditingController();
+  final _filterKeys = List.generate(3, (_) => GlobalKey());
   List<GitCommit> _commits = [];
   List<GitReference> _references = [];
   List<GitChange> _files = [];
@@ -876,14 +877,17 @@ final class _GitLogViewState extends State<GitLogView> {
       }
     }
 
-    Widget field(int i) => GitTextField(
-      key: ValueKey('git-history-filter-$i'),
-      controller: fields[i].$1,
-      decoration: GitFieldDecoration(
-        labelText: gitString(context, fields[i].$2),
-        isDense: true,
+    Widget field(int i) => KeyedSubtree(
+      key: _filterKeys[i],
+      child: GitTextField(
+        key: ValueKey('git-history-filter-$i'),
+        controller: fields[i].$1,
+        decoration: GitFieldDecoration(
+          labelText: gitString(context, fields[i].$2),
+          isDense: true,
+        ),
+        onSubmitted: (_) => unawaited(_load()),
       ),
-      onSubmitted: (_) => unawaited(_load()),
     );
     final commands = <Widget>[
       GitButton.standard(

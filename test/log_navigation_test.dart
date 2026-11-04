@@ -51,6 +51,50 @@ final class NavigationClient extends FixtureClient {
 }
 
 void main() {
+  testWidgets(
+    'filter composition and focus survive responsive toolbar reparenting',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final session = GitSession(
+        client: NavigationClient(),
+        repository: repo,
+        host: host(),
+      );
+      addTearDown(session.dispose);
+      await session.start();
+      await tester.pumpWidget(
+        GitTestApp(
+          home: Scaffold(body: GitLogView(session: session)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final input = find.descendant(
+        of: find.byKey(const ValueKey('git-history-filter-0')),
+        matching: find.byType(EditableText),
+      );
+      await tester.tap(input);
+      const value = TextEditingValue(
+        text: '入力 composing',
+        selection: TextSelection.collapsed(offset: 1),
+        composing: TextRange(start: 0, end: 2),
+      );
+      tester.testTextInput.updateEditingValue(value);
+      await tester.pump();
+      final editor = tester.state<EditableTextState>(input);
+      final focus = FocusManager.instance.primaryFocus;
+      for (final width in [480.0, 1200.0]) {
+        tester.view.physicalSize = Size(width, 800);
+        await tester.pumpAndSettle();
+        expect(tester.state<EditableTextState>(input), same(editor));
+        expect(FocusManager.instance.primaryFocus, same(focus));
+        expect(editor.widget.controller.value, value);
+      }
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final reference in [false, true]) {
     testWidgets(
       'Go to an unloaded ${reference ? 'reference' : 'commit'} selects its tip',
