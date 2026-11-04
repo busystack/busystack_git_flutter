@@ -187,10 +187,24 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                 textDirection: Directionality.of(context),
                 textScaler: MediaQuery.textScalerOf(context),
               )..layout();
+              final searchPainter = TextPainter(
+                text: TextSpan(
+                  text: gitString(context, GitMessages.searchBranchesAndTags),
+                  style: GitTheme.of(context).textTheme.bodyMedium,
+                ),
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+              )..layout();
+              // Reserve the native icon/insets as well as the localized text.
+              // Row height alone does not grow with desktop text scaling.
               final compact =
                   bounds.maxWidth <
-                  painter.width + host.rowHeight(context) * 7 + spacing * 5;
+                  painter.width +
+                      searchPainter.width +
+                      spacing * 14 +
+                      host.rowHeight(context);
               painter.dispose();
+              searchPainter.dispose();
               if (compact)
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
