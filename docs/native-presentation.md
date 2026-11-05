@@ -406,3 +406,33 @@ Interaction references consulted: [GNOME header bars](https://developer.gnome.or
 [accessibility](https://developer.gnome.org/hig/guidelines/accessibility.html),
 and official pinned Flutter source/API documentation for constraints, Focus,
 EditableText/controllers, ModalRoute dismissal, Semantics and Directionality.
+
+
+## Semantic Actions and comparison geometry
+
+View-level menus request `GitMenuRole.viewActions`; dynamic repository and
+selected-commit menus request `GitIconButton.actions`. Callers cannot override
+their icon. `GitGlyph.actions` is mapped once by each real host: BusyMark uses
+its approved three-bar `menuVertical` artwork, while BusyFiles retains `more`.
+Entry menus request `entryContext`; display and checked choice menus retain
+separate roles. The source inventory test enumerates every production menu,
+including remote, worktree, snapshot, and historical-file contexts. The resolved
+symbol audit rejects direct overflow artwork in feature controls.
+
+`GitButton.toolbar` and `GitButton.diffInline` distinguish compact toolbar and
+inline region actions from ordinary/suggested push actions. Required native
+`toolbarMetrics` drive shared width measurement and overflow allocation, rather
+than guessed icon widths. The host owns repository-action captions and compact
+Log content insets. BusyMark's modal composition places headers inside each pane;
+its narrow overlay retains the confirmation footer outside the overlay.
+
+`test/support/actions_presentation_contract.dart` runs in both applications'
+actual theme/control adapters. It checks artwork, native hit geometry, semantic
+names, RTL menu anchoring, complete menu transport, keyboard activation and
+reentrant opening. `tool/check_consumer_consistency.py` checks equal approved
+pins, byte-identical archives, required consumer tests/audits and duplicate
+shared workflow declarations. Run it after refreshing both source archives.
+
+The final semantic change passed all 418 shared UI tests with the controlled
+Git executable and supervisor configured. Native application and release
+acceptance remain separate from this package result.

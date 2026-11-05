@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
 class _Client extends FixtureClient {
-  var absent = false, empty = false;
+  var absent = false, empty = false, longContext = false;
   final head = GitOid('a' * 40);
   @override
   Future<GitSnapshot> status(
@@ -55,6 +55,16 @@ class _Client extends FixtureClient {
                   ContentKind.normalizedWorking,
                 }.contains(version.kind)
         ? []
+        : longContext
+        ? utf8.encode(
+            List.generate(
+                  80,
+                  (i) => i == 40 && version.kind != ContentKind.indexVersion
+                      ? 'changed line'
+                      : 'context $i',
+                ).join('\n') +
+                '\n',
+          )
         : utf8.encode(
             version.kind == ContentKind.indexVersion
                 ? 'old\ncontext\n'
@@ -182,6 +192,49 @@ void main() {
       );
       expect(find.byTooltip('Refresh comparison'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'diff region actions request compact inline semantics and opening remains read-only',
+    (tester) async {
+      final client = _Client()..longContext = true;
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      addTearDown(session.dispose);
+      await tester.pumpWidget(
+        GitTestApp(
+          home: Scaffold(
+            body: GitDiffView(
+              session: session,
+              comparison: GitComparison(
+                RepoPath.text('chapter/notes.md'),
+                const ContentVersion.index(),
+                const ContentVersion.working(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _ready(tester);
+      for (final text in [
+        GitMessages.expandUnchangedContext,
+        GitMessages.stageThisHunk,
+      ]) {
+        final button = tester.widget<GitButton>(
+          find.widgetWithText(GitButton, text).first,
+        );
+        expect(button.variant, GitActionStyle.diffInline);
+        expect(button.compact, isTrue);
+      }
+      final menu = tester.widget<GitMenuButton>(
+        find.byKey(const ValueKey('git-diff-overflow')),
+      );
+      expect(menu.role, GitMenuRole.viewActions);
+      expect(client.mutations, isEmpty);
     },
   );
   for (final staged in [false, true]) {

@@ -106,10 +106,10 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
       label: const GitLabel(GitMessages.newBranch),
     );
     final workflows = GitMenuButton(
+      role: GitMenuRole.viewActions,
       key: const ValueKey('git-branch-workflows'),
       host: session.host,
       tooltip: GitMessages.actions,
-      glyph: GitGlyph.moreHorizontal,
       entries: [
         GitMenuEntry(
           'merge',
@@ -975,6 +975,7 @@ final class _RemotesState extends GitDialogState<GitRemotesView> {
                   ),
                 ),
                 trailing: GitMenuButton(
+                  role: GitMenuRole.entryContext,
                   host: session.host,
                   onSelected: (action) => unawaited(
                     edit(remote, RemoteAction.values.byName(action)),

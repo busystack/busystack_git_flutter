@@ -36,6 +36,17 @@ Future<void> main() async {
         throw StateError('Architecture gate accepted forbidden example $i');
       }
     }
+    for (final glyph in ['more', 'moreHorizontal', 'actions']) {
+      final fixture = File('${temp.path}/wrong_actions_$glyph.dart')
+        ..writeAsStringSync(
+          "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; final wrong = git.GitIcon(git.GitGlyph.$glyph);",
+        );
+      if ((await auditNativeGitSources([fixture.path])).isEmpty) {
+        throw StateError(
+          'An arbitrary Actions icon bypassed the semantic role: $glyph',
+        );
+      }
+    }
     final glyphCatalog = File('${temp.path}/glyph_catalog.dart')
       ..writeAsStringSync(
         "import 'package:flutter/material.dart' as m; class NativeCatalog { static const branch = m.Icons.fork_right; }",

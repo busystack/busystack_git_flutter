@@ -62,6 +62,17 @@ class TestGitPresentation implements GitPresentation {
   }
 
   @override
+  String repositoryActionsLabel(BuildContext context) =>
+      GitMessages.repositoryActions;
+  @override
+  GitToolbarMetrics toolbarMetrics(BuildContext context) =>
+      const GitToolbarMetrics(
+        iconExtent: 48,
+        gap: 4,
+        textInsets: 32,
+        modeAdornment: 24,
+      );
+  @override
   Widget button(BuildContext context, GitButton c) => switch (c.variant) {
     GitActionStyle.suggested => FilledButton(
       onPressed: c.onPressed,
@@ -71,7 +82,12 @@ class TestGitPresentation implements GitPresentation {
       onPressed: c.onPressed,
       child: c.child,
     ),
-    GitActionStyle.inline => TextButton(onPressed: c.onPressed, child: c.child),
+    GitActionStyle.inline ||
+    GitActionStyle.toolbar ||
+    GitActionStyle.diffInline => TextButton(
+      onPressed: c.onPressed,
+      child: c.child,
+    ),
   };
   @override
   Widget iconAction(BuildContext context, GitIconButton c) => IconButton(
@@ -207,6 +223,9 @@ class TestGitPresentation implements GitPresentation {
   );
 
   @override
+  EdgeInsetsGeometry logContentInsets(BuildContext context) =>
+      const EdgeInsets.all(8);
+  @override
   Widget logHeader(BuildContext context, GitLogHeader c) => Row(
     children: [
       Expanded(child: c.subject),
@@ -325,6 +344,7 @@ const testGitIcons = {
   GitGlyph.history: Icons.history,
   GitGlyph.refresh: Icons.refresh,
   GitGlyph.more: Icons.more_vert,
+  GitGlyph.actions: Icons.menu,
   GitGlyph.expand: Icons.expand_more,
   GitGlyph.previous: Icons.chevron_left,
   GitGlyph.next: Icons.chevron_right,

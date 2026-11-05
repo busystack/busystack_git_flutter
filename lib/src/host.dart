@@ -255,6 +255,7 @@ final class GitHostScope extends InheritedWidget {
 }
 
 enum GitGlyph {
+  actions,
   copy,
   moreHorizontal,
   options,
@@ -599,6 +600,10 @@ final class GitFailurePanel extends StatelessWidget {
 
 /// Explicit action names also reach the Linux AT-SPI bridge, where a tooltip
 /// alone may be exposed as a description instead of the control's name.
+enum GitIconActionRole { toolbar, viewActions }
+
+enum GitMenuRole { viewActions, entryContext, displayOptions, selectionOptions }
+
 final class GitIconButton extends StatelessWidget {
   const GitIconButton({
     super.key,
@@ -606,7 +611,15 @@ final class GitIconButton extends StatelessWidget {
     required this.onPressed,
     required this.icon,
     this.compact = false,
-  });
+  }) : role = GitIconActionRole.toolbar;
+  const GitIconButton.actions({
+    super.key,
+    this.tooltip = GitMessages.actions,
+    required this.onPressed,
+  }) : role = GitIconActionRole.viewActions,
+       icon = const GitIcon(GitGlyph.actions),
+       compact = false;
+  final GitIconActionRole role;
   final String tooltip;
   final VoidCallback? onPressed;
   final Widget icon;
@@ -625,65 +638,97 @@ final class GitIconButton extends StatelessWidget {
 }
 
 /// Specialized Git action menu anchored to its actual desktop control.
-final class GitMenuButton extends StatelessWidget {
+final class GitMenuButton extends StatefulWidget {
   const GitMenuButton({
     super.key,
     required this.host,
     required this.entries,
     required this.onSelected,
+    required this.role,
     this.tooltip = GitMessages.actions,
     this.child,
-    this.glyph = GitGlyph.more,
     this.enabled = true,
     this.disabledReason,
-  });
+  }) : assert(role != GitMenuRole.viewActions || child == null);
   final GitHost host;
   final List<GitMenuEntry> entries;
   final ValueChanged<String> onSelected;
   final String tooltip;
   final Widget? child;
-  final GitGlyph glyph;
+  final GitMenuRole role;
   final bool enabled;
   final String? disabledReason;
   @override
+  State<GitMenuButton> createState() => _GitMenuButtonState();
+}
+
+final class _GitMenuButtonState extends State<GitMenuButton> {
+  bool _opening = false;
+  @override
   Widget build(BuildContext context) {
+    final GitMenuButton(
+      :host,
+      :entries,
+      :onSelected,
+      :role,
+      :tooltip,
+      :child,
+      :enabled,
+      :disabledReason,
+    ) = widget;
     Future<void> open() async {
-      final box = context.findRenderObject();
-      final position = box is RenderBox && box.hasSize
-          ? box.localToGlobal(
-              Offset(
-                Directionality.of(context) == TextDirection.rtl
-                    ? box.size.width
-                    : 0,
-                box.size.height,
-              ),
-            )
-          : null;
-      final value = await host.menu(
-        context,
-        tooltip,
-        entries,
-        position: position,
-      );
-      if (context.mounted && value != null) onSelected(value);
+      if (_opening) return;
+      _opening = true;
+      try {
+        final box = context.findRenderObject();
+        final position = box is RenderBox && box.hasSize
+            ? box.localToGlobal(
+                Offset(
+                  Directionality.of(context) == TextDirection.rtl
+                      ? box.size.width
+                      : 0,
+                  box.size.height,
+                ),
+              )
+            : null;
+        final value = await host.menu(
+          context,
+          tooltip,
+          entries,
+          position: position,
+        );
+        if (context.mounted && widget.enabled && value != null)
+          onSelected(value);
+      } finally {
+        _opening = false;
+      }
     }
 
     final available = enabled && entries.isNotEmpty;
     final description = !available && disabledReason != null
-        ? '${gitString(context, tooltip)} · ${gitString(context, disabledReason!)}'
+        ? '${gitString(context, tooltip)} · ${gitString(context, disabledReason)}'
         : tooltip;
-    return child == null
+    return role == GitMenuRole.viewActions
+        ? GitIconButton.actions(
+            tooltip: description,
+            onPressed: available ? () => open() : null,
+          )
+        : child == null
         ? GitIconButton(
             tooltip: description,
             onPressed: available ? () => open() : null,
-            icon: GitIcon(glyph, size: 18),
+            icon: GitIcon(
+              role == GitMenuRole.entryContext
+                  ? GitGlyph.moreHorizontal
+                  : GitGlyph.options,
+              size: 18,
+            ),
           )
         : GitTooltip(
             message: gitString(context, description),
-            child: GitButton(
-              compact: true,
+            child: GitButton.toolbar(
               onPressed: available ? () => open() : null,
-              child: child!,
+              child: child,
             ),
           );
   }

@@ -534,6 +534,7 @@ final class _WorktreesState extends GitDialogState<GitWorktreesView>
                       : gitString(context, GitMessages.clean)}',
                 ),
                 trailing: GitMenuButton(
+                  role: GitMenuRole.entryContext,
                   host: session.host,
                   onSelected: (action) => unawaited(act(entry, action)),
                   entries: [
@@ -761,6 +762,7 @@ final class _SubmodulesState extends GitDialogState<GitSubmodulesView>
                               : gitString(context, GitMessages.nestedStatusUnavailable)}',
                     ),
                     trailing: GitMenuButton(
+                      role: GitMenuRole.entryContext,
                       host: session.host,
                       onSelected: (action) => unawaited(act(entry, action)),
                       entries: [

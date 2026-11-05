@@ -330,11 +330,11 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                                   _highlight(rows, index, reveal: true);
                               },
                               child: GitMenuButton(
+                                role: GitMenuRole.entryContext,
                                 key: ValueKey(
                                   'git-historical-menu:${file.path.key}',
                                 ),
                                 host: widget.session.host,
-                                glyph: GitGlyph.moreHorizontal,
                                 tooltip: gitString(
                                   context,
                                   GitMessages.actionsForArg0,

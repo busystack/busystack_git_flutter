@@ -436,6 +436,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
                     title: Text(entry.path.display),
                     subtitle: Text('${entry.mode} · ${entry.oid.abbreviated}'),
                     trailing: GitMenuButton(
+                      role: GitMenuRole.entryContext,
                       host: session.host,
                       onSelected: (action) => unawaited(open(entry, action)),
                       entries: [
@@ -814,6 +815,7 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                                 });
                               },
                               trailing: GitMenuButton(
+                                role: GitMenuRole.entryContext,
                                 host: session.host,
                                 onSelected: (action) async {
                                   if (!current()) return;

@@ -24,6 +24,8 @@ abstract interface class GitPresentation {
     DateTime? start,
     DateTime? end,
   });
+  GitToolbarMetrics toolbarMetrics(BuildContext context);
+  String repositoryActionsLabel(BuildContext context);
   Widget button(BuildContext context, GitButton control);
   Widget iconAction(BuildContext context, GitIconButton control);
   Widget field(BuildContext context, GitTextField control);
@@ -32,6 +34,9 @@ abstract interface class GitPresentation {
   Widget choiceBar<T>(BuildContext context, GitChoiceBar<T> control);
   Widget row(BuildContext context, GitActionRow control);
   Widget expander(BuildContext context, GitExpander control);
+
+  /// One host-owned content grid for compact history metadata and headings.
+  EdgeInsetsGeometry logContentInsets(BuildContext context);
   Widget logHeader(BuildContext context, GitLogHeader control);
   Widget historyLayout(BuildContext context, GitHistoryLayout control);
   Widget referenceRow(BuildContext context, GitReferenceRow control);
@@ -60,9 +65,20 @@ abstract final class GitTheme {
       gitPresentation(context).theme(context);
 }
 
+/// Native geometry used by shared toolbar measurement and overflow decisions.
+final class GitToolbarMetrics {
+  const GitToolbarMetrics({
+    required this.iconExtent,
+    required this.gap,
+    required this.textInsets,
+    required this.modeAdornment,
+  });
+  final double iconExtent, gap, textInsets, modeAdornment;
+}
+
 enum GitEntryActionPlacement { contextMenu, trailing }
 
-enum GitActionStyle { standard, suggested, inline }
+enum GitActionStyle { standard, suggested, inline, toolbar, diffInline }
 
 final class GitButton extends StatelessWidget {
   const GitButton({
@@ -99,6 +115,18 @@ final class GitButton extends StatelessWidget {
     required this.child,
     this.compact = false,
   }) : variant = GitActionStyle.standard;
+  const GitButton.toolbar({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  }) : variant = GitActionStyle.toolbar,
+       compact = true;
+  const GitButton.diffInline({
+    super.key,
+    required this.onPressed,
+    required this.child,
+  }) : variant = GitActionStyle.diffInline,
+       compact = true;
   final VoidCallback? onPressed;
   final Widget child;
   final GitActionStyle variant;

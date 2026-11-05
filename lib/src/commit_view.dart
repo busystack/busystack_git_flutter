@@ -606,14 +606,12 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                       ),
                     if (!_sidebar) SizedBox(width: host.spacing),
                     Builder(
-                      builder: (anchor) => GitIconButton(
-                        tooltip: gitString(
+                      builder: (anchor) => GitIconButton.actions(
+                        tooltip: gitPresentation(
                           context,
-                          GitMessages.repositoryActions,
-                        ),
+                        ).repositoryActionsLabel(context),
                         onPressed: () =>
                             _leaveReview(() => view.onMore(anchor)),
-                        icon: const GitIcon(GitGlyph.more, size: 18),
                       ),
                     ),
                   ],
@@ -829,6 +827,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                           ),
                         ],
                         GitMenuButton(
+                          role: GitMenuRole.selectionOptions,
                           host: session.host,
                           onSelected: (value) => _options(value),
                           entries: [

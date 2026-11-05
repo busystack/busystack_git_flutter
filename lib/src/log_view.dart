@@ -901,12 +901,12 @@ final class _GitLogViewState extends State<GitLogView> {
       ),
       SizedBox(width: spacing),
       GitMenuButton(
+        role: GitMenuRole.viewActions,
         host: host,
         entries: filters,
         onSelected: selected,
         key: const ValueKey('git-history-actions'),
         tooltip: GitMessages.actions,
-        glyph: GitGlyph.moreHorizontal,
       ),
       SizedBox(width: spacing),
       GitIconButton(
@@ -1737,7 +1737,7 @@ final class _GitLogViewState extends State<GitLogView> {
           icon: const GitIcon(GitGlyph.history),
         ),
         actions: Builder(
-          builder: (anchor) => GitIconButton(
+          builder: (anchor) => GitIconButton.actions(
             key: const ValueKey('git-commit-actions'),
             tooltip: GitMessages.actions,
             onPressed: _choosing
@@ -1758,7 +1758,6 @@ final class _GitLogViewState extends State<GitLogView> {
                       ),
                     );
                   },
-            icon: const GitIcon(GitGlyph.moreHorizontal),
           ),
         ),
       ),
@@ -1980,6 +1979,7 @@ final class _GitLogViewState extends State<GitLogView> {
                       GitEntryActionPlacement.contextMenu
                   ? null
                   : GitMenuButton(
+                      role: GitMenuRole.entryContext,
                       host: session.host,
                       entries: entries,
                       onSelected: (value) => unawaited(action(value)),
@@ -2096,7 +2096,7 @@ final class _GitLogViewState extends State<GitLogView> {
               key: PageStorageKey(
                 'git-commit-information:${session.repository.key}:${commit.oid.value}',
               ),
-              padding: EdgeInsets.all(session.host.spacing),
+              padding: gitPresentation(context).logContentInsets(context),
               child: GitSelectionArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -2166,6 +2166,7 @@ final class _GitLogViewState extends State<GitLogView> {
                             ? GitActionRow(
                                 dense: true,
                                 key: const ValueKey('git-inspector-parent'),
+                                contentPadding: EdgeInsets.zero,
                                 onTap: () => _inspectorParent(
                                   commit,
                                   commit.parents.single,
@@ -2284,10 +2285,7 @@ final class _GitLogViewState extends State<GitLogView> {
             ),
             Padding(
               key: const ValueKey('git-changed-files'),
-              padding: EdgeInsets.symmetric(
-                horizontal: session.host.spacing,
-                vertical: session.host.spacing / 2,
-              ),
+              padding: gitPresentation(context).logContentInsets(context),
               child: Semantics(
                 header: true,
                 child: GitLabel(
@@ -2997,6 +2995,7 @@ final class _GitParentMenuRow extends StatelessWidget {
     message: gitString(context, tooltip),
     child: GitActionRow(
       dense: true,
+      contentPadding: EdgeInsets.zero,
       title: DefaultTextStyle.merge(
         style: GitTheme.of(context).textTheme.bodySmall,
         child: child,

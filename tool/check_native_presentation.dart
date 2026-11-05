@@ -146,6 +146,23 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
           );
       }
     }
+    // Feature authors cannot select an arbitrary overflow glyph for Actions.
+    // Catalog keys are mappings; actual controls request the semantic role.
+    if (library.endsWith('/src/host.dart') &&
+        element.enclosingElement?.name == 'GitGlyph' &&
+        const {'more', 'moreHorizontal', 'actions'}.contains(element.name) &&
+        !path.endsWith('/host.dart')) {
+      final mapping = node.thisOrAncestorOfType<MapLiteralEntry>();
+      if (mapping == null || node.offset >= mapping.value.offset) {
+        violations.add(
+          NativeUiViolation(
+            path,
+            node.offset,
+            'Git menus require semantic Actions/context roles',
+          ),
+        );
+      }
+    }
     if (!library.startsWith('package:flutter/') && library != 'dart:ui') return;
     final owner = element is ConstructorElement
         ? element.enclosingElement

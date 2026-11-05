@@ -577,6 +577,7 @@ final class _PushState extends GitDialogState<GitPushView> {
                 ),
               ),
             GitMenuButton(
+              role: GitMenuRole.selectionOptions,
               host: session.host,
               enabled: !_busy,
               onSelected: (tag) {

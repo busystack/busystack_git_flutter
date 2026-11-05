@@ -693,8 +693,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
     double width,
   ) {
     final host = widget.session.host;
-    final gap = host.spacing / 2;
-    final iconWidth = host.rowHeight(context) + host.spacing;
+    final native = gitPresentation(context).toolbarMetrics(context);
+    final gap = native.gap;
+    final iconWidth = native.iconExtent;
     double textWidth(String message, {bool arrow = false}) {
       final text = TextPainter(
         text: TextSpan(
@@ -706,7 +707,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
         textScaler: MediaQuery.textScalerOf(context),
       )..layout();
       final measured =
-          text.width + host.spacing * 4 + (arrow ? host.spacing * 3 : 0);
+          text.width + native.textInsets + (arrow ? native.modeAdornment : 0);
       text.dispose();
       return measured < iconWidth ? iconWidth : measured;
     }
@@ -765,7 +766,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
         _diff == null ? null : () => _jump(1),
       ),
       'mode': (mode, null, () {}),
-      'display': (GitMessages.diffDisplayOptions, GitGlyph.more, () {}),
+      'display': (GitMessages.diffDisplayOptions, GitGlyph.options, () {}),
       'search': (GitMessages.searchComparison, GitGlyph.search, _openSearch),
       'refresh': (
         GitMessages.refreshComparison,
@@ -886,6 +887,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       final (message, glyph, callback) = actions[id]!;
       if (id == 'mode') {
         return GitMenuButton(
+          role: GitMenuRole.selectionOptions,
           key: const ValueKey('git-diff-mode'),
           host: host,
           tooltip: GitMessages.comparisonMode,
@@ -903,9 +905,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
       }
       if (id == 'display')
         return GitMenuButton(
+          role: GitMenuRole.displayOptions,
           key: const ValueKey('git-diff-display-options'),
           host: host,
-          glyph: GitGlyph.options,
           tooltip: GitMessages.diffDisplayOptions,
           entries: display,
           onSelected: act,
@@ -919,7 +921,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           onPressed: callback,
           icon: GitIcon(glyph),
         );
-      return GitButton(
+      return GitButton.toolbar(
         key: ValueKey('git-diff-$id'),
         onPressed: callback,
         child: GitLabel(message),
@@ -937,9 +939,9 @@ final class _GitDiffViewState extends State<GitDiffView> {
         SizedBox(
           width: iconWidth,
           child: GitMenuButton(
+            role: GitMenuRole.viewActions,
             key: const ValueKey('git-diff-overflow'),
             host: host,
-            glyph: GitGlyph.moreHorizontal,
             tooltip: GitMessages.actions,
             entries: overflow,
             onSelected: act,
@@ -1209,7 +1211,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
           children: [
             if (gap)
               SelectionContainer.disabled(
-                child: GitButton(
+                child: GitButton.diffInline(
                   onPressed: () => setState(() => _collapse = false),
                   child: const GitLabel(GitMessages.expandUnchangedContext),
                 ),
@@ -1220,7 +1222,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
               Align(
                 alignment: Alignment.centerLeft,
                 child: SelectionContainer.disabled(
-                  child: GitButton(
+                  child: GitButton.diffInline(
                     onPressed: () =>
                         unawaited(_applySelection(generation, hunk)),
                     child: Text(
