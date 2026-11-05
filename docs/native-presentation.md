@@ -374,8 +374,16 @@ label override; its build always supplies `MaterialLocalizations.dateInputLabel`
 Its controller is a nullable DateTime ValueNotifier. BusyMark therefore uses
 its existing native `BusyMarkGitTextEntry` composition with a single external
 label, compact localized hint, native editing menu, clear action and explicit
-field/action spacing. `MaterialLocalizations.formatCompactDate` and
-`parseCompactDate` preserve locale-aware date identity and validation. Blank
+field/action spacing. `MaterialLocalizations.formatCompactDate` preserves the
+locale's displayed date. Strict parsing and the placeholder use the pinned
+Intl locale date pattern. Parsing ignores invisible direction-format marks
+and accepts both the locale's native digits and ordinary keyboard digits;
+field order, separators and calendar-date validation remain strict. This avoids
+requiring Arabic users to type invisible CLDR marks or follow a stock hint with
+a different field order. The controller value and IME composition are untouched.
+An invisible reserved clear-control slot keeps empty and populated fields the
+same height. These corrections were established by inspecting the native images
+and are covered by actual-host input/geometry tests. Blank
 input remains absent; both valid dates are required to save. The accepted date
 bounds and inclusive UI end/exclusive history-query upper bound are unchanged.
 No Yaru, Flutter, engine, SDK or dependency source/version is changed.
