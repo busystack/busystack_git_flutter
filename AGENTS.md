@@ -24,7 +24,7 @@ cannot be exceptions. Missing native provisioning must fail, never fall back.
 
 BusyMark Commit and Git Log are independent sidebar views. The Git Log order is
 selected-commit information row with a view-level Actions menu, commit
-information, then Changed files. Select another commit… belongs in that menu;
+information, then Changed files. Select another commit is a dedicated native icon action immediately before Commit Actions; it must not also appear in that menu;
 the subject has no activation behavior. Its graph/history is a
 native selection modal with explicit confirmation and cancellation. Ordinary
 file activation opens a normal comparison tab. Repository/worktree, both paths,

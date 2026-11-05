@@ -347,3 +347,54 @@ between the wide row and wrapped field group. This preserves the actual editor,
 focus node, selection, undo state and IME connection; retaining only controller
 text is insufficient. Shared and BusyMark regressions resize with a live
 composing range and assert the same editor/focus and complete editing value.
+
+## Git Log navigation correction (2026-11-05)
+
+`GitLogHeader`, `GitHistoryLayout`, and `GitReferenceRow` are explicit required
+host requests. They do not change `GitExpander` in Rebase or other workflows.
+BusyMark supplies its existing native dialog titlebar, independent modal sidebar
+toggle, Files sidebar surface/tree rows, and dialog footer insets. The main
+filters belong inside the history pane. The modal retains reference search,
+selection, expansion and width when hidden. Narrow layouts open the same pane
+temporarily over the table; resizing does not retire a focused filter editor.
+BusyFiles retains its full-width filter area, splitter, compact reference dialog
+and native expandable reference groups through its own adapter.
+
+The selected subject is neutral information with complete tooltip/semantics.
+Select another commit is a dedicated icon immediately before Commit Actions,
+with the host's normal spacing. It is absent from the menu. Commit Actions still
+owns full details, exact hash/message copying and all commit workflows.
+Historical status markers occupy the Files icon slot at every text scale;
+they never add a second hierarchy offset. Selection/comparison ownership is
+unchanged. The confirmation footer is outside the table scroll area and uses
+the native lg inset on every side, including logical end in RTL.
+
+Pinned Yaru 10.2.0's public `YaruDateTimeEntry` constructor has no decoration or
+label override; its build always supplies `MaterialLocalizations.dateInputLabel`.
+Its controller is a nullable DateTime ValueNotifier. BusyMark therefore uses
+its existing native `BusyMarkGitTextEntry` composition with a single external
+label, compact localized hint, native editing menu, clear action and explicit
+field/action spacing. `MaterialLocalizations.formatCompactDate` and
+`parseCompactDate` preserve locale-aware date identity and validation. Blank
+input remains absent; both valid dates are required to save. The accepted date
+bounds and inclusive UI end/exclusive history-query upper bound are unchanged.
+No Yaru, Flutter, engine, SDK or dependency source/version is changed.
+
+The actual-host regressions measure native surfaces, header centering, search
+and row insets, tree/status geometry, separated main filters, retained state,
+footer bounds, RTL/narrow/scaled layouts and date editing/validation/save/cancel.
+Four strengthened geometry checks were run first against the original source;
+all four failed. Native shipping-binary captures and source receipts are recorded
+under BusyMark's `build/git-verification/2026-11-05-navigation`. Widget and native
+desktop acceptance remain separate; screenshots must be inspected.
+
+Interaction references consulted: [GNOME header bars](https://developer.gnome.org/hig/patterns/containers/header-bars.html),
+[sidebars](https://developer.gnome.org/hig/patterns/nav/sidebars.html),
+[lists](https://developer.gnome.org/hig/patterns/containers/list-column-views.html),
+[text fields](https://developer.gnome.org/hig/patterns/controls/text-fields.html),
+[menus](https://developer.gnome.org/hig/patterns/controls/menus.html),
+[dialogs](https://developer.gnome.org/hig/patterns/feedback/dialogs.html),
+[keyboard](https://developer.gnome.org/hig/guidelines/keyboard.html),
+[accessibility](https://developer.gnome.org/hig/guidelines/accessibility.html),
+and official pinned Flutter source/API documentation for constraints, Focus,
+EditableText/controllers, ModalRoute dismissal, Semantics and Directionality.

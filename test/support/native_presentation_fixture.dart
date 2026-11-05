@@ -207,6 +207,62 @@ class TestGitPresentation implements GitPresentation {
   );
 
   @override
+  Widget logHeader(BuildContext context, GitLogHeader c) => Row(
+    children: [
+      Expanded(child: c.subject),
+      c.choose,
+      c.actions,
+    ],
+  );
+  @override
+  Widget historyLayout(BuildContext context, GitHistoryLayout c) =>
+      LayoutBuilder(
+        builder: (context, bounds) => Column(
+          children: [
+            c.toolbar,
+            GitIconButton(
+              key: const ValueKey('git-history-sidebar-toggle'),
+              tooltip: bounds.maxWidth < 1150
+                  ? GitMessages.filterBranchesAndTags
+                  : GitMessages.toggleBranchesPane,
+              icon: const GitIcon(GitGlyph.branch),
+              onPressed: bounds.maxWidth < 1150
+                  ? c.onCompactReferences
+                  : c.onToggle,
+            ),
+            Expanded(
+              child: Row(
+                children: [
+                  if (c.sidebarVisible && bounds.maxWidth >= 1150)
+                    SizedBox(width: 240, child: c.sidebar),
+                  Expanded(child: c.main),
+                ],
+              ),
+            ),
+            if (c.footer != null)
+              Padding(padding: const EdgeInsets.all(16), child: c.footer!),
+          ],
+        ),
+      );
+  @override
+  Widget referenceRow(BuildContext context, GitReferenceRow c) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      GitActionRow(
+        dense: true,
+        contentPadding: EdgeInsetsDirectional.only(start: 8 + c.depth * 14),
+        leading: c.expanded == null
+            ? c.leading
+            : Icon(c.expanded! ? Icons.expand_more : Icons.chevron_right),
+        title: Text(c.title),
+        selected: c.selected,
+        onTap: c.onTap,
+        onSecondaryTapUp: c.onSecondaryTapUp,
+      ),
+      if (c.expanded ?? false) ...c.children,
+    ],
+  );
+  @override
   Widget expander(BuildContext context, GitExpander c) => ExpansionTile(
     title: c.title,
     initiallyExpanded: c.initiallyExpanded,

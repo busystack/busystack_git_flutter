@@ -32,6 +32,9 @@ abstract interface class GitPresentation {
   Widget choiceBar<T>(BuildContext context, GitChoiceBar<T> control);
   Widget row(BuildContext context, GitActionRow control);
   Widget expander(BuildContext context, GitExpander control);
+  Widget logHeader(BuildContext context, GitLogHeader control);
+  Widget historyLayout(BuildContext context, GitHistoryLayout control);
+  Widget referenceRow(BuildContext context, GitReferenceRow control);
   Widget progress(BuildContext context, GitLoading control);
   Widget tooltip(BuildContext context, GitTooltip control);
   Widget separator(BuildContext context, GitSeparator control);
@@ -608,4 +611,81 @@ final class GitScrollbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       gitPresentation(context).scrollbar(context, this);
+}
+
+/// Explicit history requests: other expanders and workspace layouts keep their
+/// existing presentation. Hosts own chrome, insets, surfaces and tree geometry.
+final class GitLogHeader extends StatelessWidget {
+  const GitLogHeader({
+    super.key,
+    required this.subject,
+    required this.choose,
+    required this.actions,
+  });
+  final Widget subject, choose, actions;
+  @override
+  Widget build(BuildContext context) =>
+      gitPresentation(context).logHeader(context, this);
+}
+
+final class GitHistoryLayout extends StatelessWidget {
+  const GitHistoryLayout({
+    super.key,
+    required this.sidebar,
+    required this.main,
+    required this.toolbar,
+    required this.sidebarVisible,
+    required this.onToggle,
+    required this.onCompactReferences,
+    required this.sidebarFraction,
+    required this.onResize,
+    required this.minimumHistoryWidth,
+    this.footer,
+  });
+  final Widget sidebar, main, toolbar;
+  final Widget? footer;
+  final bool sidebarVisible;
+  final VoidCallback onToggle, onCompactReferences;
+  final double sidebarFraction, minimumHistoryWidth;
+  final ValueChanged<double> onResize;
+  @override
+  Widget build(BuildContext context) =>
+      gitPresentation(context).historyLayout(context, this);
+}
+
+final class GitReferenceRow extends StatelessWidget {
+  const GitReferenceRow({
+    super.key,
+    required this.title,
+    this.depth = 0,
+    this.leading,
+    this.children = const [],
+    this.selected = false,
+    this.expanded,
+    this.onToggle,
+    this.onTap,
+    this.onSecondaryTapUp,
+  });
+  final List<Widget> children;
+  final String title;
+  final int depth;
+  final Widget? leading;
+  final bool selected;
+  final bool? expanded;
+  final VoidCallback? onToggle, onTap;
+  final GestureTapUpCallback? onSecondaryTapUp;
+  @override
+  Widget build(BuildContext context) =>
+      gitPresentation(context).referenceRow(context, this);
+}
+
+/// A host can omit its surrounding titlebar when a history body supplies one.
+/// BusyFiles deliberately keeps its established dialog chrome.
+final class GitDialogBody extends StatelessWidget {
+  const GitDialogBody({super.key, required this.child});
+  final Widget child;
+  static bool ownsHeader(Widget? body) =>
+      body is GitDialogBody || body is GitHostScope && ownsHeader(body.child);
+  @override
+  Widget build(BuildContext context) => child;
 }
