@@ -413,7 +413,7 @@ EditableText/controllers, ModalRoute dismissal, Semantics and Directionality.
 View-level menus request `GitMenuRole.viewActions`; dynamic repository and
 selected-commit menus request `GitIconButton.actions`. Callers cannot override
 their icon. `GitGlyph.actions` is mapped once by each real host: BusyMark uses
-its approved three-bar `menuVertical` artwork, while BusyFiles retains `more`.
+its approved three-bar `mainMenu` artwork (including the Yaru path), while BusyFiles retains `more`.
 Entry menus request `entryContext`; display and checked choice menus retain
 separate roles. The source inventory test enumerates every production menu,
 including remote, worktree, snapshot, and historical-file contexts. The resolved
