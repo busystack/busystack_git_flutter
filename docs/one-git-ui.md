@@ -138,6 +138,12 @@ These observations exposed inherited host typography/button differences, which
 are corrected in the shared Yaru metrics resolver and still require new captures.
 Earlier images are intermediate evidence, not final acceptance. Empty-tooltip
 black-rectangle reproduction and final installed-app matrix remain unaccepted.
+A separate tooltip obstruction is reproduced by the actual-host contract test:
+the visible overlay covers another native button and consumed its activation.
+The shared tooltip now ignores pointer events; both hosts pass the same covered-row
+activation test. Its semantic description and placement remain unchanged. BusyMark's
+non-Git tooltip received the same narrow pointer/lifetime correction. This evidence
+does not establish the cause of the earlier black rectangle.
 
 ## Additional comparison-route inventory and consolidation
 

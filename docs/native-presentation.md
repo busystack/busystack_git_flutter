@@ -26,6 +26,10 @@ All rendering uses BusyStack-owned primitives and supported official pinned
 Yaru APIs. No upstream source is modified. Host document/browser lifetime,
 authorization, localization and system services remain application responsibilities.
 There is no alternate Commit/Log split workspace or mutable single preview.
+Tooltip overlays ignore pointer events and expose their description through the
+trigger's semantics. Empty messages create no overlay; unlinked targets do not
+paint a follower. The covered-row activation regression runs in both real host
+renderers, including an overlap assertion so the test cannot pass vacuously.
 
 ## Action destinations to preserve
 

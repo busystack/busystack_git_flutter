@@ -1719,30 +1719,33 @@ class _NativeGitTooltipState extends State<_NativeGitTooltip> {
       onExit: (_) => _hide(),
       child: OverlayPortal(
         controller: _controller,
-        overlayChildBuilder: (context) => CompositedTransformFollower(
-          showWhenUnlinked: false,
-          link: _link,
-          targetAnchor: Alignment.bottomCenter,
-          followerAnchor: Alignment.topCenter,
-          offset: const Offset(0, 4),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: _gitNativeTheme(context).colorScheme.inverseSurface,
-                borderRadius: BorderRadius.circular(kYaruButtonRadius),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
+        overlayChildBuilder: (context) => IgnorePointer(
+          child: CompositedTransformFollower(
+            showWhenUnlinked: false,
+            link: _link,
+            targetAnchor: Alignment.bottomCenter,
+            followerAnchor: Alignment.topCenter,
+            offset: const Offset(0, 4),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _gitNativeTheme(context).colorScheme.inverseSurface,
+                  borderRadius: BorderRadius.circular(kYaruButtonRadius),
                 ),
-                child: Text(
-                  widget.message,
-                  style: _gitNativeTheme(context).textTheme.bodySmall?.copyWith(
-                    color: _gitNativeTheme(
-                      context,
-                    ).colorScheme.onInverseSurface,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  child: Text(
+                    widget.message,
+                    style: _gitNativeTheme(context).textTheme.bodySmall
+                        ?.copyWith(
+                          color: _gitNativeTheme(
+                            context,
+                          ).colorScheme.onInverseSurface,
+                        ),
                   ),
                 ),
               ),

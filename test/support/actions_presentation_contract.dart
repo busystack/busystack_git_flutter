@@ -289,4 +289,82 @@ void actionsPresentationContract({
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets('native tooltip never intercepts activation of the covered row', (
+    tester,
+  ) async {
+    var activations = 0;
+    final host = GitHost(
+      presentation: presentation,
+      icons: icons,
+      presentMenu: (_, _, {position}) async => null,
+      present: <T>(_, _, _, {bool expanded = false}) async => null,
+      openDocument: (_, _, {snapshot}) async {},
+      prepareMutation: (_, _) async => false,
+      chooseDirectory: (_) async => null,
+      notify: (_) {},
+      drafts: MemoryGitDraftStore(),
+    );
+    await tester.pumpWidget(
+      shell(
+        GitHostScope(
+          host: host,
+          child: Center(
+            child: SizedBox(
+              width: 400,
+              height: 250,
+              child: Stack(
+                children: [
+                  Positioned(
+                    left: 40,
+                    top: 40,
+                    width: 180,
+                    height: 32,
+                    child: GitTooltip(
+                      message: 'A visible native tooltip',
+                      child: GitButton(
+                        onPressed: () {},
+                        child: const Text('Hover source'),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: 40,
+                    top: 76,
+                    width: 180,
+                    height: 32,
+                    child: GitButton(
+                      onPressed: () => activations++,
+                      child: const Text('Covered destination'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Brightness.light,
+        TextDirection.ltr,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer();
+    await mouse.moveTo(tester.getCenter(find.text('Hover source')));
+    await tester.pump(const Duration(milliseconds: 501));
+    await tester.pump();
+    final tooltip = find.text('A visible native tooltip');
+    final destination = find.widgetWithText(GitButton, 'Covered destination');
+    expect(tooltip, findsOneWidget);
+    expect(
+      tester.getRect(tooltip).overlaps(tester.getRect(destination)),
+      isTrue,
+      reason: 'The test must exercise the actual overlay obstruction',
+    );
+    await tester.tap(destination);
+    await tester.pump();
+    expect(activations, 1);
+    await mouse.removePointer();
+    await tester.pumpWidget(const SizedBox());
+  });
 }
