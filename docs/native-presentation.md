@@ -26,6 +26,9 @@ All rendering uses BusyStack-owned primitives and supported official pinned
 Yaru APIs. No upstream source is modified. Host document/browser lifetime,
 authorization, localization and system services remain application responsibilities.
 There is no alternate Commit/Log split workspace or mutable single preview.
+The canonical sidebar owns its end border inside its measured width. Host slot
+composition adds no extra separator width before shared comparison content;
+this keeps comparison toolbar coordinates identical across document/browser mounts.
 `GitPalette.resolve` owns the approved BusyMark neutral GTK/Yaru roles in both
 light and dark themes. It retains the active system accent and official Yaru
 high-contrast palette. Unrelated host editor/browser theme overrides cannot

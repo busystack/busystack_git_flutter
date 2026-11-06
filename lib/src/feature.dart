@@ -5,7 +5,8 @@ import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/widgets.dart';
 
 import 'commit_view.dart';
-import 'linux_native.dart' show GitSpacing, GitSizes, NativeGitSurface;
+import 'linux_native.dart'
+    show GitSpacing, GitSizes, GitStroke, NativeGitSurface;
 import 'diff_view.dart';
 import 'host.dart';
 import 'log_view.dart';
@@ -257,8 +258,16 @@ final class _GitFeatureSidebarState extends State<GitFeatureSidebar> {
     _logVisited |= log;
     return GitHostScope(
       host: session.host,
-      child: ColoredBox(
-        color: NativeGitSurface.of(context).sidebar,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: NativeGitSurface.of(context).sidebar,
+          border: BorderDirectional(
+            end: BorderSide(
+              color: NativeGitSurface.of(context).divider,
+              width: GitStroke.hairline,
+            ),
+          ),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

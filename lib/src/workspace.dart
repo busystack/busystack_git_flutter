@@ -59,8 +59,6 @@ final class GitWorkspace extends StatelessWidget {
                 ),
               ),
             ),
-            if (feature.sidebarVisible)
-              const GitSeparator(vertical: true, width: 1),
             Expanded(
               child: Column(
                 children: [

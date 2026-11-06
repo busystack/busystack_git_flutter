@@ -358,6 +358,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byType(GitReviewContent)).left,
+        tester.getRect(find.byType(GitFeatureSidebar)).right,
+        reason:
+            'The common sidebar owns its border inside the canonical width.',
+      );
       final first = session.feature.capture(
         GitComparison(
           RepoPath.text('notes.md'),
