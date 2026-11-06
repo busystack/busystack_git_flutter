@@ -90,3 +90,7 @@ Git workflow notifications are shared presentation: both hosts forward localized
 messages and lifetime guards to `showGitNotification`; do not build a host-owned
 Git toast/snackbar. The resolved native audit follows `GitHost.notify` into
 helpers and stateful rendering, with adversarial callback ownership tests.
+
+The non-Git sidebar geometry audit may use `sidebarGeometry`; its real widget
+construction/build chains remain checked. All Git roots and GitHost.notify use
+the mandatory full rendering/service scope; do not use geometry scope for Git.

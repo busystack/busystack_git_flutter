@@ -81,6 +81,72 @@ Widget unrelated() => const Material(child: Text('not Git'));
     if ((await auditNativeGitSources([notificationHost.path])).isNotEmpty) {
       throw StateError('Rejected the common Git notification bridge');
     }
+    final nonGitSidebar = File('${temp.path}/non_git_sidebar.dart')
+      ..writeAsStringSync("""
+import 'package:flutter/material.dart';
+class NativeSidebar extends StatelessWidget {
+  const NativeSidebar({super.key});
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => context.findAncestorStateOfType<AppFeedbackState>()?.enqueue(),
+    child: const Text('Native row'),
+  );
+}
+class AppFeedbackState extends State<StatefulWidget> {
+  void enqueue() => setState(() {});
+  @override
+  Widget build(BuildContext context) => const Material(child: Text('Host feedback'));
+}
+""");
+    if ((await auditFirstPartyPresentationChain(nonGitSidebar.path, [
+      'NativeSidebar',
+    ], scope: FirstPartyPresentationScope.sidebarGeometry)).isNotEmpty) {
+      throw StateError(
+        'Non-Git row geometry incorrectly owns application notifications',
+      );
+    }
+    if ((await auditFirstPartyPresentationChain(nonGitSidebar.path, [
+      'NativeSidebar',
+    ])).isEmpty) {
+      throw StateError('The full Git audit lost stateful service rendering');
+    }
+    nonGitSidebar.writeAsStringSync("""
+import 'package:flutter/material.dart';
+class NativeSidebar extends StatefulWidget {
+  const NativeSidebar({super.key});
+  @override
+  State<NativeSidebar> createState() => RowState();
+}
+class RowState extends State<NativeSidebar> {
+  @override
+  Widget build(BuildContext context) => const Material(child: Text('Bad row'));
+}
+""");
+    if ((await auditFirstPartyPresentationChain(nonGitSidebar.path, [
+      'NativeSidebar',
+    ], scope: FirstPartyPresentationScope.sidebarGeometry)).isEmpty) {
+      throw StateError(
+        'Non-Git geometry audit lost a real stateful widget construction',
+      );
+    }
+    nonGitSidebar.writeAsStringSync("""
+import 'package:busystack_git_flutter/busystack_git_flutter.dart';
+final class NativeSidebar extends YaruGitPresentation { const NativeSidebar(); }
+""");
+    var rejectedGitScope = false;
+    try {
+      await auditFirstPartyPresentationChain(nonGitSidebar.path, [
+        'NativeSidebar',
+      ], scope: FirstPartyPresentationScope.sidebarGeometry);
+    } on StateError catch (error) {
+      rejectedGitScope =
+          error.message ==
+          'Git feature roots require the full rendering/service audit.';
+    }
+    if (!rejectedGitScope)
+      throw StateError(
+        'A Git presentation root escaped the mandatory full audit',
+      );
     final forbidden = <String>[
       "import 'package:flutter/material.dart'; Widget surface() => TextButton(onPressed: () {}, child: const Text('bad'));",
       "import 'package:flutter/material.dart' as m; m.Widget surface() => m.TextField();",

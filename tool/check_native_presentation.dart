@@ -347,10 +347,20 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
 /// an approved-looking name. Upstream packages remain outside this construction
 /// boundary: their supported public widgets may have implementation details of
 /// their own and are not modified or reclassified here.
+enum FirstPartyPresentationScope {
+  /// Full Git rendering and stateful host-service callbacks.
+  gitFeature,
+
+  /// Non-Git sidebar widget geometry; deferred host notifications are outside
+  /// this contract. Constructors/build trees are still followed completely.
+  sidebarGeometry,
+}
+
 Future<List<NativeUiViolation>> auditFirstPartyPresentationChain(
   String input,
-  List<String> rootClasses,
-) async {
+  List<String> rootClasses, {
+  FirstPartyPresentationScope scope = FirstPartyPresentationScope.gitFeature,
+}) async {
   final file = File(input);
   if (!file.existsSync() || !input.endsWith('.dart')) {
     throw ArgumentError('Missing host presentation source: $input');
@@ -391,6 +401,23 @@ Future<List<NativeUiViolation>> auditFirstPartyPresentationChain(
           'Host presentation root $selector moved; update the required audit.',
         );
       }
+      final element = root.declaredFragment?.element;
+      if (scope == FirstPartyPresentationScope.sidebarGeometry &&
+          (element?.library.uri.toString().startsWith(
+                    'package:busystack_git_flutter/',
+                  ) ==
+                  true ||
+              element?.allSupertypes.any(
+                    (type) =>
+                        type.element.name == 'GitPresentation' &&
+                        type.element.library.uri.toString() ==
+                            'package:busystack_git_flutter/src/presentation.dart',
+                  ) ==
+                  true)) {
+        throw StateError(
+          'Git feature roots require the full rendering/service audit.',
+        );
+      }
       if (memberName == null) {
         roots.add(root);
         continue;
@@ -411,7 +438,11 @@ Future<List<NativeUiViolation>> auditFirstPartyPresentationChain(
       for (final root in roots)
         _PendingFirstPartyDeclaration(path: path, node: root),
     ];
-    return await _auditFirstPartyDeclarations(index, pending);
+    return await _auditFirstPartyDeclarations(
+      index,
+      pending,
+      followStatefulServices: scope == FirstPartyPresentationScope.gitFeature,
+    );
   } finally {
     await collection.dispose();
   }
@@ -421,6 +452,7 @@ Future<List<NativeUiViolation>> _auditFirstPartyDeclarations(
   _FirstPartyIndex index,
   List<_PendingFirstPartyDeclaration> pending, {
   bool notificationBridge = false,
+  bool followStatefulServices = true,
 }) async {
   final visited = <String>{};
   final violations = <NativeUiViolation>[];
@@ -432,6 +464,7 @@ Future<List<NativeUiViolation>> _auditFirstPartyDeclarations(
     final visitor = _FirstPartyChainVisitor(
       declaration.path,
       hostNotification: notificationBridge && !declaration.sharedOrigin,
+      followStatefulServices: followStatefulServices,
     );
     node.accept(visitor);
     violations.addAll(visitor.violations);
@@ -611,8 +644,13 @@ final class _FirstPartyDeclarations extends RecursiveAstVisitor<void> {
 }
 
 final class _FirstPartyChainVisitor extends _NativeVisitor {
-  _FirstPartyChainVisitor(super.path, {this.hostNotification = false});
+  _FirstPartyChainVisitor(
+    super.path, {
+    this.hostNotification = false,
+    this.followStatefulServices = true,
+  });
   final bool hostNotification;
+  final bool followStatefulServices;
 
   final _hostSeen = <int>{};
   final followedElements = <Element>[];
@@ -702,7 +740,7 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
     // Calling State.enqueue can schedule build without referring to its widget
     // constructor. Include that supported rendering lifecycle, not unrelated
     // classes merely used as namespaces or annotations.
-    if (element is MethodElement) {
+    if (followStatefulServices && element is MethodElement) {
       final owner = element.enclosingElement;
       if (owner is InterfaceElement &&
           owner.allSupertypes.any(

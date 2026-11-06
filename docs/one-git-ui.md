@@ -166,7 +166,7 @@ inspection is the only dialog diff construction outside the canonical surface.
 The architecture gate tests this precise exception and rejects new ordinary
 preview constructors, including aliased and named constructor calls.
 
-## Verification status
+## Intermediate verification snapshots
 
 The canonical sidebar/review model and common Yaru renderer are implemented.
 The isolated palette-revision verifier passed 429 shared Flutter tests, 142
@@ -225,3 +225,17 @@ unrelated application feedback, and allows only shared notification rendering.
 Actual-host tests invoke the shipped callbacks and verify common geometry and
 preserved keyboard focus. This change requires fresh builds and native captures;
 earlier 0aaaf1d receipts are intermediate evidence, not final acceptance.
+
+## Artifact-bound acceptance
+
+The verification observations above retain their original implementation scope.
+Current complete-corpus qualification, installed-source/payload checks and native
+acceptance are recorded in the consumer acceptance documentation and its local
+artifact report (BusyMark: `docs/git-ui-acceptance.md`). A prior source screenshot
+or a package build alone never establishes final installed parity.
+
+Git audits always trace full rendering and deferred stateful notification
+services. The consumer's non-Git sidebar geometry audit uses its explicit
+geometry scope; that scope still follows real widget constructors/build trees,
+and is rejected for Git presentation/shared-feature roots. No feature-file or
+widget-name allowlist replaces the required Git audit.

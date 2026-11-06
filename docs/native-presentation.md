@@ -463,3 +463,11 @@ run the cross-consumer pin/archive check. Both hosts consume the exact same
 shared button, field and typography implementation through Widgets focus,
 pointer, EditableText and native tooltip primitives; official Yaru remains unmodified.
 Material control constructions hidden behind host wrappers remain prohibited.
+
+
+The non-Git Files/TOC/Outline/History row foundations also have a geometry audit.
+Its explicit `sidebarGeometry` scope includes complete widget construction/build
+chains, while generic deferred application feedback stays host-owned. Git inputs
+retain the default full rendering/service scope, including `GitHost.notify` and
+stateful feedback helpers. Resolved Git presentation/shared-package roots cannot
+select the geometry-only scope; adversarial cases cover both boundaries.
