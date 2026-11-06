@@ -16,11 +16,24 @@ void main() {
           final actionSizes = <Size>[];
           final bodySizes = <Size>[];
           final actionText = <TextStyle?>[];
+          final checkboxText = <TextStyle?>[];
           for (var host = 0; host < 2; host++) {
             final base = brightness == Brightness.dark
                 ? createYaruDarkTheme(primaryColor: accent)
                 : createYaruLightTheme(primaryColor: accent);
             final theme = base.copyWith(
+              extensions: [
+                for (final extension in base.extensions.values)
+                  if (extension is! YaruToggleButtonThemeData) extension,
+                YaruToggleButtonThemeData(
+                  titleStyle: TextStyle(
+                    fontFamily: host == 0 ? 'Ubuntu' : 'serif',
+                    height: host == 0 ? 1 : 1.4,
+                    letterSpacing: host == 0 ? 0 : 2.5,
+                  ),
+                  horizontalSpacing: host == 0 ? 8 : 20,
+                ),
+              ],
               colorScheme: base.colorScheme.copyWith(
                 onSurface: host == 0
                     ? const Color(0xff111111)
@@ -34,6 +47,8 @@ void main() {
               ),
               textTheme: base.textTheme.apply(
                 fontSizeFactor: host == 0 ? 1 : 1.8,
+                letterSpacingFactor: host == 0 ? 1 : 2,
+                heightFactor: host == 0 ? 1 : 1.4,
               ),
             );
             await tester.pumpWidget(
@@ -54,6 +69,12 @@ void main() {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 const Text('Canonical body'),
+                                NativeGitCheckbox(
+                                  label: 'Canonical checkbox',
+                                  value: false,
+                                  tristate: false,
+                                  onChanged: (_) {},
+                                ),
                                 NativeGitActionButton(
                                   role: NativeGitActionRole.standard,
                                   onPressed: () {},
@@ -78,7 +99,16 @@ void main() {
                   .text
                   .style,
             );
+            checkboxText.add(
+              tester
+                  .renderObject<RenderParagraph>(
+                    find.text('Canonical checkbox'),
+                  )
+                  .text
+                  .style,
+            );
           }
+          expect(checkboxText.last, checkboxText.first);
           expect(schemes.last.onSurface, schemes.first.onSurface);
           expect(schemes.last.onSurfaceVariant, schemes.first.onSurfaceVariant);
           expect(

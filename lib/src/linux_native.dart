@@ -1695,23 +1695,38 @@ class NativeGitCheckbox extends StatelessWidget {
   final bool tristate;
   final ValueChanged<bool?>? onChanged;
   @override
-  Widget build(BuildContext context) => YaruCheckboxTheme(
-    data:
-        _gitNativeTheme(context).extension<YaruCheckboxThemeData>() ??
-        const YaruCheckboxThemeData(),
-    child: label == null
-        ? YaruCheckbox(value: value, tristate: tristate, onChanged: onChanged)
-        : YaruCheckButton(
-            value: value,
-            tristate: tristate,
-            onChanged: onChanged,
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              label!,
-              style: _gitNativeTheme(context).textTheme.bodyMedium,
-            ),
-          ),
-  );
+  Widget build(BuildContext context) {
+    final theme = _gitNativeTheme(context);
+    final titleStyle = theme.textTheme.bodyMedium!.copyWith(
+      inherit: false,
+      color: onChanged == null
+          ? NativeGitSurface.of(context).disabledForeground
+          : theme.colorScheme.onSurface,
+    );
+    return YaruToggleButtonTheme(
+      data:
+          theme.extension<YaruToggleButtonThemeData>() ??
+          const YaruToggleButtonThemeData(),
+      child: YaruCheckboxTheme(
+        data:
+            theme.extension<YaruCheckboxThemeData>() ??
+            const YaruCheckboxThemeData(),
+        child: label == null
+            ? YaruCheckbox(
+                value: value,
+                tristate: tristate,
+                onChanged: onChanged,
+              )
+            : YaruCheckButton(
+                value: value,
+                tristate: tristate,
+                onChanged: onChanged,
+                contentPadding: EdgeInsets.zero,
+                title: Text(label!, style: titleStyle),
+              ),
+      ),
+    );
+  }
 }
 
 /// Empty tooltip requests have no overlay or hover timer.
