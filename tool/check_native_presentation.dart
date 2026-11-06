@@ -198,11 +198,16 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
         _ => null,
       };
       final nativeCatalog =
-          token?.library?.uri.toString().endsWith(
-                '/src/app/busymark_design.dart',
-              ) ==
-              true &&
-          token?.enclosingElement?.name == 'BusyMarkTypography' &&
+          ((token?.library?.uri.toString().endsWith(
+                        '/src/app/busymark_design.dart',
+                      ) ==
+                      true &&
+                  token?.enclosingElement?.name == 'BusyMarkTypography') ||
+              (token?.library?.uri.toString().endsWith(
+                        '/src/app/busyfiles_design.dart',
+                      ) ==
+                      true &&
+                  token?.enclosingElement?.name == 'BusyFilesTypography')) &&
           const {
             'monoFontFamily',
             'monoFontFamilyFallback',

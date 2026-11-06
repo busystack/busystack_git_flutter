@@ -436,3 +436,10 @@ shared workflow declarations. Run it after refreshing both source archives.
 The final semantic change passed all 418 shared UI tests with the controlled
 Git executable and supervisor configured. Native application and release
 acceptance remain separate from this package result.
+
+Both consumer gates now audit the resolved first-party host rendering chain and
+run the cross-consumer pin/archive check. BusyFiles retains its own native button
+themes and field geometry through Widgets focus, pointer, EditableText and
+RawTooltip primitives; approved public Yaru widgets remain unmodified. Its
+monospace catalog token is resolved and checked just like BusyMark typography.
+Material control constructions hidden behind host wrappers remain prohibited.

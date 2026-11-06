@@ -117,6 +117,25 @@ class BusyMarkTypography { static const monoFontFamily = 'Native mono'; }
       );
     if ((await auditNativeGitSources([nativeFont.path])).isNotEmpty)
       throw StateError('Rejected the approved native typography catalog');
+    final filesDesign = File('${temp.path}/lib/src/app/busyfiles_design.dart')
+      ..writeAsStringSync(
+        "class BusyFilesTypography { static const monoFontFamily = 'Native mono'; }",
+      );
+    nativeFont.writeAsStringSync(
+      "import 'package:flutter/painting.dart'; import 'lib/src/app/busyfiles_design.dart' as native; final style = TextStyle(fontFamily: native.BusyFilesTypography.monoFontFamily);",
+    );
+    if ((await auditNativeGitSources([nativeFont.path])).isNotEmpty) {
+      throw StateError('Rejected BusyFiles native typography');
+    }
+    filesDesign.writeAsStringSync(
+      "class UnapprovedTypography { static const monoFontFamily = 'Arbitrary'; }",
+    );
+    nativeFont.writeAsStringSync(
+      "import 'package:flutter/painting.dart'; import 'lib/src/app/busyfiles_design.dart' as native; final style = TextStyle(fontFamily: native.UnapprovedTypography.monoFontFamily);",
+    );
+    if ((await auditNativeGitSources([nativeFont.path])).isEmpty) {
+      throw StateError('An arbitrary BusyFiles font catalog escaped the audit');
+    }
     final approved = File('${temp.path}/approved.dart')
       ..writeAsStringSync("""
 import 'package:flutter/widgets.dart';

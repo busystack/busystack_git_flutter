@@ -32,6 +32,9 @@ for name in ['busymark', 'busyfiles']:
         assert not re.search(r'class\s+Git(?:CommitView|BranchesView|LogView|DiffView|HistoricalChangeTree|IndexEditor)\b', path.read_text()), f'{name}: duplicated shared Git workflow in {path}'
     gate = root / ('tools/check_git_presentation.sh' if name == 'busymark' else 'scripts/verify.sh')
     assert 'check_native_presentation.dart' in gate.read_text(), f'{name}: missing native audit gate'
+    host = 'BusyMarkGitPresentation' if name == 'busymark' else 'BusyFilesGitPresentation'
+    assert f'--host-root {host}' in gate.read_text(), f'{name}: missing resolved host rendering audit'
+    assert 'check_consumer_consistency.py' in gate.read_text(), f'{name}: missing archive consistency gate'
     contract = root / ('test/src/git/actions_native_contract_test.dart' if name == 'busymark' else 'apps/busyfiles_ui/test/git_actions_native_contract_test.dart')
     assert 'actionsPresentationContract(' in contract.read_text(), f'{name}: missing actual-host semantic regression'
 assert len(set(archives)) == 1, 'Consumer source archives differ'
