@@ -103,6 +103,29 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
   final String path;
   final violations = <NativeUiViolation>[];
   final _seen = <int>{};
+  void checkNativeHostBoundary(AstNode node, Element element) {
+    final library = element.library?.uri.toString() ?? '';
+    final nativeDesign = library.endsWith('/src/app/busymark_design.dart');
+    if (nativeDesign && element.name == 'showBusyMarkMenu') {
+      if (_seen.add(node.offset))
+        violations.add(
+          NativeUiViolation(path, node.offset, 'generic menu fallback'),
+        );
+    }
+    if (nativeDesign && element is ConstructorElement) {
+      final control = element.enclosingElement.name;
+      if (control == 'BusyMarkCompactIconButton' ||
+          control == 'BusyMarkMenuButton' ||
+          control == 'BusyMarkHeaderPopupMenuButton' &&
+              element.name != 'native') {
+        if (_seen.add(node.offset))
+          violations.add(
+            NativeUiViolation(path, node.offset, 'native-required $control'),
+          );
+      }
+    }
+  }
+
   void check(AstNode node, Element? element, {bool construction = false}) {
     if (element == null) return;
     // Follow resolved constants through the host glyph catalog and aliases.
@@ -127,25 +150,7 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
       }
     }
     final library = element.library?.uri.toString() ?? '';
-    final nativeDesign = library.endsWith('/src/app/busymark_design.dart');
-    if (nativeDesign && element.name == 'showBusyMarkMenu') {
-      if (_seen.add(node.offset))
-        violations.add(
-          NativeUiViolation(path, node.offset, 'generic menu fallback'),
-        );
-    }
-    if (nativeDesign && element is ConstructorElement) {
-      final control = element.enclosingElement.name;
-      if (control == 'BusyMarkCompactIconButton' ||
-          control == 'BusyMarkMenuButton' ||
-          control == 'BusyMarkHeaderPopupMenuButton' &&
-              element.name != 'native') {
-        if (_seen.add(node.offset))
-          violations.add(
-            NativeUiViolation(path, node.offset, 'native-required $control'),
-          );
-      }
-    }
+    checkNativeHostBoundary(node, element);
     // Feature authors cannot select an arbitrary overflow glyph for Actions.
     // Catalog keys are mappings; actual controls request the semantic role.
     if (library.endsWith('/src/host.dart') &&
@@ -317,7 +322,8 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
 ///
 /// Feature-source checks stop at the required [GitPresentation] boundary. This
 /// second pass starts at concrete host roots and follows resolved references to
-/// declarations anywhere in the same first-party package. Consequently, a BusyStack wrapper
+/// declarations in the host package and the resolved first-party shared Git UI
+/// package, including inherited renderers and mixins. Consequently, a BusyStack wrapper
 /// cannot conceal a prohibited Flutter Material construction merely by having
 /// an approved-looking name. Upstream packages remain outside this construction
 /// boundary: their supported public widgets may have implementation details of
@@ -435,11 +441,17 @@ final class _FirstPartyIndex {
   final String hostPath;
   final Map<String, _FirstPartyDeclarations> _units = {};
 
-  bool _contains(String path) {
+  bool _contains(String path, Element element) {
     final root = packageRoot.resolveSymbolicLinksSync();
     final candidate = File(path).resolveSymbolicLinksSync();
     return candidate == root ||
-        candidate.startsWith('$root${Platform.pathSeparator}');
+        candidate.startsWith('$root${Platform.pathSeparator}') ||
+        // This resolved first-party package owns the Linux renderer used by
+        // both hosts. Third-party packages remain outside the audit boundary.
+        element.library?.uri.toString().startsWith(
+              'package:busystack_git_flutter/',
+            ) ==
+            true;
   }
 
   Future<_FirstPartyDeclarations> declarationsFor(String path) async {
@@ -472,7 +484,7 @@ final class _FirstPartyIndex {
   Future<_PendingFirstPartyDeclaration?> declarationFor(Element element) async {
     final base = element.baseElement;
     final source = base.firstFragment.libraryFragment?.source.fullName;
-    if (source == null || !_contains(source)) return null;
+    if (source == null || !_contains(source, base)) return null;
     final declarations = await declarationsFor(source);
     AstNode? declaration;
     if (base is ConstructorElement) {
@@ -511,6 +523,12 @@ final class _FirstPartyDeclarations extends RecursiveAstVisitor<void> {
       classesByName[node.namePart.typeName.lexeme] = node;
     }
     super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitMixinDeclaration(MixinDeclaration node) {
+    _record(node.declaredFragment?.element, node);
+    super.visitMixinDeclaration(node);
   }
 
   @override
@@ -559,8 +577,21 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
   final followedElements = <Element>[];
 
   @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    final element = node.declaredFragment?.element;
+    if (element?.supertype case final parent?) {
+      followedElements.add(parent.element);
+    }
+    if (element != null) {
+      followedElements.addAll(element.mixins.map((type) => type.element));
+    }
+    super.visitClassDeclaration(node);
+  }
+
+  @override
   void check(AstNode node, Element? element, {bool construction = false}) {
     if (element == null) return;
+    checkNativeHostBoundary(node, element);
     final variable = element is PropertyAccessorElement
         ? element.variable
         : element is VariableElement
@@ -586,8 +617,17 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
         ? element.enclosingElement
         : element;
     final name = owner.name;
-    if ((construction || element is ExecutableElement) &&
-        forbiddenMaterial.contains(name) &&
+    final materialWidget =
+        owner is InterfaceElement &&
+        owner.allSupertypes.any(
+          (type) =>
+              type.element.name == 'Widget' &&
+              type.element.library.uri.toString() ==
+                  'package:flutter/src/widgets/framework.dart',
+        );
+    if ((construction && materialWidget ||
+            (construction || element is ExecutableElement) &&
+                forbiddenMaterial.contains(name)) &&
         _hostSeen.add(node.offset)) {
       violations.add(NativeUiViolation(path, node.offset, name ?? '?'));
     }

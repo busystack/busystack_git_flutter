@@ -213,6 +213,76 @@ class GitHostAdapter {
     ])).isNotEmpty) {
       throw StateError('Legitimate first-party native implementation failed');
     }
+    // A thin adapter must still inspect inherited implementations, including
+    // mixins. Unreachable static helpers remain outside the rendering chain.
+    for (final inheritance in ['extends Renderer', 'with Rendering']) {
+      hostChain.writeAsStringSync("""
+import 'package:flutter/material.dart' as material;
+class Renderer {
+  Object button() => material.TextButton(onPressed: () {}, child: const material.Text('bad'));
+}
+mixin Rendering {
+  Object button() => material.TextButton(onPressed: () {}, child: const material.Text('bad'));
+}
+class GitHostAdapter $inheritance {}
+""");
+      if (!(await auditFirstPartyPresentationChain(hostChain.path, [
+        'GitHostAdapter',
+      ])).any((error) => error.symbol == 'TextButton')) {
+        throw StateError(
+          'Inherited native renderer escaped the chain audit: $inheritance',
+        );
+      }
+    }
+    final sharedFixture = Directory('${temp.path}/shared-renderer')
+      ..createSync();
+    final externalHost = Directory('${temp.path}/external-host')..createSync();
+    Directory('${sharedFixture.path}/lib').createSync();
+    Directory('${externalHost.path}/lib').createSync();
+    Directory('${externalHost.path}/.dart_tool').createSync();
+    for (final (directory, name) in [
+      (sharedFixture, 'busystack_git_flutter'),
+      (externalHost, 'external_host'),
+    ]) {
+      File('${directory.path}/pubspec.yaml').writeAsStringSync(
+        "name: $name\nenvironment:\n  sdk: '>=3.12.1 <4.0.0'\n",
+      );
+    }
+    final externalConfig =
+        jsonDecode(jsonEncode(config)) as Map<String, dynamic>;
+    for (final package in externalConfig['packages'] as List) {
+      if (package['name'] == 'busystack_git_flutter') {
+        package['rootUri'] = sharedFixture.uri.toString();
+        package['packageUri'] = 'lib/';
+      }
+    }
+    File(
+      '${externalHost.path}/.dart_tool/package_config.json',
+    ).writeAsStringSync(jsonEncode(externalConfig));
+    final externalAdapter = File('${externalHost.path}/lib/adapter.dart')
+      ..writeAsStringSync("""
+import 'package:busystack_git_flutter/renderer.dart';
+class GitHostAdapter extends SharedRenderer {}
+""");
+    for (final forbidden in [true, false]) {
+      File('${sharedFixture.path}/lib/renderer.dart').writeAsStringSync("""
+import 'package:flutter/material.dart' as material;
+class SharedRenderer {
+  Object button() => ${forbidden ? "material.TextButton(onPressed: () {}, child: const material.Text('bad'))" : "const material.Text('approved')"};
+}
+class Unreachable {
+  Object button() => material.IconButton(onPressed: () {}, icon: const material.Text('unreachable'));
+}
+""");
+      final errors = await auditFirstPartyPresentationChain(
+        externalAdapter.path,
+        ['GitHostAdapter'],
+      );
+      if (errors.any((error) => error.symbol == 'TextButton') != forbidden ||
+          errors.any((error) => error.symbol == 'IconButton')) {
+        throw StateError('Cross-package inherited renderer enforcement failed');
+      }
+    }
     final comparison = File('${temp.path}/diff_view.dart');
     for (final source in [
       "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; final mode = git.GitChoiceBar<bool>(segments: const [], selected: const {}, onSelectionChanged: null);",

@@ -37,6 +37,9 @@ package, and audit each consumer's actual Git sources with that tool. BusyMark
 must audit the complete `BusyMarkGitPresentation` class and
 `BusyMarkGitDialogShell`, not a selected method allowlist. Run the
 same gate against materialized pinned sources in consumer verification.
+Follow inherited renderers and mixins across the shared Git UI package boundary;
+a const-only host adapter is not sufficient evidence. Run the cross-package
+adversarial cases so that an empty host class cannot make the audit vacuous.
 Resolve symbols; import prefixes, aliases, re-exports and helper references
 cannot be exceptions. Missing native provisioning must fail, never fall back.
 
