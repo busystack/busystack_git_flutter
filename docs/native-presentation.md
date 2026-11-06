@@ -254,13 +254,15 @@ without making it opaque. Search uses the host accent background, active matches
 retain bold/underline, native selection retains its own treatment, and +/- line
 markers and labelled staging/conflict contexts retain non-color meaning.
 
-BusyMark feedback follows `BusyMarkToastOverlay`. BusyFiles Git feedback calls
-`busyFilesMessage` through `ScaffoldMessenger`, as do its existing non-Git browser
-and recovery flows. This is the established in-window BusyFiles feedback control;
-the daemon's freedesktop notification coordinator serves background operation
-and activation events, with a different message/destination contract. Routing
-these short Git messages through that daemon would change their semantics. No
-Git-only Snackbar construction or substitute notification path is introduced.
+Both hosts forward Git workflow feedback to `showGitNotification`. The shared
+window-local overlay owns the native surface, common geometry, message queue,
+dismissal, accessibility live region and lifetime cleanup. Host callbacks only
+apply their existing window/workspace lifetime guards and localization; neither
+host supplies notification widgets. This does not change the daemon's separate
+freedesktop background-operation notification contract or non-Git application
+feedback. The resolved native audit follows `GitHost.notify` through first-party
+helpers and `State` rendering lifecycles, rejects host-owned notification widget
+trees, and permits the shared renderer's supported official native controls.
 
 The consumer contract tests execute actual adapters and inspect field/row sizes,
 requested icons, editing state, directional padding, disabled/read-only behavior,

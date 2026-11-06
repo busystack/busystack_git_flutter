@@ -411,25 +411,36 @@ Future<List<NativeUiViolation>> auditFirstPartyPresentationChain(
       for (final root in roots)
         _PendingFirstPartyDeclaration(path: path, node: root),
     ];
-    final visited = <String>{};
-    final violations = <NativeUiViolation>[];
-    while (pending.isNotEmpty) {
-      final declaration = pending.removeLast();
-      final node = declaration.node;
-      final visitKey = '${declaration.path}:${node.offset}:${node.runtimeType}';
-      if (!visited.add(visitKey)) continue;
-      final visitor = _FirstPartyChainVisitor(declaration.path);
-      node.accept(visitor);
-      violations.addAll(visitor.violations);
-      for (final element in visitor.followedElements) {
-        final target = await index.declarationFor(element);
-        if (target != null) pending.add(target);
-      }
-    }
-    return violations;
+    return await _auditFirstPartyDeclarations(index, pending);
   } finally {
     await collection.dispose();
   }
+}
+
+Future<List<NativeUiViolation>> _auditFirstPartyDeclarations(
+  _FirstPartyIndex index,
+  List<_PendingFirstPartyDeclaration> pending, {
+  bool notificationBridge = false,
+}) async {
+  final visited = <String>{};
+  final violations = <NativeUiViolation>[];
+  while (pending.isNotEmpty) {
+    final declaration = pending.removeLast();
+    final node = declaration.node;
+    final visitKey = '${declaration.path}:${node.offset}:${node.runtimeType}';
+    if (!visited.add(visitKey)) continue;
+    final visitor = _FirstPartyChainVisitor(
+      declaration.path,
+      hostNotification: notificationBridge && !declaration.sharedOrigin,
+    );
+    node.accept(visitor);
+    violations.addAll(visitor.violations);
+    for (final element in visitor.followedElements) {
+      final target = await index.declarationFor(element);
+      if (target != null) pending.add(target);
+    }
+  }
+  return violations;
 }
 
 Directory _findPackageRoot(File source) {
@@ -447,9 +458,14 @@ Directory _findPackageRoot(File source) {
 }
 
 final class _PendingFirstPartyDeclaration {
-  const _PendingFirstPartyDeclaration({required this.path, required this.node});
+  const _PendingFirstPartyDeclaration({
+    required this.path,
+    required this.node,
+    this.sharedOrigin = false,
+  });
   final String path;
   final AstNode node;
+  final bool sharedOrigin;
 }
 
 final class _FirstPartyIndex {
@@ -519,6 +535,11 @@ final class _FirstPartyIndex {
     return _PendingFirstPartyDeclaration(
       path: File(source).resolveSymbolicLinksSync(),
       node: declaration,
+      sharedOrigin:
+          base.library?.uri.toString().startsWith(
+            'package:busystack_git_flutter/',
+          ) ==
+          true,
     );
   }
 }
@@ -590,7 +611,8 @@ final class _FirstPartyDeclarations extends RecursiveAstVisitor<void> {
 }
 
 final class _FirstPartyChainVisitor extends _NativeVisitor {
-  _FirstPartyChainVisitor(super.path);
+  _FirstPartyChainVisitor(super.path, {this.hostNotification = false});
+  final bool hostNotification;
 
   final _hostSeen = <int>{};
   final followedElements = <Element>[];
@@ -630,6 +652,24 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
         );
       }
     }
+    if (construction && hostNotification && element is ConstructorElement) {
+      final owner = element.enclosingElement;
+      if (owner.allSupertypes.any(
+            (type) =>
+                type.element.name == 'Widget' &&
+                type.element.library.uri.toString() ==
+                    'package:flutter/src/widgets/framework.dart',
+          ) &&
+          _hostSeen.add(node.offset)) {
+        violations.add(
+          NativeUiViolation(
+            path,
+            node.offset,
+            'host-owned Git notification rendering',
+          ),
+        );
+      }
+    }
     final library = element.library?.uri.toString() ?? '';
     if (!library.startsWith('package:flutter/src/material/')) return;
     final owner = element is ConstructorElement
@@ -659,6 +699,21 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
     // and the referenced static member has its own resolved identifier.
     if (element.baseElement is InterfaceElement) return;
     followedElements.add(element);
+    // Calling State.enqueue can schedule build without referring to its widget
+    // constructor. Include that supported rendering lifecycle, not unrelated
+    // classes merely used as namespaces or annotations.
+    if (element is MethodElement) {
+      final owner = element.enclosingElement;
+      if (owner is InterfaceElement &&
+          owner.allSupertypes.any(
+            (type) =>
+                type.element.name == 'State' &&
+                type.element.library.uri.toString() ==
+                    'package:flutter/src/widgets/framework.dart',
+          )) {
+        followedElements.add(owner);
+      }
+    }
   }
 
   @override
@@ -677,6 +732,26 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
   void visitConstructorReference(ConstructorReference node) {
     _follow(node.constructorName.element);
     super.visitConstructorReference(node);
+  }
+}
+
+/// Locate the semantic service callback through resolved constructor identity.
+/// Other host callbacks can legitimately open host documents or platform UI.
+final class _GitNotificationRoots extends RecursiveAstVisitor<void> {
+  final roots = <AstNode>[];
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) {
+    final owner = node.constructorName.element?.enclosingElement;
+    if (owner?.name == 'GitHost' &&
+        owner?.library.uri.toString() ==
+            'package:busystack_git_flutter/src/host.dart') {
+      for (final argument
+          in node.argumentList.arguments.whereType<NamedExpression>()) {
+        if (argument.name.label.name == 'notify')
+          roots.add(argument.expression);
+      }
+    }
+    super.visitInstanceCreationExpression(node);
   }
 }
 
@@ -719,6 +794,21 @@ Future<List<NativeUiViolation>> auditNativeGitSources(
       final visitor = _NativeVisitor(path);
       result.unit.accept(visitor);
       found.addAll(visitor.violations);
+      final notifications = _GitNotificationRoots();
+      result.unit.accept(notifications);
+      if (notifications.roots.isNotEmpty) {
+        final index = _FirstPartyIndex(
+          collection,
+          _findPackageRoot(File(path)),
+          path,
+        );
+        found.addAll(
+          await _auditFirstPartyDeclarations(index, [
+            for (final root in notifications.roots)
+              _PendingFirstPartyDeclaration(path: path, node: root),
+          ], notificationBridge: true),
+        );
+      }
     }
   } finally {
     await collection.dispose();

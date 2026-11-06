@@ -85,3 +85,8 @@ Resolve host icon constants too:
 an approved catalog/wrapper cannot authorize MaterialIcons. Rendered host tests
 must measure the painted dialog surface and complete selectable metadata, not
 the full-window Dialog route wrapper or only class names.
+
+Git workflow notifications are shared presentation: both hosts forward localized
+messages and lifetime guards to `showGitNotification`; do not build a host-owned
+Git toast/snackbar. The resolved native audit follows `GitHost.notify` into
+helpers and stateful rendering, with adversarial callback ownership tests.

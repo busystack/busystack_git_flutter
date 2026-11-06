@@ -18,6 +18,69 @@ Future<void> main() async {
     File(
       '${temp.path}/.dart_tool/package_config.json',
     ).writeAsStringSync(jsonEncode(config));
+    // A host service callback is part of the Git rendering chain too.
+    final notificationHelper = File('${temp.path}/notification_helper.dart')
+      ..writeAsStringSync("""
+import 'package:flutter/material.dart';
+void showFeedback(BuildContext context, String message) =>
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+""");
+    final notificationHost = File('${temp.path}/notification_host.dart')
+      ..writeAsStringSync("""
+import 'package:flutter/widgets.dart';
+import 'package:busystack_git_flutter/busystack_git_flutter.dart';
+import 'notification_helper.dart';
+GitHost createHost(BuildContext context, GitHost base) => GitHost(
+  present: <T>(c, title, child, {bool expanded = false}) async => null,
+  openDocument: base.openDocument, prepareMutation: base.prepareMutation,
+  chooseDirectory: base.chooseDirectory,
+  notify: (message) => showFeedback(context, message),
+  drafts: base.drafts, icons: base.icons, presentation: base.presentation,
+  presentMenu: base.presentMenu,
+);
+""");
+    Future<void> requireNotificationViolation(String reason) async {
+      if ((await auditNativeGitSources([notificationHost.path])).isEmpty) {
+        throw StateError(reason);
+      }
+    }
+
+    await requireNotificationViolation(
+      'Git notification callback concealed a Material snackbar',
+    );
+    notificationHelper.writeAsStringSync("""
+import 'package:flutter/material.dart';
+void showFeedback(BuildContext context, String message) =>
+    context.findAncestorStateOfType<HostToastState>()?.enqueue(message);
+class HostToastState extends State<StatefulWidget> {
+  void enqueue(String message) => setState(() {});
+  @override
+  Widget build(BuildContext context) => const Material(child: Text('hidden'));
+}
+""");
+    await requireNotificationViolation(
+      'Git notification callback concealed a stateful Material toast',
+    );
+    notificationHelper.writeAsStringSync("""
+import 'package:flutter/widgets.dart';
+void showFeedback(BuildContext context, String message) {
+  Overlay.of(context).insert(OverlayEntry(builder: (_) => Text(message)));
+}
+""");
+    await requireNotificationViolation(
+      'A host retained its own Git notification widget tree',
+    );
+    notificationHelper.writeAsStringSync("""
+import 'package:flutter/material.dart';
+import 'package:busystack_git_flutter/busystack_git_flutter.dart';
+void showFeedback(BuildContext context, String message) =>
+    showGitNotification(context, message: message);
+// Unrelated application feedback is outside this Git callback's ownership.
+Widget unrelated() => const Material(child: Text('not Git'));
+""");
+    if ((await auditNativeGitSources([notificationHost.path])).isNotEmpty) {
+      throw StateError('Rejected the common Git notification bridge');
+    }
     final forbidden = <String>[
       "import 'package:flutter/material.dart'; Widget surface() => TextButton(onPressed: () {}, child: const Text('bad'));",
       "import 'package:flutter/material.dart' as m; m.Widget surface() => m.TextField();",

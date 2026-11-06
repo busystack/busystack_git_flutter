@@ -156,3 +156,34 @@ Future<void> exerciseNativeGitSurfaces(
     session.dispose();
   }
 }
+
+/// Exercise the production notification callback supplied by each actual host.
+Future<void> exerciseNativeGitNotification(
+  WidgetTester tester, {
+  required GitHost host,
+}) async {
+  final focused = FocusManager.instance.primaryFocus;
+  host.notify('Git fixture feedback');
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+  final surface = find.byType(NativeGitNotificationSurface);
+  expect(surface, findsOneWidget);
+  expect(find.text('Git fixture feedback'), findsOneWidget);
+  expect(find.byType(SnackBar), findsNothing);
+  expect(FocusManager.instance.primaryFocus, same(focused));
+  final rect = tester.getRect(surface);
+  expect(rect.width, lessThanOrEqualTo(GitSizes.dialogWide));
+  final logicalSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+  expect(rect.center.dx, closeTo(logicalSize.width / 2, .01));
+  expect(logicalSize.height - rect.bottom, GitSpacing.lg);
+  final action = find.descendant(
+    of: surface,
+    matching: find.byType(NativeGitActionButton),
+  );
+  expect(action, findsOneWidget);
+  await tester.tap(action);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 200));
+  expect(surface, findsNothing);
+  expect(tester.takeException(), isNull);
+}

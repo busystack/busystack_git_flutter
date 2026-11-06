@@ -95,6 +95,7 @@ integration files and command registries. Snapshot/transaction guards are retain
 | Commit/Git Log sidebar composition and workflow navigation | busystack_git_flutter | Established sidebar selector/slot | Main sidebar slot while Git mode active |
 | Comparison widget/toolbar | GitDiffView and shared review surface | Ordinary content tabs beside documents/Local History | Independent Git content tabs |
 | Branches/history/date/workflows and Linux native contract | busystack_git_flutter | Native menu/dialog lifecycle, locale | Native menu/dialog lifecycle, locale |
+| Git workflow feedback/notifications | showGitNotification + NativeGitNotificationSurface | Window/workspace lifetime guard and localization | Window/workspace lifetime guard and localization |
 | Git execution/security | busystack_git | Direct adapter with root-only authoring policy | Authenticated typed IPC, controlled daemon supervisor |
 
 ## Retired production surfaces and regression ownership
@@ -123,7 +124,7 @@ scope, and ensures it does not create a commit.
 | Multiline messages, delayed success/failure, normal/amend/repository drafts | Shared commit_amend_draft, draft_ordering, draft_cross_store; both actual-host dismissal suites |
 | File/history actions, historical parent/path and reset/recovery destinations | Shared file_history_selection, log_changed_files_state, action_destinations, git_actions_inventory; BusyMark actual log comparison tests |
 | Native form/control layout, trust, unavailable states, menu/keyboard access | Both native presentation/action contracts, BusyFiles location/browser/draft suites; BusyMark root/trust and localization suites |
-| Identity form and host error/notification services | BusyMark migrated git_author_identity_dialog_test and status_semantics_test using the actual shared workflow/host |
+| Identity form and Git notifications | BusyMark migrated git_author_identity_dialog_test/status_semantics_test; native_notification lifecycle, queue, focus and geometry cases; both actual-host callback contracts and resolved callback audit |
 | Non-Git document/disk source comparisons, gutter, font, absent content and dirty banner | Retained BusyMark git_widget_test document comparison cases |
 
 ## Intermediate native observations
@@ -211,3 +212,16 @@ pending. Earlier debug captures and package checks are intermediate evidence.
 - [Official Yaru changelog](https://pub.dev/packages/yaru/changelog); installed pinned 10.2.0 source APIs remain authoritative, regardless of newer published versions.
 - Flutter official Actions/Shortcuts, Focus, PopScope, TextEditingController and Semantics documentation; pinned installed SDK APIs.
 - Git 2.56 rev-parse, status, diff, apply, rebase and push manuals. No Git semantics or execution paths are being replaced.
+
+## Notification rendering-chain correction
+
+A final rendering-chain review found the previous feedback ownership paragraph
+incorrectly allowed BusyMark's toast and BusyFiles' snackbar to design Git
+notifications independently. GitHost.notify now forwards to one shared native
+queue/surface. The strengthened audit failed against both actual prior paths
+and rejects an indirect snackbar, stateful Material toast and app-owned native-
+looking notification tree. It follows the notification callback rather than
+unrelated application feedback, and allows only shared notification rendering.
+Actual-host tests invoke the shipped callbacks and verify common geometry and
+preserved keyboard focus. This change requires fresh builds and native captures;
+earlier 0aaaf1d receipts are intermediate evidence, not final acceptance.

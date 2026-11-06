@@ -2299,3 +2299,83 @@ Future<void> _nativeGitClose(BuildContext context) async {
     await Navigator.of(context).maybePop();
   }
 }
+
+/// The common compact, dismissible native Git notification surface.
+class NativeGitNotificationSurface extends StatelessWidget {
+  const NativeGitNotificationSurface({
+    super.key,
+    required this.message,
+    required this.onDismiss,
+  });
+  final String message;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = NativeGitSurface.of(context);
+    final close = MaterialLocalizations.of(context).closeButtonTooltip;
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: GitSizes.dialogWide),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(GitRadius.md),
+            boxShadow: [
+              BoxShadow(
+                color: colors.theme.shadowColor.withValues(alpha: .12),
+                blurRadius: GitSpacing.sm,
+                offset: const Offset(0, GitSpacing.xxs),
+              ),
+            ],
+          ),
+          child: YaruBorderContainer(
+            color: colors.panel,
+            border: Border.all(color: colors.theme.colorScheme.outline),
+            borderRadius: BorderRadius.circular(GitRadius.md),
+            clipBehavior: Clip.antiAlias,
+            padding: const EdgeInsetsDirectional.fromSTEB(
+              GitSpacing.lg,
+              GitSpacing.sm,
+              GitSpacing.sm,
+              GitSpacing.sm,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    message,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: colors.theme.textTheme.bodyMedium?.copyWith(
+                      color: colors.foreground,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: GitSpacing.xs),
+                NativeGitTooltip.wrap(
+                  context,
+                  message: close,
+                  child: NativeGitActionButton(
+                    role: NativeGitActionRole.inline,
+                    compact: true,
+                    onPressed: onDismiss,
+                    child: Icon(
+                      gitLinuxIcons[git.GitGlyph.close],
+                      size: GitSizes.iconSm,
+                      color: colors.foreground,
+                      semanticLabel: close,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
