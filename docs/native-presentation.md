@@ -471,3 +471,29 @@ chains, while generic deferred application feedback stays host-owned. Git inputs
 retain the default full rendering/service scope, including `GitHost.notify` and
 stateful feedback helpers. Resolved Git presentation/shared-package roots cannot
 select the geometry-only scope; adversarial cases cover both boundaries.
+
+
+## Named native action and focus ownership, 2026-11-06
+
+A Git action exposes its name, button role, enabled state, focus and activation
+on one semantic node. Actual AT-SPI inspection found that the custom text-action
+renderer put those flags on an unnamed parent while Focus/GestureDetector exposed
+a named panel child. This affected enabled toolbar/inline/footer actions, not
+just their widget class names. Both real host contracts reproduce that split.
+The shared renderer now owns the complete node, suppresses only redundant inner
+focus/gesture annotations, and retains real keyboard, pointer and accessible
+actions. Disabled actions have no focus/tap action. GitActivation and row focus
+use the same ownership rule without replacing the native tree/table roles.
+
+Git modal close controls retain the official unmodified YaruWindowControl's
+pixels and pointer behavior. One shared wrapper supplies its localized button
+name, state and keyboard/accessibility focus/activation. Both history's owned
+header and the other Git dialog headers consume that wrapper. No host-specific
+Git fix or upstream modification is involved. The common action/history contracts
+check these properties in both consumer themes; final native AT-SPI inspection
+and installed-application acceptance remain required.
+
+Supported APIs: [FocusableActionDetector.includeFocusSemantics](https://api.flutter.dev/flutter/widgets/FocusableActionDetector/includeFocusSemantics.html),
+[Semantics](https://api.flutter.dev/flutter/widgets/Semantics-class.html), and the
+actual pinned Flutter 3.47.5/Yaru 10.2.0 sources. Do not infer an original tooltip
+rectangle's cause from this independently reproduced accessibility defect.

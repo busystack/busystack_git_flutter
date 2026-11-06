@@ -239,3 +239,17 @@ services. The consumer's non-Git sidebar geometry audit uses its explicit
 geometry scope; that scope still follows real widget constructors/build trees,
 and is rejected for Git presentation/shared-feature roots. No feature-file or
 widget-name allowlist replaces the required Git audit.
+
+
+## Native action accessibility investigation
+
+Final-source native partial staging confirmed exact hunk/line index scope and
+preserved a dirty BusyMark document. AT-SPI then exposed a first-party rendering
+defect: enabled text-action names occupied a panel child below an unnamed button.
+The supported Flutter semantics dump and common red regressions in both hosts
+confirm the split. The shared NativeGitActionButton/row focus boundary now owns
+one complete named action; the common Git modal-close wrapper supplies equivalent
+keyboard/accessibility semantics while retaining official Yaru rendering. Both
+hosts' complete action/presentation contracts pass after the correction. This is
+source/test evidence; new package builds and final native/installed acceptance
+must be completed before calling the correction accepted.

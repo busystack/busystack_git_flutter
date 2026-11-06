@@ -94,3 +94,9 @@ helpers and stateful rendering, with adversarial callback ownership tests.
 The non-Git sidebar geometry audit may use `sidebarGeometry`; its real widget
 construction/build chains remain checked. All Git roots and GitHost.notify use
 the mandatory full rendering/service scope; do not use geometry scope for Git.
+
+Git action names, button roles, enabled state, focus and activation must belong
+to one semantic node. Keep the shared action/history host contracts and actual
+native AT-SPI inspection; class-name or inner-label checks alone are insufficient.
+Use supported Focus/Semantics APIs and the common unmodified-Yaru close wrapper;
+never patch Flutter/Yaru or fix the same Git control independently in each host.

@@ -11,6 +11,50 @@ void historyPresentationContract({
 }) {
   for (final brightness in Brightness.values) {
     testWidgets(
+      'native history close exposes one named enabled button $brightness',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        await mount(
+          tester,
+          Center(
+            child: SizedBox(
+              width: 674,
+              height: 500,
+              child: GitHistoryLayout(
+                sidebar: const Text('Reference tree'),
+                main: const Text('Commit history'),
+                toolbar: const Text('Filters'),
+                sidebarVisible: true,
+                onToggle: () {},
+                onCompactReferences: () {},
+                sidebarFraction: .28,
+                onResize: (_) {},
+                minimumHistoryWidth: 560,
+              ),
+            ),
+          ),
+          brightness,
+        );
+        final label = MaterialLocalizations.of(
+          tester.element(find.byType(GitHistoryLayout)),
+        ).closeButtonTooltip;
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(label)),
+          matchesSemantics(
+            label: label,
+            textDirection: TextDirection.ltr,
+            isButton: true,
+            hasEnabledState: true,
+            isEnabled: true,
+            isFocusable: true,
+            hasFocusAction: true,
+            hasTapAction: true,
+          ),
+        );
+        semantics.dispose();
+      },
+    );
+    testWidgets(
       'labelled native field exposes one persistent accessible name $brightness',
       (tester) async {
         final semantics = tester.ensureSemantics();

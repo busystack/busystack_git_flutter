@@ -245,6 +245,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
   var _hovered = false;
   var _pressed = false;
   var _focused = false;
+  var _hasFocus = false;
 
   Set<WidgetState> get _states => {
     if (widget.onPressed == null) WidgetState.disabled,
@@ -366,10 +367,18 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
     final action = Semantics(
       button: true,
       enabled: enabled,
+      focusable: enabled,
+      focused: enabled ? _hasFocus : null,
+      onFocus: enabled ? _focusNode.requestFocus : null,
       onTap: enabled ? _activate : null,
       child: FocusableActionDetector(
+        // Keep the name, role, enabled state and focus action on one node.
+        includeFocusSemantics: false,
         focusNode: _focusNode,
         enabled: enabled,
+        onFocusChange: (focused) {
+          if (_hasFocus != focused) setState(() => _hasFocus = focused);
+        },
         mouseCursor: enabled
             ? SystemMouseCursors.click
             : SystemMouseCursors.basic,
@@ -401,6 +410,8 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
             }
           },
           child: GestureDetector(
+            // The outer node owns the semantic action and the label together.
+            excludeFromSemantics: true,
             behavior: HitTestBehavior.opaque,
             onTap: enabled ? _activate : null,
             onTapDown: enabled
@@ -801,50 +812,60 @@ class NativeGitRowSurfaceState extends State<NativeGitRowSurface> {
         ),
       ),
     );
-    final surface = MouseRegion(
-      cursor: widget.enabled && widget.clickable
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
-      onEnter: (_) => _hover(true),
-      onExit: (_) => _hover(false),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: GitStroke.hairline),
-        child: Focus(
-          focusNode: _focusNode,
-          canRequestFocus: widget.enabled && widget.clickable,
-          onKeyEvent: _handleKeyEvent,
-          onFocusChange: _focus,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.enabled && widget.onTap != null
-                ? () {
-                    if (widget.clickable) _focusNode.requestFocus();
-                    widget.onTap?.call();
-                  }
-                : null,
-            onDoubleTap: widget.enabled ? widget.onDoubleTap : null,
-            onSecondaryTapUp: widget.enabled && widget.onSecondaryTapUp != null
-                ? (details) {
-                    if (widget.clickable) _focusNode.requestFocus();
-                    widget.onSecondaryTapUp!(details);
-                  }
-                : null,
-            onTapDown: widget.enabled && widget.clickable
-                ? (_) {
-                    if (!_pressed) setState(() => _pressed = true);
-                  }
-                : null,
-            onTapUp: widget.enabled && widget.clickable
-                ? (_) {
-                    if (_pressed) setState(() => _pressed = false);
-                  }
-                : null,
-            onTapCancel: widget.enabled && widget.clickable
-                ? () {
-                    if (_pressed) setState(() => _pressed = false);
-                  }
-                : null,
-            child: row,
+    final surface = Semantics(
+      enabled: widget.enabled,
+      focusable: widget.enabled && widget.clickable,
+      focused: widget.enabled && widget.clickable ? _focused : null,
+      onFocus: widget.enabled && widget.clickable
+          ? _focusNode.requestFocus
+          : null,
+      child: MouseRegion(
+        cursor: widget.enabled && widget.clickable
+            ? SystemMouseCursors.click
+            : SystemMouseCursors.basic,
+        onEnter: (_) => _hover(true),
+        onExit: (_) => _hover(false),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: GitStroke.hairline),
+          child: Focus(
+            includeSemantics: false,
+            focusNode: _focusNode,
+            canRequestFocus: widget.enabled && widget.clickable,
+            onKeyEvent: _handleKeyEvent,
+            onFocusChange: _focus,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.enabled && widget.onTap != null
+                  ? () {
+                      if (widget.clickable) _focusNode.requestFocus();
+                      widget.onTap?.call();
+                    }
+                  : null,
+              onDoubleTap: widget.enabled ? widget.onDoubleTap : null,
+              onSecondaryTapUp:
+                  widget.enabled && widget.onSecondaryTapUp != null
+                  ? (details) {
+                      if (widget.clickable) _focusNode.requestFocus();
+                      widget.onSecondaryTapUp!(details);
+                    }
+                  : null,
+              onTapDown: widget.enabled && widget.clickable
+                  ? (_) {
+                      if (!_pressed) setState(() => _pressed = true);
+                    }
+                  : null,
+              onTapUp: widget.enabled && widget.clickable
+                  ? (_) {
+                      if (_pressed) setState(() => _pressed = false);
+                    }
+                  : null,
+              onTapCancel: widget.enabled && widget.clickable
+                  ? () {
+                      if (_pressed) setState(() => _pressed = false);
+                    }
+                  : null,
+              child: row,
+            ),
           ),
         ),
       ),
@@ -1333,14 +1354,17 @@ base class YaruGitPresentation implements git.GitPresentation {
 
   @override
   Widget activation(BuildContext context, git.GitActivation control) {
-    return NativeGitRowSurface(
-      enabled: control.onTap != null,
-      clickable: control.onTap != null,
-      focusNode: control.focusNode,
-      onTap: control.onTap,
-      onDoubleTap: control.onDoubleTap,
-      onSecondaryTapUp: control.onSecondaryTapUp,
-      child: control.child,
+    return Semantics(
+      button: control.onTap != null,
+      child: NativeGitRowSurface(
+        enabled: control.onTap != null,
+        clickable: control.onTap != null,
+        focusNode: control.focusNode,
+        onTap: control.onTap,
+        onDoubleTap: control.onDoubleTap,
+        onSecondaryTapUp: control.onSecondaryTapUp,
+        child: control.child,
+      ),
     );
   }
 
@@ -1681,6 +1705,73 @@ class NativeGitIconAction extends StatelessWidget {
             )
           : button,
     );
+  }
+}
+
+/// Preserve the official Yaru window-control pixels while supplying one
+/// complete, keyboard-accessible native action through supported widget APIs.
+class _NativeGitWindowClose extends StatefulWidget {
+  const _NativeGitWindowClose({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  State<_NativeGitWindowClose> createState() => _NativeGitWindowCloseState();
+}
+
+class _NativeGitWindowCloseState extends State<_NativeGitWindowClose> {
+  final _focusNode = FocusNode(debugLabel: 'Git modal close');
+  var _focused = false;
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = MaterialLocalizations.of(context).closeButtonTooltip;
+    final action = Semantics(
+      label: label,
+      button: true,
+      enabled: true,
+      focusable: true,
+      focused: _focused,
+      onFocus: _focusNode.requestFocus,
+      onTap: widget.onPressed,
+      child: FocusableActionDetector(
+        includeFocusSemantics: false,
+        focusNode: _focusNode,
+        onFocusChange: (focused) {
+          if (_focused != focused) setState(() => _focused = focused);
+        },
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+          SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+        },
+        actions: {
+          ActivateIntent: CallbackAction<ActivateIntent>(
+            onInvoke: (_) {
+              widget.onPressed();
+              return null;
+            },
+          ),
+        },
+        child: ExcludeSemantics(
+          child: YaruWindowControl(
+            type: YaruWindowControlType.close,
+            semanticLabel: label,
+            onTap: widget.onPressed,
+          ),
+        ),
+      ),
+    );
+    return YaruTheme.maybeOf(context)?.focusBorders != false
+        ? YaruFocusBorder.primary(
+            borderRadius: BorderRadius.circular(kYaruWindowControlSize / 2),
+            child: action,
+          )
+        : action;
   }
 }
 
@@ -2086,12 +2177,8 @@ class _GitHistoryLayout extends StatelessWidget {
             PositionedDirectional(
               end: GitSpacing.headerInset,
               top: (GitSizes.toolbarHeight - kYaruWindowControlSize) / 2,
-              child: YaruWindowControl(
-                type: YaruWindowControlType.close,
-                semanticLabel: MaterialLocalizations.of(
-                  context,
-                ).closeButtonTooltip,
-                onTap: () => _nativeGitClose(context),
+              child: _NativeGitWindowClose(
+                onPressed: () => _nativeGitClose(context),
               ),
             ),
           ],
@@ -2263,12 +2350,8 @@ class GitNativeDialog extends StatelessWidget {
                             PositionedDirectional(
                               end: GitSpacing.headerInset,
                               top: 6,
-                              child: YaruWindowControl(
-                                type: YaruWindowControlType.close,
-                                semanticLabel: MaterialLocalizations.of(
-                                  context,
-                                ).closeButtonTooltip,
-                                onTap: () => _nativeGitClose(context),
+                              child: _NativeGitWindowClose(
+                                onPressed: () => _nativeGitClose(context),
                               ),
                             ),
                           ],

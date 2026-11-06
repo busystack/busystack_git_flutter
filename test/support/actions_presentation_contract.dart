@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -19,8 +20,119 @@ void actionsPresentationContract({
   shell,
   required Widget Function(VoidCallback? activate) nativeReference,
 }) {
+  final actionHost = GitHost(
+    presentation: presentation,
+    icons: icons,
+    presentMenu: (_, _, {position}) async => null,
+    present: <T>(_, _, _, {bool expanded = false}) async => null,
+    openDocument: (_, _, {snapshot}) async {},
+    prepareMutation: (_, _) async => false,
+    chooseDirectory: (_) async => null,
+    notify: (_) {},
+    drafts: MemoryGitDraftStore(),
+  );
+  Widget actionScope(Widget child) =>
+      GitHostScope(host: actionHost, child: child);
   for (final brightness in Brightness.values) {
     for (final direction in TextDirection.values) {
+      testWidgets(
+        'native text action exposes one named button with focus $brightness $direction',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          var activations = 0;
+          await tester.pumpWidget(
+            shell(
+              actionScope(
+                Column(
+                  children: [
+                    for (final style in GitActionStyle.values)
+                      for (final enabled in [true, false])
+                        GitButton(
+                          variant: style,
+                          onPressed: enabled ? () => activations++ : null,
+                          child: Text('${style.name} $enabled action'),
+                        ),
+                  ],
+                ),
+              ),
+              brightness,
+              direction,
+            ),
+          );
+          await tester.pumpAndSettle();
+          for (final style in GitActionStyle.values) {
+            for (final enabled in [true, false]) {
+              final label = '${style.name} $enabled action';
+              expect(
+                tester.getSemantics(find.text(label)),
+                matchesSemantics(
+                  label: label,
+                  textDirection: direction,
+                  isButton: true,
+                  hasEnabledState: true,
+                  isEnabled: enabled,
+                  isFocusable: enabled,
+                  hasFocusAction: enabled,
+                  hasTapAction: enabled,
+                ),
+                reason:
+                    'The accessible name, role, state and action must share one node.',
+              );
+            }
+          }
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+          expect(
+            tester
+                .getSemantics(find.text('standard true action'))
+                .flagsCollection
+                .isFocused,
+            ui.Tristate.isTrue,
+          );
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pump();
+          expect(activations, 1);
+          semantics.dispose();
+        },
+      );
+      testWidgets(
+        'native primary activation exposes its named button and focus $brightness $direction',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          var activations = 0;
+          await tester.pumpWidget(
+            shell(
+              actionScope(
+                GitActivation(
+                  onTap: () => activations++,
+                  child: const Text('Select changed line'),
+                ),
+              ),
+              brightness,
+              direction,
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            tester.getSemantics(find.text('Select changed line')),
+            matchesSemantics(
+              label: 'Select changed line',
+              textDirection: direction,
+              isButton: true,
+              hasEnabledState: true,
+              isEnabled: true,
+              isFocusable: true,
+              hasFocusAction: true,
+              hasTapAction: true,
+            ),
+          );
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pump();
+          expect(activations, 1);
+          semantics.dispose();
+        },
+      );
       testWidgets(
         'native Actions semantic icon, anchor and single keyboard activation $brightness $direction',
         (tester) async {
