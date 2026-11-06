@@ -10,6 +10,69 @@ void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
 }) {
   for (final brightness in Brightness.values) {
+    for (final width in [400.0, 674.0]) {
+      testWidgets(
+        'narrow history keeps its toggle in the title header when it fits $brightness $width',
+        (tester) async {
+          var visible = false, compactToggles = 0, hostToggles = 0;
+          await mount(
+            tester,
+            Center(
+              child: SizedBox(
+                width: width,
+                height: 500,
+                child: StatefulBuilder(
+                  builder: (context, setState) => GitHistoryLayout(
+                    sidebar: const Text('Reference tree'),
+                    main: const Text('Commit history'),
+                    toolbar: const Text('Filters'),
+                    sidebarVisible: true,
+                    compactSidebarVisible: visible,
+                    onToggle: () => hostToggles++,
+                    onToggleCompact: () => setState(() {
+                      visible = !visible;
+                      compactToggles++;
+                    }),
+                    onCompactReferences: () {},
+                    sidebarFraction: .28,
+                    onResize: (_) {},
+                    minimumHistoryWidth: 560,
+                  ),
+                ),
+              ),
+            ),
+            brightness,
+          );
+          final title = find.byKey(const ValueKey('git-history-title'));
+          final toggle = find.byKey(
+            const ValueKey('git-history-sidebar-toggle'),
+          );
+          expect(
+            tester.getCenter(toggle).dy,
+            closeTo(tester.getCenter(title).dy, 1),
+          );
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          expect(visible, isTrue);
+          expect(
+            tester.getRect(toggle).overlaps(tester.getRect(title)),
+            isFalse,
+          );
+          if (width == 674) {
+            expect(
+              tester.getCenter(toggle).dy,
+              closeTo(tester.getCenter(title).dy, 1),
+            );
+          }
+          await tester.tap(toggle);
+          await tester.pumpAndSettle();
+          expect(visible, isFalse);
+          expect(compactToggles, 2);
+          expect(hostToggles, 0);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
     testWidgets(
       'compact action requests retain distinct native roles $brightness',
       (tester) async {

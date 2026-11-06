@@ -364,7 +364,10 @@ host requests. They do not change `GitExpander` in Rebase or other workflows.
 BusyMark supplies its existing native dialog titlebar, independent modal sidebar
 toggle, Files sidebar surface/tree rows, and dialog footer insets. The main
 filters belong inside the history pane. The modal retains reference search,
-selection, expansion and width when hidden. Narrow layouts open the same pane
+selection, expansion and width when hidden. The title and sidebar toggle share
+one header row wherever their measured native text/control bounds fit. A second
+row is reserved for an actual overlap at very narrow or enlarged layouts; merely
+using the compact reference overlay does not create an extra header row. Narrow layouts open the same pane
 temporarily over the table; resizing does not retire a focused filter editor.
 Both hosts use this one modal grid, full-height reference sidebar, centered
 whole-modal title and padded confirmation footer.

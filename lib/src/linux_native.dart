@@ -2024,9 +2024,23 @@ class _GitHistoryLayout extends StatelessWidget {
       final visible = wide
           ? control.sidebarVisible
           : control.compactSidebarVisible;
-      final headerHeight = wide
-          ? GitSizes.toolbarHeight
-          : GitSizes.toolbarHeight * 2;
+      final title = git.gitString(context, git.GitMessages.gitLog);
+      final titleStyle = _gitNativeTheme(context).textTheme.titleMedium;
+      final titleMeasure = TextPainter(
+        text: TextSpan(text: title, style: titleStyle),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout();
+      final titleStart = (bounds.maxWidth - titleMeasure.width) / 2;
+      final toggleStart = visible
+          ? sidebarWidth + GitSpacing.headerInset
+          : GitSpacing.headerInset;
+      final needsSecondHeaderRow =
+          toggleStart < titleStart + titleMeasure.width + GitSpacing.sm &&
+          toggleStart + GitSizes.iconButton + GitSpacing.sm > titleStart;
+      titleMeasure.dispose();
+      final headerHeight =
+          GitSizes.toolbarHeight * (needsSecondHeaderRow ? 2 : 1);
       final footer = control.footer == null
           ? null
           : Padding(
@@ -2043,18 +2057,16 @@ class _GitHistoryLayout extends StatelessWidget {
               height: GitSizes.toolbarHeight,
               child: Center(
                 child: Text(
-                  git.gitString(context, git.GitMessages.gitLog),
+                  title,
                   key: const ValueKey('git-history-title'),
-                  style: _gitNativeTheme(context).textTheme.titleMedium,
+                  style: titleStyle,
                 ),
               ),
             ),
             PositionedDirectional(
-              start: visible
-                  ? sidebarWidth + GitSpacing.headerInset
-                  : GitSpacing.headerInset,
+              start: toggleStart,
               top:
-                  (wide ? 0 : GitSizes.toolbarHeight) +
+                  (needsSecondHeaderRow ? GitSizes.toolbarHeight : 0) +
                   (GitSizes.toolbarHeight - GitSizes.iconButton) / 2,
               child: Semantics(
                 toggled: visible,
