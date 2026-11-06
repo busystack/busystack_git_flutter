@@ -326,8 +326,9 @@ fields have one themed border, one line of text and no permanent label row.
 BusyMark text entry keeps EditableText's controller, focus, composition, undo,
 selection and editing callbacks. The public TextSelectionGestureDetectorBuilder
 and desktop selection controls provide pointer selection and native editing.
-The decorative placeholder excludes semantics; the editor exposes one persistent
-accessible name. Informational sidebar surfaces register no no-op tap callback.
+The decorative placeholder and visible external label exclude semantics; the
+editor exposes one persistent accessible name. The shared exact-name contract
+runs through both actual host renderers for empty and populated fields. Informational sidebar surfaces register no no-op tap callback.
 
 Branches uses explicit host spacing between flexible search and natural-size
 commands, wrapping the commands below search when measured labels need it.

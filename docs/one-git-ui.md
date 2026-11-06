@@ -168,18 +168,41 @@ preview constructors, including aliased and named constructor calls.
 ## Verification status
 
 The canonical sidebar/review model and common Yaru renderer are implemented.
-The current shared suite passed 425 tests after workflow-route consolidation.
-The unchanged engine suite passed 142 tests plus both explicit configured-hook
-and authenticated localhost SSH fixtures. Shared analysis and both resolved
-native presentation chains passed. The final context-only row focus correction
-also passes the same native contract in both real host renderers. Final source pins,
-installed-app parity, the complete regression/build/DEB matrix
-and delivery identities remain pending. Earlier captures are intermediate evidence.
-The first full BusyMark diagnostic run failed and was interrupted at a fake-time
-filesystem wait; it is not a passing full-suite result. Selected non-Git failures
-also reproduce on the original b348968c9d71 source in an isolated baseline copy.
-Native-menu/editor/finder migrations preserve the underlying behavior assertions;
-affected tests and a corrected full run still require verification.
+The isolated palette-revision verifier passed 429 shared Flutter tests, 142
+unchanged-engine tests, 718 daemon tests and 711 BusyFiles UI tests, with explicit
+external-service skips retained in its log. Its authenticated packaged adapter
+check passed. Native browser keyboard acceptance then stopped on a first-party
+rename field exposing `Name\nName` through AT-SPI. Exact-name regressions reproduce
+the same label duplication in non-compact shared Git fields in both hosts; the
+visible labels now exclude duplicate semantics while the controls retain their
+persistent names, native input and focus. Native rerun remains required.
+
+Actual same-fixture light-theme captures at that intermediate revision have
+zero differing pixels in the 300 x 348 untrusted sidebar, 300 x 630 Log inspector
+and 227 x 117 working-file native menu crops. They exposed inherited checkbox
+text height, an unnecessary narrow-history header row and an extra content-slot
+separator pixel. Those follow-ups have measured regressions and shared fixes;
+new final binaries/captures are required. Light/dark Branches, history, date and
+historical/staged/working comparison surfaces have been inspected. The earlier
+empty-tooltip black rectangle remains unreproduced; the separate pointer
+obstruction has its own proven regression and is not its claimed cause.
+
+The engine also passed explicit configured-hook and authenticated localhost SSH
+fixtures. Both complete native rendering chains and their strengthened inherited,
+cross-package adversarial audits passed. The 25 non-golden failures from the
+BusyMark diagnostic run passed fresh targeted groups after native-menu/finder
+migrations and two reproduced first-party baseline corrections; the six revised
+Git goldens were visually reviewed and passed normal comparison. A final frozen
+BusyMark full run remains pending. None of its earlier diagnostic runs is a
+passing full-suite result.
+
+The BusyFiles daemon shutdown regression additionally reproduces a late reply
+and a watch left alive after close. Its first-party lifecycle now cancels and
+drains active Git requests before private cleanup and suppresses retired replies;
+all ten Git IPC tests pass, including reconciled cancelled-operation outcomes.
+Final source/pin checks, both frozen application suites/builds, native installed
+parity, the supported Ubuntu 26.04 DEB producer and delivery identities remain
+pending. Earlier debug captures and package checks are intermediate evidence.
 
 ## Official references consulted
 

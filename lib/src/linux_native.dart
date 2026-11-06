@@ -612,12 +612,14 @@ class _NativeGitTextEntryState extends State<NativeGitTextEntry>
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!widget.dense && label.isNotEmpty) ...[
-          Text(
-            label,
-            style: _gitNativeTheme(context).textTheme.bodySmall?.copyWith(
-              color: enabled
-                  ? colors.mutedForeground
-                  : colors.disabledForeground,
+          ExcludeSemantics(
+            child: Text(
+              label,
+              style: _gitNativeTheme(context).textTheme.bodySmall?.copyWith(
+                color: enabled
+                    ? colors.mutedForeground
+                    : colors.disabledForeground,
+              ),
             ),
           ),
           const SizedBox(height: GitSpacing.xs),

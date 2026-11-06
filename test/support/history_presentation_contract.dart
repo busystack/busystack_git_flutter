@@ -10,6 +10,39 @@ void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
 }) {
   for (final brightness in Brightness.values) {
+    testWidgets(
+      'labelled native field exposes one persistent accessible name $brightness',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        try {
+          await mount(
+            tester,
+            const GitTextField(
+              decoration: GitFieldDecoration(labelText: 'Native field'),
+            ),
+            brightness,
+          );
+          expect(
+            tester
+                .getSemantics(find.byType(GitTextField))
+                .getSemanticsData()
+                .label,
+            'Native field',
+          );
+          await tester.enterText(find.byType(EditableText), 'composing value');
+          await tester.pump();
+          expect(
+            tester
+                .getSemantics(find.byType(GitTextField))
+                .getSemanticsData()
+                .label,
+            'Native field',
+          );
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
     for (final width in [400.0, 674.0]) {
       testWidgets(
         'narrow history keeps its toggle in the title header when it fits $brightness $width',
