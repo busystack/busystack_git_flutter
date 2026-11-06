@@ -52,9 +52,52 @@ abstract final class GitTypography {
   ];
 }
 
+/// Approved BusyMark GTK/Yaru neutral roles, owned once for the Git feature.
+/// Host editor/browser palette overrides are not Git design inputs. System
+/// accent and the platform accessibility contrast setting remain authoritative.
+abstract final class GitPalette {
+  static ColorScheme resolve(
+    ThemeData official,
+    Color accent,
+    bool highContrast,
+  ) {
+    final base = official.colorScheme;
+    if (highContrast) {
+      return base.copyWith(
+        primary: accent,
+        secondary: accent,
+        onPrimary: contrastColor(accent),
+      );
+    }
+    final dark = official.brightness == Brightness.dark;
+    final foreground = dark ? const Color(0xfff7f7f7) : const Color(0xff3d3d3d);
+    final muted = dark ? const Color(0xffb5b5b5) : const Color(0xff666666);
+    final view = dark ? const Color(0xff272727) : const Color(0xffffffff);
+    final window = dark ? const Color(0xff2c2c2c) : const Color(0xfffafafa);
+    final panel = dark ? const Color(0xff323232) : const Color(0xfff0f0f0);
+    final sidebar = dark ? const Color(0xff393939) : const Color(0xffebebeb);
+    return base.copyWith(
+      primary: accent,
+      secondary: accent,
+      onPrimary: contrastColor(accent),
+      surface: view,
+      onSurface: foreground,
+      onSurfaceVariant: muted,
+      surfaceContainerLowest: view,
+      surfaceContainerLow: window,
+      surfaceContainer: panel,
+      surfaceContainerHigh: panel,
+      surfaceContainerHighest: sidebar,
+      outline: const Color(0xff000000).withValues(alpha: dark ? .75 : .18),
+      outlineVariant: (dark ? const Color(0xffffffff) : const Color(0xff000000))
+          .withValues(alpha: .10),
+    );
+  }
+}
+
 // Resolve official pinned Yaru typography/control geometry once, independent
 // of unrelated editor/browser style overrides. This is not a second app theme:
-// it supplies native control roles, preserves the active semantic palette and
+// it supplies native control roles and preserves the system accent while it
 // uses the same accessibility text scale, focus and high-contrast settings.
 final _gitYaruMetrics = <(Brightness, Color, bool), ThemeData>{};
 ThemeData _gitNativeTheme(BuildContext context) {
@@ -70,8 +113,13 @@ ThemeData _gitNativeTheme(BuildContext context) {
         ? createYaruDarkTheme(primaryColor: app.colorScheme.primary)
         : createYaruLightTheme(primaryColor: app.colorScheme.primary),
   );
-  final foreground = app.colorScheme.onSurface;
-  final muted = app.colorScheme.onSurfaceVariant;
+  final scheme = GitPalette.resolve(
+    base,
+    app.colorScheme.primary,
+    highContrast,
+  );
+  final foreground = scheme.onSurface;
+  final muted = scheme.onSurfaceVariant;
   final disabled = foreground.withValues(alpha: .38);
   final transparent = foreground.withValues(alpha: 0);
   final disabledBackground = foreground.withValues(
@@ -96,8 +144,8 @@ ThemeData _gitNativeTheme(BuildContext context) {
     displayColor: foreground,
   );
   return base.copyWith(
-    colorScheme: app.colorScheme,
-    dividerColor: app.dividerColor,
+    colorScheme: scheme,
+    dividerColor: scheme.outlineVariant,
     textSelectionTheme: base.textSelectionTheme.copyWith(
       cursorColor: app.colorScheme.primary,
       selectionColor: app.colorScheme.primary.withValues(alpha: .32),
@@ -292,11 +340,11 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
             maxHeight: maximum.height,
           )
         : BoxConstraints.tight(fixed);
-    final textStyle = style?.textStyle?.resolve(states);
-    final content = DefaultTextStyle.merge(
-      style:
-          textStyle?.copyWith(color: foreground) ??
-          TextStyle(color: foreground),
+    final textStyle = theme.textTheme.bodyMedium!.merge(
+      style?.textStyle?.resolve(states),
+    );
+    final content = DefaultTextStyle(
+      style: textStyle.copyWith(color: foreground),
       child: IconTheme.merge(
         data: IconThemeData(
           color: style?.iconColor?.resolve(states) ?? foreground,
@@ -2140,6 +2188,10 @@ class GitNativeDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     final ownsHeader = git.GitDialogBody.ownsHeader(child);
+    final content = DefaultTextStyle(
+      style: _gitNativeTheme(context).textTheme.bodyMedium!,
+      child: child,
+    );
     return Semantics(
       scopesRoute: true,
       namesRoute: true,
@@ -2193,12 +2245,12 @@ class GitNativeDialog extends StatelessWidget {
                         ),
                       ),
                     if (expanded)
-                      Expanded(child: child)
+                      Expanded(child: content)
                     else
                       Flexible(
                         child: SingleChildScrollView(
                           padding: const EdgeInsets.all(GitSpacing.lg),
-                          child: child,
+                          child: content,
                         ),
                       ),
                   ],

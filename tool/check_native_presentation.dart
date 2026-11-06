@@ -173,6 +173,25 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
         ? element.enclosingElement
         : element;
     final name = owner.name;
+    // Literal colors belong only to the typed shared native palette resolver.
+    // This is a data-role boundary: controls and all other constructors remain
+    // audited, including a Material widget hidden inside this same resolver.
+    if (construction && name == 'Color' && library == 'dart:ui') {
+      final declaration = node.thisOrAncestorOfType<ClassDeclaration>();
+      final method = node.thisOrAncestorOfType<MethodDeclaration>();
+      final palette = declaration?.declaredFragment?.element;
+      final result = method?.declaredFragment?.element.returnType;
+      if (palette?.name == 'GitPalette' &&
+          palette?.library.uri.toString() ==
+              'package:busystack_git_flutter/src/linux_native.dart' &&
+          method?.name.lexeme == 'resolve' &&
+          method?.isStatic == true &&
+          result is InterfaceType &&
+          result.element.name == 'ColorScheme' &&
+          result.element.library.uri.toString() ==
+              'package:flutter/src/material/color_scheme.dart')
+        return;
+    }
     final materialWidget =
         library.startsWith('package:flutter/src/material/') &&
         owner is InterfaceElement &&

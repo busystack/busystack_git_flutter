@@ -20,12 +20,22 @@ Both adapters extend the same `YaruGitPresentation` without visual overrides.
 | Menus and glyph roles | GitMenuRole and gitLinuxIcons; host only presents the native menu |
 | Modal/history/date layout | GitNativeDialog, shared history layout and native date fields |
 | Comparison identity/tabs/navigation | GitReview, GitReviewTabs, GitFeatureController, GitReviewContent, GitReviewSurface |
-| Spacing, typography, colors, density and focus | GitSpacing, GitSizes, GitTypography, NativeGitSurface in linux_native.dart |
+| Spacing, typography, colors, density and focus | GitSpacing, GitSizes, GitTypography, GitPalette, NativeGitSurface in linux_native.dart |
 
 All rendering uses BusyStack-owned primitives and supported official pinned
 Yaru APIs. No upstream source is modified. Host document/browser lifetime,
 authorization, localization and system services remain application responsibilities.
 There is no alternate Commit/Log split workspace or mutable single preview.
+`GitPalette.resolve` owns the approved BusyMark neutral GTK/Yaru roles in both
+light and dark themes. It retains the active system accent and official Yaru
+high-contrast palette. Unrelated host editor/browser theme overrides cannot
+change Git text, surfaces or dialog control metrics. Actual same-fixture captures
+exposed a secondary-text mismatch inherited from the two app color schemes;
+regression tests perturb host colors/typography and measure resolved Git colors,
+painted controls and dialog text. Literal palette data is permitted only in the
+resolved shared ColorScheme factory; adversarial audits still reject controls
+hidden in that factory. Final installed-app visual acceptance remains required.
+
 Tooltip overlays ignore pointer events and expose their description through the
 trigger's semantics. Empty messages create no overlay; unlinked targets do not
 paint a follower. The covered-row activation regression runs in both real host

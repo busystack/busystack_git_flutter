@@ -51,11 +51,17 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Open confirmation'));
         await tester.pumpAndSettle();
-        final VoidCallback submit = approve
-            ? tester.widget<FilledButton>(find.byType(FilledButton)).onPressed!
-            : tester
-                  .widget<TextButton>(find.widgetWithText(TextButton, 'Cancel'))
-                  .onPressed!;
+        final control = tester.widget<GitButton>(
+          find.widgetWithText(
+            GitButton,
+            approve ? 'Approve reviewed action' : GitMessages.cancel,
+          ),
+        );
+        expect(
+          control.variant,
+          approve ? GitActionStyle.suggested : GitActionStyle.standard,
+        );
+        final VoidCallback submit = control.onPressed!;
         // Native actions can already be queued while a closing route is mounted.
         submit();
         submit();

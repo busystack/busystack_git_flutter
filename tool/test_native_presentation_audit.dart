@@ -283,6 +283,37 @@ class Unreachable {
         throw StateError('Cross-package inherited renderer enforcement failed');
       }
     }
+    // Only the canonical typed color resolver provisions literal neutral
+    // tokens. A matching wrapper name elsewhere, another method, or a hidden
+    // Material control never inherits that permission.
+    Directory('${sharedFixture.path}/lib/src').createSync();
+    Directory('${sharedFixture.path}/.dart_tool').createSync();
+    File(
+      '${sharedFixture.path}/.dart_tool/package_config.json',
+    ).writeAsStringSync(jsonEncode(externalConfig));
+    final palette = File('${sharedFixture.path}/lib/src/linux_native.dart');
+    for (final (type, method, hiddenControl, allowed) in [
+      ('GitPalette', 'resolve', false, true),
+      ('OtherPalette', 'resolve', false, false),
+      ('GitPalette', 'other', false, false),
+      ('GitPalette', 'resolve', true, false),
+    ]) {
+      palette.writeAsStringSync("""
+import 'package:flutter/material.dart';
+abstract final class $type {
+  static ColorScheme $method(BuildContext context) {
+    ${hiddenControl ? "TextButton(onPressed: () {}, child: const Text('bad'));" : ''}
+    return Theme.of(context).colorScheme.copyWith(onSurface: const Color(0xff666666));
+  }
+}
+""");
+      final errors = await auditNativeGitSources([palette.path]);
+      if (errors.isEmpty != allowed) {
+        throw StateError(
+          'Native palette data-role enforcement failed: $type.$method hidden=$hiddenControl',
+        );
+      }
+    }
     final comparison = File('${temp.path}/diff_view.dart');
     for (final source in [
       "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; final mode = git.GitChoiceBar<bool>(segments: const [], selected: const {}, onSelectionChanged: null);",

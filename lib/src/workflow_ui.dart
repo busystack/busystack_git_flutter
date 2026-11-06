@@ -1,3 +1,4 @@
+import 'feature.dart' show GitDialogForm;
 import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -367,24 +368,16 @@ Future<bool> gitConfirm(
           Navigator.of(dialogContext).pop(result);
         }
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            GitSelectableText(gitString(context, detail)),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                GitButton(
-                  onPressed: () => decide(false),
-                  child: const GitLabel(GitMessages.cancel),
-                ),
-                GitButton.primary(
-                  onPressed: () => decide(true),
-                  child: GitLabel(action),
-                ),
-              ],
+        return GitDialogForm(
+          body: GitSelectableText(gitString(context, detail)),
+          actions: [
+            GitButton.standard(
+              onPressed: () => decide(false),
+              child: const GitLabel(GitMessages.cancel),
+            ),
+            GitButton.primary(
+              onPressed: () => decide(true),
+              child: GitLabel(action),
             ),
           ],
         );
