@@ -73,6 +73,33 @@ class TestGitPresentation implements GitPresentation {
         modeAdornment: 24,
       );
   @override
+  double buttonWidth(
+    BuildContext context,
+    String label,
+    GitActionStyle variant,
+  ) {
+    final style = variant == GitActionStyle.suggested
+        ? _MeasuredFilledButton().resolved(context)
+        : _MeasuredOutlinedButton().resolved(context);
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style.textStyle?.resolve({})),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final width =
+        painter.width +
+        (style.padding
+                ?.resolve({})
+                ?.resolve(Directionality.of(context))
+                .horizontal ??
+            0);
+    painter.dispose();
+    return width < (style.minimumSize?.resolve({})?.width ?? 0)
+        ? style.minimumSize!.resolve({})!.width
+        : width;
+  }
+
+  @override
   Widget button(BuildContext context, GitButton c) => switch (c.variant) {
     GitActionStyle.suggested => FilledButton(
       onPressed: c.onPressed,
@@ -134,10 +161,13 @@ class TestGitPresentation implements GitPresentation {
           tristate: c.value == null,
           onChanged: c.onChanged,
         )
-      : CheckboxListTile(
-          title: Text(c.label!),
-          value: c.value,
-          onChanged: c.onChanged,
+      : Material(
+          type: MaterialType.transparency,
+          child: CheckboxListTile(
+            title: Text(c.label!),
+            value: c.value,
+            onChanged: c.onChanged,
+          ),
         );
   @override
   Widget choice<T>(BuildContext context, GitChoice<T> c) =>
@@ -178,16 +208,19 @@ class TestGitPresentation implements GitPresentation {
   @override
   Widget row(BuildContext context, GitActionRow c) => GestureDetector(
     onSecondaryTapUp: c.onSecondaryTapUp,
-    child: ListTile(
-      contentPadding: c.contentPadding,
-      title: c.title,
-      subtitle: c.subtitle,
-      leading: c.leading,
-      trailing: c.trailing,
-      dense: c.dense,
-      enabled: c.enabled,
-      selected: c.selected,
-      onTap: c.onTap,
+    child: Material(
+      type: MaterialType.transparency,
+      child: ListTile(
+        contentPadding: c.contentPadding,
+        title: c.title,
+        subtitle: c.subtitle,
+        leading: c.leading,
+        trailing: c.trailing,
+        dense: c.dense,
+        enabled: c.enabled,
+        selected: c.selected,
+        onTap: c.onTap,
+      ),
     ),
   );
   @override
@@ -285,6 +318,7 @@ class TestGitPresentation implements GitPresentation {
   Widget expander(BuildContext context, GitExpander c) => ExpansionTile(
     title: c.title,
     initiallyExpanded: c.initiallyExpanded,
+    onExpansionChanged: c.onExpansionChanged,
     children: c.children,
   );
   @override
@@ -336,6 +370,8 @@ class TestGitPresentation implements GitPresentation {
 }
 
 const testGitIcons = {
+  GitGlyph.repository: Icons.folder_outlined,
+  GitGlyph.selectCommit: Icons.account_tree_outlined,
   GitGlyph.copy: Icons.copy,
   GitGlyph.options: Icons.settings,
   GitGlyph.moreHorizontal: Icons.more_horiz,
@@ -434,4 +470,17 @@ class GitTestApp extends StatelessWidget {
       child: builder?.call(context, child) ?? child!,
     ),
   );
+}
+
+// Official protected APIs are called only from their supported subclasses.
+class _MeasuredFilledButton extends FilledButton {
+  _MeasuredFilledButton() : super(onPressed: () {}, child: const SizedBox());
+  ButtonStyle resolved(BuildContext context) =>
+      defaultStyleOf(context).merge(themeStyleOf(context));
+}
+
+class _MeasuredOutlinedButton extends OutlinedButton {
+  _MeasuredOutlinedButton() : super(onPressed: () {}, child: const SizedBox());
+  ButtonStyle resolved(BuildContext context) =>
+      defaultStyleOf(context).merge(themeStyleOf(context));
 }

@@ -72,7 +72,7 @@ void main() {
   );
 
   testWidgets(
-    'narrow enlarged workspace opens full review and returns to the retained draft',
+    'enlarged canonical workspace retains sidebar and independent review tabs',
     (tester) async {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -87,7 +87,7 @@ void main() {
       await scaled(
         tester,
         GitWorkspace(session: session),
-        const Size(900, 550),
+        const Size(1200, 650),
       );
       tester
           .widget<GitCommitView>(find.byType(GitCommitView))
@@ -99,10 +99,11 @@ void main() {
             ),
           );
       await tester.pump();
-      expect(find.text('Back to Commit'), findsOneWidget);
-      expect(find.byType(GitCommitView).hitTestable(), findsNothing);
-      expect(tester.getSize(find.byType(GitDiffView)).width, greaterThan(850));
-      await tester.tap(find.text('Back to Commit'));
+      expect(find.text('Back to Commit'), findsNothing);
+      expect(find.byType(GitCommitView).hitTestable(), findsOneWidget);
+      expect(find.byType(GitReviewSurface), findsOneWidget);
+      expect(tester.getSize(find.byType(GitDiffView)).width, greaterThan(200));
+      expect(session.feature.tabs.entries.length, 1);
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 300)),
       );

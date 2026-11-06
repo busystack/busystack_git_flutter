@@ -112,7 +112,7 @@ void main() {
             final row = find
                 .text(
                   target == 'Unstaged'
-                      ? (staged ? 'Staged (4)' : 'Unstaged (4)')
+                      ? (staged ? 'Staged' : 'Unstaged')
                       : target,
                 )
                 .first;

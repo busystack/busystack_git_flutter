@@ -36,6 +36,15 @@ Future<void> main() async {
         throw StateError('Architecture gate accepted forbidden example $i');
       }
     }
+    final oldWorkspace = File('${temp.path}/workspace.dart')
+      ..writeAsStringSync(
+        "import 'package:busystack_git_flutter/busystack_git_flutter.dart' as git; typedef OldSwitch = git.GitChoiceBar<bool>; final legacy = OldSwitch.new;",
+      );
+    if ((await auditNativeGitSources([oldWorkspace.path])).isEmpty) {
+      throw StateError(
+        'Canonical architecture accepted the retired Commit/Log switcher',
+      );
+    }
     for (final glyph in ['more', 'moreHorizontal', 'actions']) {
       final fixture = File('${temp.path}/wrong_actions_$glyph.dart')
         ..writeAsStringSync(

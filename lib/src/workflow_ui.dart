@@ -76,12 +76,14 @@ final class GitWorkflowUi {
     String title,
     Widget child, {
     bool expanded = false,
+    bool reviewSelection = false,
   }) async {
     await session.host.present<void>(
       context,
       '${session.host.message(title)} · ${session.repository.root}',
       child,
       expanded: expanded,
+      reviewSelection: reviewSelection,
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
+import 'package:busystack_git_flutter/src/native_table.dart';
 
 class _ReviewClient extends FixtureClient {
   bool newFile = false;
@@ -168,78 +169,93 @@ void main() {
     },
   );
 
-  testWidgets('Log expansion returns to same table preview split and scroll', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1500, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final client = _LongReviewClient(longLines: true);
-    final session = GitSession(client: client, repository: repo, host: host());
-    await session.start();
-    session.setViewState('diffWrap', false);
-    session.setViewState('logDetailsSplit', .57);
-    session.setViewState('logPreviewSplit', .68);
-    await tester.pumpWidget(
-      GitTestApp(
-        home: Scaffold(body: GitLogView(session: session)),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final table = tester
-        .widget<CustomScrollView>(find.byType(CustomScrollView))
-        .controller!;
-    table.jumpTo(500);
-    await tester.pump();
-    await tester.tap(find.text('a.md'));
-    await _reviewReady(tester);
-    expect(table.offset, 500);
-    final state = tester.state(find.byType(GitDiffView));
-    final scroll = tester
-        .widget<ListView>(
-          find.descendant(
-            of: find.byType(GitDiffView),
-            matching: find.byType(ListView),
+  testWidgets(
+    'Log navigation preserves table layout and independent review scroll state',
+    (tester) async {
+      tester.view.physicalSize = const Size(1500, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = _LongReviewClient(longLines: true);
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      session.setViewState('diffWrap', false);
+      session.setViewState('logDetailsSplit', .57);
+      await tester.pumpWidget(
+        GitTestApp(
+          home: Scaffold(
+            body: Row(
+              children: [
+                Expanded(child: GitLogView(session: session)),
+                Expanded(child: GitReviewContent(controller: session.feature)),
+              ],
+            ),
           ),
-        )
-        .controller!;
-    scroll.jumpTo(100);
-    ScrollController horizontal(String side) => tester
-        .widget<SingleChildScrollView>(
-          find.descendant(
-            of: find.byKey(ValueKey('git-diff-$side-horizontal')),
-            matching: find.byType(SingleChildScrollView),
-          ),
-        )
-        .controller!;
-    final left = horizontal('left'), right = horizontal('right');
-    left.jumpTo(120);
-    right.jumpTo(180);
-    await tester.pump();
-    final tableBounds = tester.getRect(find.byType(CustomScrollView));
-    final reads = client.reads;
-    await tester.tap(find.byTooltip('Review difference'));
-    await tester.pumpAndSettle();
-    expect(tester.state(find.byType(GitDiffView)), same(state));
-    expect(client.reads, reads);
-    expect(table.hasClients, isTrue);
-    expect(table.offset, 500);
-    await tester.tap(find.widgetWithText(TextButton, 'Log').last);
-    await tester.pumpAndSettle();
-    expect(tester.state(find.byType(GitDiffView)), same(state));
-    expect(client.reads, reads);
-    expect(table.offset, 500);
-    expect(scroll.offset, 100);
-    expect(left.offset, 120);
-    expect(right.offset, 180);
-    expect(tester.getRect(find.byType(CustomScrollView)), tableBounds);
-    expect(session.split('logDetailsSplit', 0), .57);
-    expect(session.split('logPreviewSplit', 0), .68);
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-    session.dispose();
-  });
+        ),
+      );
+      await tester.pumpAndSettle();
+      final tableView = find.byType(GitNativeTable);
+      final table = tester.widget<GitNativeTable>(tableView).scroll;
+      table.jumpTo(500);
+      await tester.pump();
+      await tester.tap(find.text('a.md'));
+      await _reviewReady(tester);
+      final first = session.feature.tabs.active!;
+      final state = tester.state(find.byType(GitDiffView));
+      final scroll = tester
+          .widget<ListView>(
+            find.descendant(
+              of: find.byType(GitDiffView),
+              matching: find.byType(ListView),
+            ),
+          )
+          .controller!;
+      scroll.jumpTo(100);
+      ScrollController horizontal(String side) => tester
+          .widget<SingleChildScrollView>(
+            find.descendant(
+              of: find.byKey(ValueKey('git-diff-$side-horizontal')),
+              matching: find.byType(SingleChildScrollView),
+            ),
+          )
+          .controller!;
+      final left = horizontal('left'), right = horizontal('right');
+      left.jumpTo(120);
+      right.jumpTo(180);
+      await tester.pump();
+      final tableBounds = tester.getRect(tableView);
+      final firstReads = client.reads;
+      await tester.tap(find.text('b.md'));
+      await _reviewReady(tester);
+      final second = session.feature.tabs.active!;
+      final secondState = tester.state(find.byType(GitDiffView));
+      expect(second.id, isNot(first.id));
+      expect(client.reads, greaterThan(firstReads));
+      final reads = client.reads;
+      await tester.tap(find.byKey(ValueKey('git-review-tab:${first.id}')));
+      await _reviewReady(tester);
+      expect(tester.state(find.byType(GitDiffView)), same(state));
+      expect(client.reads, reads);
+      expect(table.hasClients, isTrue);
+      expect(table.offset, 500);
+      expect(scroll.offset, 100);
+      expect(left.offset, 120);
+      expect(right.offset, 180);
+      expect(tester.getRect(tableView), tableBounds);
+      expect(session.split('logDetailsSplit', 0), .57);
+      await tester.tap(find.byKey(ValueKey('git-review-tab:${second.id}')));
+      await _reviewReady(tester);
+      expect(tester.state(find.byType(GitDiffView)), same(secondState));
+      expect(client.reads, reads);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
 
   testWidgets('file navigation retains its reviewed list through refresh', (
     tester,

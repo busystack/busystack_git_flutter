@@ -242,8 +242,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Im Index (1)'), findsOneWidget);
-      expect(find.text('Arbeitskopie (1)'), findsOneWidget);
+      expect(find.text('Im Index'), findsOneWidget);
+      expect(find.text('Arbeitskopie'), findsOneWidget);
       expect(find.text('notes.md'), findsNWidgets(2));
       expect(find.text('must never be used'), findsNothing);
       expect(find.byTooltip('Datei vormerken'), findsOneWidget);
@@ -570,15 +570,19 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      session.setViewState('inspectorRevision', 'a' * 40);
       await tester.enterText(find.byType(TextField), 'a retained draft');
-      await tester.tap(find.text('Log').first);
+      session.feature.select(GitSidebarView.log);
       await tester.pumpAndSettle();
-      expect(find.text('Message'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('git-select-another-commit')),
+        findsOneWidget,
+      );
       expect(find.bySemanticsLabel('Commit message'), findsNothing);
       expect(find.text('Actual commit row'), findsOneWidget);
       expect(find.text('a retained draft'), findsNothing);
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('Commit').first);
+      session.feature.select(GitSidebarView.commit);
       await tester.pumpAndSettle();
       expect(find.text('a retained draft'), findsOneWidget);
       session.dispose();
@@ -604,27 +608,17 @@ void main() {
         host: host(),
       );
       await session.start();
-      var branchReviews = 0;
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(
-            body: GitWorkspace(
-              session: session,
-              onBranches: () => branchReviews++,
-            ),
-          ),
+          home: Scaffold(body: GitWorkspace(session: session)),
         ),
       );
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'preserved commit draft');
-      await tester.tap(find.text('Log').first);
+      session.feature.select(GitSidebarView.log);
       await tester.pumpAndSettle();
-      expect(find.text(repo.root), findsOneWidget);
-      expect(find.text('writing/main'), findsOneWidget);
-      await tester.tap(find.text('writing/main'));
-      expect(branchReviews, 1);
-      final filter = find.widgetWithText(TextField, 'Message');
-      await tester.enterText(filter, 'preserved history filter');
+      expect(find.byType(GitLogView), findsOneWidget);
+      expect(session.snapshot!.branch, 'writing/main');
       client.state = GitSnapshot.fromJson({
         ...snapshot().toJson(),
         'head': 'b' * 40,
@@ -635,17 +629,10 @@ void main() {
       });
       await session.refresh();
       await tester.pumpAndSettle();
-      expect(
-        find.text('Detached HEAD · ${GitOid('b' * 40).abbreviated}'),
-        findsOneWidget,
-      );
-      expect(
-        find.text('Merge in progress · unresolved conflicts'),
-        findsOneWidget,
-      );
-      expect(find.text('Review operation'), findsOneWidget);
-      expect(find.text('preserved history filter'), findsOneWidget);
-      await tester.tap(find.text('Commit').first);
+      expect(session.snapshot!.head, GitOid('b' * 40));
+      expect(session.snapshot!.operation.kind, GitOperationKind.merge);
+      expect(session.feature.view, GitSidebarView.log);
+      session.feature.select(GitSidebarView.commit);
       await tester.pumpAndSettle();
       expect(find.text('preserved commit draft'), findsOneWidget);
       expect(find.text('Review operation'), findsOneWidget);

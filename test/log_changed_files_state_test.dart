@@ -55,10 +55,14 @@ final class _ChangedFilesClient extends FixtureClient {
         GitContent(
           path: path,
           version: version,
-          availability: ContentAvailability.present,
-          token: 'obsolete',
-          mode: '100644',
-          bytes: utf8.encode('obsolete preview text\n'),
+          availability: version.kind == ContentKind.absent
+              ? ContentAvailability.absent
+              : ContentAvailability.present,
+          token: 'captured',
+          mode: version.kind == ContentKind.absent ? '000000' : '100644',
+          bytes: version.kind == ContentKind.absent
+              ? const []
+              : utf8.encode('captured revision text\n'),
         ),
       );
     }
@@ -95,23 +99,69 @@ final class _ChangedFilesClient extends FixtureClient {
   }
 }
 
-Future<void> _mount(WidgetTester tester, _ChangedFilesClient client) async {
+Future<GitSession> _mount(
+  WidgetTester tester,
+  _ChangedFilesClient client,
+) async {
   tester.view.physicalSize = const Size(1440, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final session = GitSession(client: client, repository: repo, host: host());
   await session.start();
-  await tester.pumpWidget(
-    GitTestApp(
-      home: Scaffold(body: GitLogView(session: session)),
-    ),
-  );
+  await tester.pumpWidget(_screen(session));
   await tester.pump();
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox());
     session.dispose();
   });
+  return session;
+}
+
+Widget _screen(GitSession session) => GitTestApp(
+  home: Scaffold(
+    body: Row(
+      children: [
+        Expanded(child: GitLogView(session: session)),
+        Expanded(child: GitReviewContent(controller: session.feature)),
+      ],
+    ),
+  ),
+);
+
+GitReview _active(WidgetTester tester) => tester
+    .widget<GitReviewContent>(find.byType(GitReviewContent))
+    .controller
+    .tabs
+    .active!;
+
+Future<void> _settle(WidgetTester tester, _ChangedFilesClient client) async {
+  if (client.deferContent) {
+    await tester.pump(const Duration(milliseconds: 50));
+    return;
+  }
+  final deadline = DateTime.now().add(const Duration(seconds: 5));
+  do {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 20)),
+    );
+    await tester.pump(const Duration(milliseconds: 20));
+  } while (find
+          .descendant(
+            of: find.byType(GitReviewContent),
+            matching: find.byType(GitLoading),
+          )
+          .evaluate()
+          .isNotEmpty &&
+      DateTime.now().isBefore(deadline));
+  expect(
+    find.descendant(
+      of: find.byType(GitReviewContent),
+      matching: find.byType(GitLoading),
+    ),
+    findsNothing,
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _selectFile(
@@ -130,9 +180,9 @@ Future<void> _selectFile(
       worktree: '.',
     ),
   ]);
-  await tester.pumpAndSettle();
+  await _settle(tester, client);
   await tester.tap(find.text('review.md'));
-  await tester.pump();
+  await _settle(tester, client);
   expect(find.byType(GitDiffView), findsOneWidget);
 }
 
@@ -144,33 +194,41 @@ Future<void> _filter(WidgetTester tester) async {
 }
 
 void main() {
-  for (final expanded in [false, true]) {
+  for (final closeReview in [false, true]) {
     testWidgets(
-      'empty filter retires ${expanded ? 'expanded' : 'inline'} review',
+      'empty filter preserves independent review unless explicitly closed=$closeReview',
       (tester) async {
         final client = _ChangedFilesClient();
-        await _mount(tester, client);
+        final session = await _mount(tester, client);
         await _selectFile(tester, client);
-        if (expanded) {
-          await tester.tap(find.byTooltip('Review difference'));
-          await tester.pump();
-        }
+        final retained = _active(tester);
+        if (closeReview) session.feature.close(retained.id);
         client.historyCommits = [];
         await _filter(tester);
-        await tester.pumpAndSettle();
+        await _settle(tester, client);
         expect(tester.takeException(), isNull);
-        expect(find.byType(GitDiffView), findsNothing);
+        expect(
+          find.byType(GitDiffView),
+          closeReview ? findsNothing : findsOneWidget,
+        );
+        if (!closeReview) expect(_active(tester), same(retained));
         expect(
           find.text('No commits match the current filters.'),
           findsOneWidget,
         );
-        expect(find.textContaining('review.md'), findsNothing);
+        expect(
+          find.descendant(
+            of: find.byType(GitLogView),
+            matching: find.textContaining('review.md'),
+          ),
+          findsNothing,
+        );
       },
     );
   }
 
   testWidgets(
-    'filter replacement invalidates pending file and navigation callbacks immediately',
+    'filter replacement rejects stale file reads and preserves captured tab navigation',
     (tester) async {
       final client = _ChangedFilesClient();
       await _mount(tester, client);
@@ -193,14 +251,16 @@ void main() {
       client.pendingHistory!.complete(
         const HistoryPage([], nextOffset: 0, hasMore: false, anchor: 'empty'),
       );
-      await tester.pumpAndSettle();
-      expect(find.byType(GitDiffView), findsNothing);
+      await _settle(tester, client);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.path, RepoPath.text('chapter/next.md'));
+      expect(_active(tester).comparison.right.revision, GitOid('a' * 40));
       expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'failed replacement history retires preview and closing rejects late completion',
+    'failed replacement history preserves captured review and closing rejects late completion',
     (tester) async {
       final client = _ChangedFilesClient();
       await _mount(tester, client);
@@ -210,9 +270,10 @@ void main() {
       client.pendingHistory!.completeError(
         const GitException(GitErrorCode.disconnected),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester, client);
       expect(find.byType(GitFailurePanel), findsOneWidget);
-      expect(find.byType(GitDiffView), findsNothing);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.right.revision, GitOid('a' * 40));
       expect(find.text('No changed files'), findsNothing);
       client.pendingHistory = Completer<HistoryPage>();
       await tester.tap(find.byTooltip('Refresh Log'));
@@ -227,7 +288,7 @@ void main() {
   );
 
   testWidgets(
-    'empty changed files and repository switch retire selected preview',
+    'empty changed files preserve captured navigation and repository replacement retires the surface',
     (tester) async {
       final client = _ChangedFilesClient();
       await _mount(tester, client);
@@ -239,10 +300,11 @@ void main() {
       await tester.tap(find.text('Older commit'));
       await tester.pump();
       client.reads.last.complete([]);
-      await tester.pumpAndSettle();
+      await _settle(tester, client);
       obsolete!();
-      await tester.pump();
-      expect(find.byType(GitDiffView), findsNothing);
+      await _settle(tester, client);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.right.revision, GitOid('a' * 40));
       expect(find.text('No changed files'), findsOneWidget);
       final replacement = _ChangedFilesClient()..historyCommits = [];
       final session = GitSession(
@@ -251,12 +313,8 @@ void main() {
         host: host(),
       );
       await session.start();
-      await tester.pumpWidget(
-        GitTestApp(
-          home: Scaffold(body: GitLogView(session: session)),
-        ),
-      );
-      await tester.pumpAndSettle();
+      await tester.pumpWidget(_screen(session));
+      await _settle(tester, client);
       expect(find.byType(GitDiffView), findsNothing);
       expect(
         find.text('No commits match the current filters.'),
@@ -268,88 +326,100 @@ void main() {
     },
   );
 
-  testWidgets('changed merge parent retires preview and old row callbacks', (
-    tester,
-  ) async {
-    final client = _ChangedFilesClient();
-    final merge = client.historyCommits.first;
-    client.historyCommits = [
-      GitCommit(
-        oid: merge.oid,
-        parents: [GitOid('c' * 40), GitOid('d' * 40)],
-        subject: merge.subject,
-        author: merge.author,
-        email: merge.email,
-        date: merge.date,
-        message: merge.message,
-      ),
-    ];
-    await _mount(tester, client);
-    await _selectFile(tester, client);
-    final oldRow = tester
-        .widget<ListTile>(find.widgetWithText(ListTile, 'next.md'))
-        .onTap!;
-    final picker = tester.widget<GitChoice<GitOid>>(
-      find.byType(GitChoice<GitOid>),
-    );
-    picker.onChanged!(GitOid('d' * 40));
-    await tester.pump();
-    oldRow();
-    await tester.pump();
-    expect(find.byType(GitDiffView), findsNothing);
-    expect(client.comparedParents.last, GitOid('d' * 40));
-    client.reads.last.complete([]);
-    await tester.pumpAndSettle();
-    expect(find.byType(GitDiffView), findsNothing);
-    expect(find.text('No changed files'), findsOneWidget);
-    await tester.tap(find.byTooltip('Refresh Log'));
-    await tester.pump();
-    expect(client.comparedParents.last, GitOid('d' * 40));
-    client.reads.last.complete([]);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('refresh and rapid filters cannot restore late preview content', (
-    tester,
-  ) async {
-    final client = _ChangedFilesClient()..deferContent = true;
-    await _mount(tester, client);
-    await _selectFile(tester, client);
-    expect(client.contentReads, hasLength(2));
-    await tester.tap(find.byTooltip('Refresh Log'));
-    await tester.pump();
-    client.reads.last.complete([]);
-    await tester.pumpAndSettle();
-    final older = Completer<HistoryPage>();
-    client.pendingHistory = older;
-    await _filter(tester);
-    final newer = Completer<HistoryPage>();
-    client.pendingHistory = newer;
-    await _filter(tester);
-    newer.complete(
-      const HistoryPage([], nextOffset: 0, hasMore: false, anchor: 'new'),
-    );
-    await tester.pumpAndSettle();
-    older.complete(
-      HistoryPage(
-        client.historyCommits,
-        nextOffset: 2,
-        hasMore: false,
-        anchor: 'old',
-      ),
-    );
-    client.completeContent();
-    await tester.pump();
-    expect(find.byType(GitDiffView), findsNothing);
-    expect(find.text('Current commit'), findsNothing);
-    expect(find.textContaining('obsolete preview text'), findsNothing);
-    expect(find.text('No commits match the current filters.'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'changed merge parent preserves independent review and rejects old row callbacks',
+    (tester) async {
+      final client = _ChangedFilesClient();
+      final merge = client.historyCommits.first;
+      client.historyCommits = [
+        GitCommit(
+          oid: merge.oid,
+          parents: [GitOid('c' * 40), GitOid('d' * 40)],
+          subject: merge.subject,
+          author: merge.author,
+          email: merge.email,
+          date: merge.date,
+          message: merge.message,
+        ),
+      ];
+      await _mount(tester, client);
+      await _selectFile(tester, client);
+      final oldRow = tester
+          .widget<GitChangeRow>(find.widgetWithText(GitChangeRow, 'next.md'))
+          .onTap;
+      final picker = tester.widget<GitChoice<GitOid>>(
+        find.byType(GitChoice<GitOid>),
+      );
+      picker.onChanged!(GitOid('d' * 40));
+      await tester.pump();
+      oldRow();
+      await tester.pump();
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.left.revision, GitOid('c' * 40));
+      expect(client.comparedParents.last, GitOid('d' * 40));
+      client.reads.last.complete([]);
+      await _settle(tester, client);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.left.revision, GitOid('c' * 40));
+      expect(find.text('No changed files'), findsOneWidget);
+      await tester.tap(find.byTooltip('Refresh Log'));
+      await tester.pump();
+      expect(client.comparedParents.last, GitOid('d' * 40));
+      client.reads.last.complete([]);
+      await _settle(tester, client);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
-    'failed changed-files request clears review and stale file actions',
+    'refresh and rapid filters cannot retarget a late captured comparison',
+    (tester) async {
+      final client = _ChangedFilesClient()..deferContent = true;
+      await _mount(tester, client);
+      await _selectFile(tester, client);
+      expect(client.contentReads, hasLength(2));
+      await tester.tap(find.byTooltip('Refresh Log'));
+      await tester.pump();
+      client.reads.last.complete([]);
+      await _settle(tester, client);
+      final older = Completer<HistoryPage>();
+      client.pendingHistory = older;
+      await _filter(tester);
+      final newer = Completer<HistoryPage>();
+      client.pendingHistory = newer;
+      await _filter(tester);
+      newer.complete(
+        const HistoryPage([], nextOffset: 0, hasMore: false, anchor: 'new'),
+      );
+      await _settle(tester, client);
+      older.complete(
+        HistoryPage(
+          client.historyCommits,
+          nextOffset: 2,
+          hasMore: false,
+          anchor: 'old',
+        ),
+      );
+      client.completeContent();
+      client.deferContent = false;
+      await _settle(tester, client);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.right.revision, GitOid('a' * 40));
+      expect(find.text('Current commit'), findsNothing);
+      expect(
+        find.textContaining('captured revision text', findRichText: true),
+        findsWidgets,
+      );
+      expect(
+        find.text('No commits match the current filters.'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'failed changed-files request clears selector files while preserving captured tab navigation',
     (tester) async {
       final client = _ChangedFilesClient();
       await _mount(tester, client);
@@ -362,10 +432,12 @@ void main() {
       client.reads.last.completeError(
         const GitException(GitErrorCode.disconnected),
       );
-      await tester.pumpAndSettle();
+      await _settle(tester, client);
       oldNext();
-      await tester.pump();
-      expect(find.byType(GitDiffView), findsNothing);
+      await _settle(tester, client);
+      expect(find.byType(GitDiffView), findsOneWidget);
+      expect(_active(tester).comparison.path, RepoPath.text('chapter/next.md'));
+      expect(_active(tester).comparison.right.revision, GitOid('a' * 40));
       expect(find.byType(GitFailurePanel), findsOneWidget);
       expect(find.text('Details: Older commit'), findsOneWidget);
       expect(find.text('No changed files'), findsNothing);
@@ -382,7 +454,7 @@ void main() {
     expect(find.bySemanticsLabel('Loading changed files'), findsOneWidget);
     expect(find.text('No changed files'), findsNothing);
     client.reads.single.complete([]);
-    await tester.pumpAndSettle();
+    await _settle(tester, client);
     expect(find.bySemanticsLabel('Loading changed files'), findsNothing);
     expect(find.text('No changed files'), findsOneWidget);
     expect(find.bySemanticsLabel('No changed files'), findsOneWidget);
@@ -401,7 +473,7 @@ void main() {
         diagnostic: 'Fixture disconnected while reading changed files.',
       ),
     );
-    await tester.pumpAndSettle();
+    await _settle(tester, client);
     expect(find.byType(GitFailurePanel), findsOneWidget);
     expect(find.text('Current commit'), findsOneWidget);
     expect(find.text('No changed files'), findsNothing);
@@ -421,7 +493,7 @@ void main() {
         worktree: '.',
       ),
     ]);
-    await tester.pumpAndSettle();
+    await _settle(tester, client);
     expect(find.text('new.md'), findsOneWidget);
     expect(find.byType(GitFailurePanel), findsNothing);
     expect(client.historyFilters, hasLength(1));
@@ -437,7 +509,7 @@ void main() {
       await tester.pump();
       expect(client.reads, hasLength(2));
       client.reads.last.complete([]);
-      await tester.pumpAndSettle();
+      await _settle(tester, client);
       expect(find.text('No changed files'), findsOneWidget);
       client.reads.first.complete([
         GitChange(
@@ -446,7 +518,7 @@ void main() {
           worktree: '.',
         ),
       ]);
-      await tester.pumpAndSettle();
+      await _settle(tester, client);
       expect(find.text('obsolete.md'), findsNothing);
       expect(find.text('No changed files'), findsOneWidget);
       expect(find.text('Details: Older commit'), findsOneWidget);

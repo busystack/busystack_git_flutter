@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/presentation_fixture.dart';
+import 'package:busystack_git_flutter/src/historical_change_tree.dart';
 
 GitCommit _commit(String id) => GitCommit(
   oid: GitOid(id * 40),
@@ -33,7 +34,7 @@ final class _FilesClient extends FixtureClient {
 
 void main() {
   testWidgets(
-    'expanded outgoing comparison returns to its file scroll and splitter geometry',
+    'transaction review retains its shared surface, file scroll and splitter across resize',
     (tester) async {
       final semantics = tester.ensureSemantics();
       tester.view.physicalSize = const Size(1400, 1000);
@@ -63,10 +64,12 @@ void main() {
           ),
       ]);
       await tester.pump();
-      final files = find.byWidgetPredicate(
-        (w) => w is ListView && w.key is PageStorageKey,
-      );
-      final scroll = tester.widget<ListView>(files).controller!;
+      final files = find.byType(GitHistoricalChangeTree);
+      final scroll = tester
+          .widget<CustomScrollView>(
+            find.descendant(of: files, matching: find.byType(CustomScrollView)),
+          )
+          .controller!;
       scroll.jumpTo(200);
       await tester.pump();
       await tester.drag(
@@ -78,10 +81,13 @@ void main() {
           geometry = tester.getRect(files),
           split = session.split('outgoingFilesPreviewSplit', .32);
       final state = tester.state(find.byType(GitDiffView));
-      await tester.tap(find.byTooltip('Review difference'));
+      tester.view.physicalSize = const Size(1200, 1000);
       await tester.pump();
-      await tester.tap(find.byTooltip('Collapse'));
+      tester.view.physicalSize = const Size(1400, 1000);
       await tester.pump();
+      expect(find.byType(GitReviewSurface), findsOneWidget);
+      expect(find.byTooltip('Review difference'), findsNothing);
+      expect(find.byTooltip('Collapse'), findsNothing);
       expect(scroll.offset, closeTo(offset, .01));
       expect(tester.getRect(files), geometry);
       expect(session.split('outgoingFilesPreviewSplit', .32), split);
@@ -142,13 +148,13 @@ void main() {
       await tester.pump();
       preview = tester.widget<GitDiffView>(find.byType(GitDiffView));
       expect(preview.comparison.path, RepoPath.text('second.md'));
-      final beforeExpansion = tester.state(find.byType(GitDiffView));
-      await tester.tap(find.byTooltip('Review difference'));
+      final beforeResize = tester.state(find.byType(GitDiffView));
+      tester.view.physicalSize = const Size(1200, 1000);
       await tester.pump();
-      expect(tester.state(find.byType(GitDiffView)), same(beforeExpansion));
-      await tester.tap(find.byTooltip('Collapse'));
+      tester.view.physicalSize = const Size(1400, 1000);
       await tester.pump();
-      expect(tester.state(find.byType(GitDiffView)), same(beforeExpansion));
+      expect(tester.state(find.byType(GitDiffView)), same(beforeResize));
+      expect(find.byType(GitReviewSurface), findsOneWidget);
       tester
           .widget<GitChoice<GitOid>>(find.byType(GitChoice<GitOid>))
           .onChanged!(secondParent);

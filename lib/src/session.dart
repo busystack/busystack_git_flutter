@@ -1,3 +1,4 @@
+import 'feature.dart';
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -58,6 +59,7 @@ final class GitSession extends ChangeNotifier {
   }) {
     _draftState.addListener(_draftsChanged);
   }
+  late final feature = GitFeatureController(this);
   final GitClient client;
   final RepositoryId repository;
   final GitHost host;
@@ -76,6 +78,7 @@ final class GitSession extends ChangeNotifier {
   Future<void> Function(bool push)? commitAction;
   bool Function()? canCommit;
   bool loading = true, refreshing = false, running = false, _disposed = false;
+  bool get isDisposed => _disposed;
   int _generation = 0;
   Future<void>? _refresh;
   bool _refreshQueued = false;
@@ -638,6 +641,7 @@ final class GitSession extends ChangeNotifier {
         );
   @override
   void dispose() {
+    feature.dispose();
     _disposed = true;
     _draftState.removeListener(_draftsChanged);
     _generation++;

@@ -198,20 +198,28 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
         _ => null,
       };
       final nativeCatalog =
+          (token?.library?.uri.toString() ==
+                  'package:busystack_git_flutter/src/linux_native.dart' &&
+              token?.enclosingElement?.name == 'GitTypography' &&
+              const {
+                'monoFontFamily',
+                'monoFontFamilyFallback',
+              }.contains(token?.name)) ||
           ((token?.library?.uri.toString().endsWith(
-                        '/src/app/busymark_design.dart',
-                      ) ==
-                      true &&
-                  token?.enclosingElement?.name == 'BusyMarkTypography') ||
-              (token?.library?.uri.toString().endsWith(
-                        '/src/app/busyfiles_design.dart',
-                      ) ==
-                      true &&
-                  token?.enclosingElement?.name == 'BusyFilesTypography')) &&
-          const {
-            'monoFontFamily',
-            'monoFontFamilyFallback',
-          }.contains(token?.name);
+                            '/src/app/busymark_design.dart',
+                          ) ==
+                          true &&
+                      token?.enclosingElement?.name == 'BusyMarkTypography') ||
+                  (token?.library?.uri.toString().endsWith(
+                            '/src/app/busyfiles_design.dart',
+                          ) ==
+                          true &&
+                      token?.enclosingElement?.name ==
+                          'BusyFilesTypography')) &&
+              const {
+                'monoFontFamily',
+                'monoFontFamilyFallback',
+              }.contains(token?.name);
       if (!nativeCatalog)
         violations.add(
           NativeUiViolation(path, node.offset, 'feature-owned font family'),
@@ -227,7 +235,8 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
   }
 
   void checkComparisonChoice(AstNode node, DartType? type) {
-    if (!path.endsWith('/diff_view.dart')) return;
+    if (!path.endsWith('/diff_view.dart') && !path.endsWith('/workspace.dart'))
+      return;
     if (type is FunctionType) type = type.returnType;
     if (type is InterfaceType &&
         type.element.name == 'GitChoiceBar' &&

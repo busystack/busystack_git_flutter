@@ -249,13 +249,16 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
               child: ListView(
                 shrinkWrap: true,
                 children: [
-                  for (final prefix in groups) ...[
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: spacing,
-                        vertical: spacing,
+                  for (final prefix in groups)
+                    GitExpander(
+                      key: ValueKey('git-branches:$prefix'),
+                      initiallyExpanded: session.option(
+                        'branches:$prefix',
+                        true,
                       ),
-                      child: Text(
+                      onExpansionChanged: (open) =>
+                          session.setViewState('branches:$prefix', open),
+                      title: Text(
                         gitString(context, switch (prefix) {
                           'refs/heads/' => GitMessages.localBranches,
                           'refs/remotes/' => GitMessages.remoteBranches,
@@ -263,14 +266,17 @@ final class _BranchesState extends GitDialogState<GitBranchesView> {
                         }),
                         style: GitTheme.of(context).textTheme.titleSmall,
                       ),
+                      children: [
+                        for (final reference in refs.where(
+                          (e) =>
+                              e.name.startsWith(prefix) &&
+                              e.name.toLowerCase().contains(
+                                search.toLowerCase(),
+                              ),
+                        ))
+                          _reference(reference, prefix),
+                      ],
                     ),
-                    for (final reference in refs.where(
-                      (e) =>
-                          e.name.startsWith(prefix) &&
-                          e.name.toLowerCase().contains(search.toLowerCase()),
-                    ))
-                      _reference(reference, prefix),
-                  ],
                 ],
               ),
             ),

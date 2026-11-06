@@ -1,3 +1,4 @@
+import 'feature.dart' show GitReview;
 import 'presentation.dart';
 import 'messages.dart';
 import 'package:busystack_git/busystack_git.dart';
@@ -27,6 +28,63 @@ void gitCompleteSurface<T>(BuildContext context, [T? result]) {
   } else {
     navigator.removeRoute(route, result);
   }
+}
+
+/// Exact read-only workflow routes that may close when opening a content tab.
+/// Non-selector workflows break this chain so an editor/operation plan is never
+/// implicitly dismissed with a file-history selector opened above it.
+final class _GitReviewSelectionScope extends InheritedWidget {
+  const _GitReviewSelectionScope({required this.routes, required super.child});
+  final List<ModalRoute<dynamic>> routes;
+  static List<ModalRoute<dynamic>> of(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<_GitReviewSelectionScope>()
+          ?.routes ??
+      const [];
+  @override
+  bool updateShouldNotify(_GitReviewSelectionScope old) => routes != old.routes;
+}
+
+/// Transparent role marker for a read-only selector presented by GitHost.
+/// Its child remains inspectable; route ownership is resolved only when the
+/// host mounts it inside the actual native dialog route.
+final class GitReviewSelectionBody extends StatelessWidget {
+  const GitReviewSelectionBody._({
+    required this.child,
+    required List<ModalRoute<dynamic>> parents,
+  }) : _parents = parents;
+  final Widget child;
+  final List<ModalRoute<dynamic>> _parents;
+  @override
+  Widget build(BuildContext context) => _GitReviewSelectionScope(
+    routes: [..._parents, if (ModalRoute.of(context) case final route?) route],
+    child: child,
+  );
+}
+
+bool gitCompleteReviewSelections(BuildContext context) {
+  if (!context.mounted) return false;
+  final routes = _GitReviewSelectionScope.of(
+    context,
+  ).where((route) => route.isActive && !route.isFirst).toList();
+  if (routes.isEmpty) {
+    final route = ModalRoute.of(context);
+    if (route != null && !route.isFirst && !route.isCurrent) return false;
+    gitCompleteSurface(context);
+    return true;
+  }
+  if (!routes.last.isCurrent) return false;
+  for (final route in routes.reversed) {
+    if (!route.isActive) continue;
+    if (route.isCurrent) {
+      route.navigator!.pop();
+    } else {
+      // A preceding owned selector can remain below the closing animation.
+      // Remove that exact route, never the currently visible unrelated one.
+      route.navigator!.removeRoute(route);
+    }
+  }
+  return true;
 }
 
 final class GitMenuEntry {
@@ -119,6 +177,7 @@ final class GitHost {
     required void Function(String) notify,
     required this.drafts,
     this.afterMutation,
+    this.mountReview,
     this.openFolder,
     this.prepareInspection,
     this.draftMessage,
@@ -136,6 +195,10 @@ final class GitHost {
     this.registerDismissalGuard,
   }) : _present = present,
        _notify = notify;
+
+  /// Optional document-tab mount. Hosts using GitWorkspace consume the
+  /// controller's tabs directly; an editor bridges its existing content strip.
+  final ValueChanged<GitReview>? mountReview;
   final GitPresentSurface _present;
   final GitPresentMenu presentMenu;
   final GitPresentation presentation;
@@ -146,12 +209,24 @@ final class GitHost {
     Widget child, {
     bool expanded = false,
     bool localizeTitle = true,
-  }) => _present<T>(
-    context,
-    localizeTitle ? message(title) : title,
-    GitHostScope(host: this, child: child),
-    expanded: expanded,
-  );
+    bool reviewSelection = false,
+  }) {
+    final parents = reviewSelection
+        ? _GitReviewSelectionScope.of(context)
+        : const <ModalRoute<dynamic>>[];
+    return _present<T>(
+      context,
+      localizeTitle ? message(title) : title,
+      GitHostScope(
+        host: this,
+        child: reviewSelection
+            ? GitReviewSelectionBody._(parents: parents, child: child)
+            : child,
+      ),
+      expanded: expanded,
+    );
+  }
+
   Future<String?> menu(
     BuildContext context,
     String title,
@@ -242,19 +317,36 @@ final class GitHost {
   }
 }
 
-/// Localization and layout ownership stay with the consuming application.
+/// The consuming application supplies localization and system services; the
+/// shared presentation owns Git layout and native control geometry.
 /// Message IDs use the English template, with named values substituted only
 /// after host translation. Repository content and filenames never pass here.
-final class GitHostScope extends InheritedWidget {
-  const GitHostScope({super.key, required this.host, required super.child});
+final class GitHostScope extends StatelessWidget {
+  const GitHostScope({super.key, required this.host, required this.child});
   final GitHost host;
+  final Widget child;
   static GitHost? of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<GitHostScope>()?.host;
+      context.dependOnInheritedWidgetOfExactType<_GitHostData>()?.host;
   @override
-  bool updateShouldNotify(GitHostScope oldWidget) => oldWidget.host != host;
+  Widget build(BuildContext context) => _GitHostData(
+    host: host,
+    child: DefaultTextStyle(
+      style: host.presentation.theme(context).textTheme.bodyMedium!,
+      child: child,
+    ),
+  );
+}
+
+final class _GitHostData extends InheritedWidget {
+  const _GitHostData({required this.host, required super.child});
+  final GitHost host;
+  @override
+  bool updateShouldNotify(_GitHostData oldWidget) => oldWidget.host != host;
 }
 
 enum GitGlyph {
+  repository,
+  selectCommit,
   actions,
   copy,
   moreHorizontal,

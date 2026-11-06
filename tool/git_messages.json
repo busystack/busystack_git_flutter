@@ -798,5 +798,10 @@
   "commitHash": "Commit hash",
   "commitReferences": "References",
   "copyCommitMessage": "Copy commit message",
-  "selectAnotherCommit": "Select another commit…"
+  "selectAnotherCommit": "Select another commit…",
+  "gitLog": "Git Log",
+  "operationsRequireTrust": "Git operations require workspace trust.",
+  "trustWorkspace": "Trust workspace",
+  "closeOtherTabs": "Close other tabs",
+  "closeAllTabs": "Close all tabs"
 }

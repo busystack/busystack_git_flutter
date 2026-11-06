@@ -299,9 +299,15 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                       expanded: file == null
                           ? !_collapsed.contains(row.key)
                           : null,
-                      onToggle: file == null ? () => _toggle(row) : null,
+                      onToggle: file == null
+                          ? () {
+                              if (mounted && identical(widget, owner))
+                                _toggle(row);
+                            }
+                          : null,
                       onPointerDown: (_) {},
                       onTap: () {
+                        if (!mounted || !identical(widget, owner)) return;
                         _focus.requestFocus();
                         _highlight(rows, index);
                         if (file == null) {
@@ -313,6 +319,7 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                       onSecondaryTapUp: file == null
                           ? null
                           : (details) {
+                              if (!mounted || !identical(widget, owner)) return;
                               _focus.requestFocus();
                               _highlight(rows, index);
                               unawaited(

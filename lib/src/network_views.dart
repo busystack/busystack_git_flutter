@@ -3,7 +3,9 @@ import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
-import 'diff_view.dart';
+import 'feature.dart' show GitReviewSurface, gitOpenComparison;
+import 'historical_change_tree.dart';
+import 'history_actions.dart';
 import 'branch_views.dart';
 import 'host.dart';
 import 'session.dart';
@@ -758,9 +760,15 @@ final class GitCommitFiles extends StatefulWidget {
     super.key,
     required this.session,
     required this.commit,
+    this.onActivate,
   });
   final GitSession session;
   final GitCommit commit;
+
+  /// Read-only file selectors activate a content tab. Transaction workflows
+  /// retain their plan and use the same shared comparison surface in-place.
+  final void Function(BuildContext, GitComparison, List<GitComparison>)?
+  onActivate;
   @override
   State<GitCommitFiles> createState() => _CommitFilesState();
 }
@@ -770,10 +778,8 @@ final class _CommitFilesState extends State<GitCommitFiles> {
   GitChange? selected;
   GitException? error;
   GitOid? parent;
-  bool expanded = false;
   int generation = 0;
-  final _filesScroll = ScrollController(), _detailsScroll = ScrollController();
-  final _previewKey = GlobalKey();
+  final _detailsScroll = ScrollController();
   @override
   void initState() {
     super.initState();
@@ -793,7 +799,6 @@ final class _CommitFilesState extends State<GitCommitFiles> {
   @override
   void dispose() {
     generation++;
-    _filesScroll.dispose();
     _detailsScroll.dispose();
     super.dispose();
   }
@@ -844,34 +849,85 @@ final class _CommitFilesState extends State<GitCommitFiles> {
     }
   }
 
+  GitComparison _comparison(GitChange file, GitCommit commit, GitOid? parent) =>
+      GitComparison(
+        file.path,
+        parent == null
+            ? const ContentVersion.absent()
+            : ContentVersion(ContentKind.commit, revision: parent),
+        ContentVersion(ContentKind.commit, revision: commit.oid),
+        leftPath: file.originalPath,
+      );
+
   Widget _fileList(
     int current,
     GitSession session,
     GitCommit commit,
     GitOid? chosenParent,
-  ) => ListView.builder(
-    key: PageStorageKey((session, commit.oid, chosenParent, 'outgoing-files')),
-    controller: _filesScroll,
-    itemCount: files?.length ?? 0,
-    itemBuilder: (context, index) {
-      final file = files![index];
-      return GitActionRow(
-        dense: true,
-        selected: selected == file,
-        leading: Text(file.index),
-        title: Text(file.path.display),
-        subtitle: file.originalPath == null
-            ? null
-            : Text(file.originalPath!.display),
-        onTap: () {
-          if (_owns(current, session, commit.oid, chosenParent) &&
-              files!.contains(file)) {
-            setState(() => selected = file);
-          }
-        },
+  ) {
+    final ordered = files!;
+    final comparisons = List<GitComparison>.unmodifiable(
+      ordered.map((file) => _comparison(file, commit, chosenParent)),
+    );
+    bool currentReview() =>
+        _owns(current, session, commit.oid, chosenParent) &&
+        identical(files, ordered);
+    void activate(GitChange file) {
+      if (!currentReview() || !ordered.contains(file)) return;
+      setState(() => selected = file);
+      widget.onActivate?.call(
+        context,
+        _comparison(file, commit, chosenParent),
+        comparisons,
       );
-    },
-  );
+    }
+
+    return GitHistoricalChangeTree(
+      key: ValueKey((session.repository.key, commit.oid, chosenParent)),
+      session: session,
+      files: ordered,
+      selected: selected?.path,
+      onHighlight: (file) {
+        if (currentReview()) setState(() => selected = file);
+      },
+      onActivate: activate,
+      onAction: (file, action) async {
+        if (!currentReview() || !ordered.contains(file)) return;
+        if (action == 'review') {
+          if (widget.onActivate != null) {
+            activate(file);
+          } else {
+            gitOpenComparison(
+              context,
+              session,
+              _comparison(file, commit, chosenParent),
+              files: comparisons,
+              closeSurface: false,
+            );
+          }
+        } else if (action == 'history') {
+          await session.host.present<void>(
+            context,
+            GitMessages.fileHistoryAndBlame,
+            GitFileHistoryView(
+              session: session,
+              path: file.path,
+              revision: commit.oid,
+            ),
+            expanded: true,
+            reviewSelection: true,
+          );
+        } else if (action == 'snapshot') {
+          await session.host.present<void>(
+            context,
+            GitMessages.openSnapshot,
+            GitSnapshotView(session: session, revision: commit.oid),
+            expanded: true,
+          );
+        }
+      },
+    );
+  }
 
   Widget _preview(
     int current,
@@ -879,75 +935,33 @@ final class _CommitFilesState extends State<GitCommitFiles> {
     GitCommit commit,
     GitOid? chosenParent,
   ) {
-    final file = selected!, ordered = files!, index = ordered.indexOf(file);
-    void navigate(int next) {
-      if (_owns(current, session, commit.oid, chosenParent) &&
+    final ordered = files!, file = selected!;
+    final review = session.feature.capture(
+      _comparison(file, commit, chosenParent),
+      ordered.map((file) => _comparison(file, commit, chosenParent)).toList(),
+    );
+    return GitReviewSurface(
+      key: ValueKey(review.id),
+      session: session,
+      review: review,
+      isActive: () =>
+          _owns(current, session, commit.oid, chosenParent) &&
           identical(files, ordered) &&
-          next >= 0 &&
-          next < ordered.length) {
-        setState(() => selected = ordered[next]);
-      }
-    }
-
-    return KeyedSubtree(
-      key: _previewKey,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              GitIconButton(
-                tooltip: gitString(
-                  context,
-                  expanded
-                      ? GitMessages.collapse
-                      : GitMessages.reviewDifference,
-                ),
-                onPressed: () {
-                  if (_owns(current, session, commit.oid, chosenParent))
-                    setState(() => expanded = !expanded);
-                },
-                icon: GitIcon(expanded ? GitGlyph.back : GitGlyph.expand),
-              ),
-              Expanded(
-                child: Text(
-                  '${file.originalPath == null ? file.path.display : '${file.originalPath!.display} → ${file.path.display}'} · '
-                  '${chosenParent?.abbreviated ?? gitString(context, GitMessages.emptyTree)} → ${commit.oid.abbreviated}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          Expanded(
-            child: GitDiffView(
-              key: ValueKey((
-                session,
-                commit.oid,
-                chosenParent,
-                file.path.key,
-                file.originalPath?.key,
-              )),
-              session: session,
-              preview: !expanded,
-              comparison: GitComparison(
-                file.path,
-                chosenParent == null
-                    ? const ContentVersion.absent()
-                    : ContentVersion(
-                        ContentKind.commit,
-                        revision: chosenParent,
-                      ),
-                ContentVersion(ContentKind.commit, revision: commit.oid),
-                leftPath: file.originalPath,
-              ),
-              onPreviousFile: index <= 0 ? null : () => navigate(index - 1),
-              onNextFile: index < 0 || index + 1 >= ordered.length
-                  ? null
-                  : () => navigate(index + 1),
-            ),
-          ),
-        ],
-      ),
+          selected == file &&
+          ModalRoute.of(context)?.isCurrent != false,
+      onOpen: (next) {
+        if (!_owns(current, session, commit.oid, chosenParent) ||
+            !identical(files, ordered))
+          return;
+        final nextFile = ordered
+            .where(
+              (file) =>
+                  file.path == next.comparison.path &&
+                  file.originalPath == next.comparison.leftPath,
+            )
+            .firstOrNull;
+        if (nextFile != null) setState(() => selected = nextFile);
+      },
     );
   }
 
@@ -963,19 +977,18 @@ final class _CommitFilesState extends State<GitCommitFiles> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (!expanded)
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: session.host.rowHeight(context) * 4,
-            ),
-            child: SingleChildScrollView(
-              controller: _detailsScroll,
-              padding: EdgeInsets.all(session.host.spacing),
-              child: GitSelectableText(
-                '${commit.message}\n${commit.author} · ${commit.date.toLocal()}',
-              ),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: session.host.rowHeight(context) * 4,
+          ),
+          child: SingleChildScrollView(
+            controller: _detailsScroll,
+            padding: EdgeInsets.all(session.host.spacing),
+            child: GitSelectableText(
+              '${commit.message}\n${commit.author} · ${commit.date.toLocal()}',
             ),
           ),
+        ),
         if (commit.parents.length > 1)
           GitChoice<GitOid>(
             value: chosenParent,
@@ -1015,8 +1028,8 @@ final class _CommitFilesState extends State<GitCommitFiles> {
               ? const Center(child: GitLabel(GitMessages.noChangedFiles))
               : review == null
               ? const SizedBox()
-              : expanded
-              ? review
+              : widget.onActivate != null
+              ? _fileList(current, session, commit, chosenParent)
               : GitSplitter(
                   axis: Axis.vertical,
                   initial: .32,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -14,35 +15,53 @@ void main() {
         addTearDown(tester.view.resetPhysicalSize);
         addTearDown(tester.view.resetDevicePixelRatio);
         final client = FixtureClient()..pending = Completer<GitOutcome>();
+        final original = host();
+        final configured = GitHost(
+          presentation: const TestGitPresentation(
+            entryActionPlacement: GitEntryActionPlacement.contextMenu,
+          ),
+          icons: original.icons,
+          present: original.present,
+          presentMenu: (_, entries, {position}) async =>
+              entries.any((entry) => entry.id == 'stage') ? 'stage' : null,
+          openDocument: original.openDocument,
+          prepareMutation: original.prepareMutation,
+          chooseDirectory: original.chooseDirectory,
+          notify: original.notify,
+          drafts: original.drafts,
+        );
         final session = GitSession(
           client: client,
           repository: repo,
-          host: host(),
+          host: configured,
         );
         await session.start();
         final reviews = <GitComparison>[];
-        var logOpened = false;
         var reviewContext = 0;
         await tester.pumpWidget(
           GitTestApp(
             home: Scaffold(
               body: SizedBox(
                 width: 340,
-                child: GitCommitView(
-                  session: session,
-                  onReview: reviews.add,
-                  reviewContext: () => reviewContext,
-                  onLog: () => logOpened = true,
-                  onBranches: () {},
-                  onPush: () {},
-                  onMore: (_) {},
+                child: ListenableBuilder(
+                  listenable: session.feature,
+                  builder: (_, _) => GitFeatureSidebar(
+                    controller: session.feature,
+                    view: session.feature.view,
+                    onSelectView: session.feature.select,
+                    onReview: (review) => reviews.add(review.comparison),
+                    reviewContext: external ? () => reviewContext : null,
+                  ),
                 ),
               ),
             ),
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.byTooltip('Stage file'));
+        await tester.tap(
+          find.text('notes.md').last,
+          buttons: kSecondaryMouseButton,
+        );
         await tester.pump(const Duration(milliseconds: 350));
         await tester.pump();
         expect(client.mutations.single, isA<StagePaths>());
@@ -51,9 +70,9 @@ void main() {
           // before the command response arrives.
           reviewContext++;
         } else {
-          await tester.tap(find.byTooltip('Log'));
+          session.feature.select(GitSidebarView.log);
           await tester.pump();
-          expect(logOpened, true);
+          expect(session.feature.view, GitSidebarView.log);
         }
         client.pending!.complete(
           GitOutcome(phase: GitOperationPhase.completed, snapshot: snapshot()),

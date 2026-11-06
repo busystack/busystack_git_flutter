@@ -4,12 +4,14 @@ import 'messages.dart';
 import 'package:flutter/material.dart' show ThemeData, TextAlignVertical;
 import 'package:flutter/widgets.dart';
 import 'host.dart';
+import 'dart:async';
+import 'reference_context_menu.dart';
 
-/// Required native control boundary, implemented by each application's existing
-/// design system. There is deliberately no default or Material implementation.
+/// Required native control boundary, implemented once by the shared Linux
+/// renderer and consumed by both applications. There is deliberately no default or Material implementation.
 abstract interface class GitPresentation {
-  /// Native entry actions are contextual in BusyMark; BusyFiles retains its
-  /// established trailing controls. Feature controls never guess or fall back.
+  /// Native entry actions are contextual in both hosts. Feature controls never
+  /// guess a host placement or provide a fallback.
   GitEntryActionPlacement get entryActionPlacement;
   ThemeData theme(BuildContext context);
   TextStyle? codeStyle(BuildContext context);
@@ -27,6 +29,7 @@ abstract interface class GitPresentation {
   GitToolbarMetrics toolbarMetrics(BuildContext context);
   String repositoryActionsLabel(BuildContext context);
   Widget button(BuildContext context, GitButton control);
+  double buttonWidth(BuildContext context, String label, GitActionStyle style);
   Widget iconAction(BuildContext context, GitIconButton control);
   Widget field(BuildContext context, GitTextField control);
   Widget checkbox(BuildContext context, GitCheckbox control);
@@ -35,7 +38,7 @@ abstract interface class GitPresentation {
   Widget row(BuildContext context, GitActionRow control);
   Widget expander(BuildContext context, GitExpander control);
 
-  /// One host-owned content grid for compact history metadata and headings.
+  /// One shared native content grid for compact history metadata and headings.
   EdgeInsetsGeometry logContentInsets(BuildContext context);
   Widget logHeader(BuildContext context, GitLogHeader control);
   Widget historyLayout(BuildContext context, GitHistoryLayout control);
@@ -247,12 +250,86 @@ final class GitActionRow extends StatelessWidget {
   final VoidCallback? onTap;
   final GestureTapUpCallback? onSecondaryTapUp;
   @override
-  Widget build(BuildContext context) =>
-      gitPresentation(context).row(context, this);
+  Widget build(BuildContext context) {
+    if (trailing case final GitMenuButton menu
+        when menu.role == GitMenuRole.entryContext &&
+            gitPresentation(context).entryActionPlacement ==
+                GitEntryActionPlacement.contextMenu) {
+      return _GitContextualActionRow(control: this, menu: menu);
+    }
+    return gitPresentation(context).row(context, this);
+  }
 }
 
-/// Semantic tree request. The host owns row geometry, native disclosure and
-/// action treatment; the shared tree keeps reviewed selection and transactions.
+/// Contextual entry actions share pointer/keyboard ownership and reject replies
+/// after the row's captured model has been replaced. No trailing menu is painted.
+final class _GitContextualActionRow extends StatefulWidget {
+  const _GitContextualActionRow({required this.control, required this.menu});
+  final GitActionRow control;
+  final GitMenuButton menu;
+  @override
+  State<_GitContextualActionRow> createState() =>
+      _GitContextualActionRowState();
+}
+
+class _GitContextualActionRowState extends State<_GitContextualActionRow> {
+  bool _opening = false;
+  bool get available =>
+      widget.control.enabled &&
+      widget.menu.enabled &&
+      widget.menu.entries.isNotEmpty;
+  Future<void> open(Offset position) async {
+    if (_opening || !available) return;
+    final control = widget.control, menu = widget.menu;
+    _opening = true;
+    try {
+      final action = await menu.host.menu(
+        context,
+        menu.tooltip,
+        menu.entries,
+        position: position,
+      );
+      if (!mounted || !identical(widget.control, control) || !available) return;
+      if (action != null &&
+          menu.entries.any(
+            (e) => !e.separator && e.enabled && e.id == action,
+          )) {
+        menu.onSelected(action);
+      }
+    } finally {
+      _opening = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.control;
+    return GitReferenceContextMenu(
+      open: available ? open : null,
+      child: gitPresentation(context).row(
+        context,
+        GitActionRow(
+          title: c.title,
+          subtitle: c.subtitle,
+          leading: c.leading,
+          dense: c.dense,
+          contentPadding: c.contentPadding,
+          selected: c.selected,
+          enabled: c.enabled,
+          onTap: c.onTap,
+          onSecondaryTapUp:
+              c.onSecondaryTapUp ??
+              (available
+                  ? (event) => unawaited(open(event.globalPosition))
+                  : null),
+        ),
+      ),
+    );
+  }
+}
+
+/// Semantic tree request. The shared native contract owns row geometry,
+/// disclosure and actions; the tree keeps reviewed selection and transactions.
 final class GitChangeRow extends StatelessWidget {
   const GitChangeRow({
     super.key,
@@ -293,7 +370,9 @@ final class GitExpander extends StatelessWidget {
     required this.title,
     required this.children,
     this.initiallyExpanded = false,
+    this.onExpansionChanged,
   });
+  final ValueChanged<bool>? onExpansionChanged;
   final Widget title;
   final List<Widget> children;
   final bool initiallyExpanded;
@@ -668,12 +747,15 @@ final class GitHistoryLayout extends StatelessWidget {
     required this.sidebarFraction,
     required this.onResize,
     required this.minimumHistoryWidth,
+    this.compactSidebarVisible = false,
+    this.onToggleCompact,
     this.footer,
   });
   final Widget sidebar, main, toolbar;
   final Widget? footer;
-  final bool sidebarVisible;
+  final bool sidebarVisible, compactSidebarVisible;
   final VoidCallback onToggle, onCompactReferences;
+  final VoidCallback? onToggleCompact;
   final double sidebarFraction, minimumHistoryWidth;
   final ValueChanged<double> onResize;
   @override
@@ -708,12 +790,14 @@ final class GitReferenceRow extends StatelessWidget {
 }
 
 /// A host can omit its surrounding titlebar when a history body supplies one.
-/// BusyFiles deliberately keeps its established dialog chrome.
+/// Both hosts omit the surrounding titlebar for this shared history body.
 final class GitDialogBody extends StatelessWidget {
   const GitDialogBody({super.key, required this.child});
   final Widget child;
   static bool ownsHeader(Widget? body) =>
-      body is GitDialogBody || body is GitHostScope && ownsHeader(body.child);
+      body is GitDialogBody ||
+      body is GitHostScope && ownsHeader(body.child) ||
+      body is GitReviewSelectionBody && ownsHeader(body.child);
   @override
   Widget build(BuildContext context) => child;
 }

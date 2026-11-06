@@ -80,10 +80,8 @@ void main() {
           'GitMenuRole.displayOptions',
           'GitMenuRole.viewActions',
         ],
-        'log_view.dart': [
-          'GitMenuRole.viewActions',
-          'GitMenuRole.entryContext',
-        ],
+        // Historical entries now use the common tree's contextual role.
+        'log_view.dart': ['GitMenuRole.viewActions'],
         'history_actions.dart': [
           'GitMenuRole.entryContext',
           'GitMenuRole.entryContext',

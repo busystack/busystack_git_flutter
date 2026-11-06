@@ -123,9 +123,16 @@ Future<GitSession> _mountHistory(
       home: Scaffold(
         body: GitHostScope(
           host: session.host,
-          child: GitFileHistoryView(
-            session: session,
-            path: RepoPath.text('new/chapter.md'),
+          child: Row(
+            children: [
+              Expanded(
+                child: GitFileHistoryView(
+                  session: session,
+                  path: RepoPath.text('new/chapter.md'),
+                ),
+              ),
+              Expanded(child: GitReviewContent(controller: session.feature)),
+            ],
           ),
         ),
       ),
@@ -144,14 +151,22 @@ void main() {
     tester,
   ) async {
     final client = _MergeHistoryClient();
-    await _mountHistory(tester, client);
+    final session = await _mountHistory(tester, client);
     expect(client.reads.single.$1, client.parent);
     client.reads.single.$2.complete(client.changes('old/chapter.md'));
     await tester.pump();
-    expect(
-      tester.widget<GitDiffView>(find.byType(GitDiffView)).comparison.leftPath,
-      RepoPath.text('old/chapter.md'),
+    expect(find.byType(GitDiffView), findsNothing);
+    final obsoleteOpen = tester
+        .widget<GitButton>(
+          find.widgetWithText(GitButton, GitMessages.compareToParent),
+        )
+        .onPressed!;
+    await tester.tap(
+      find.widgetWithText(GitButton, GitMessages.compareToParent),
     );
+    await tester.pump();
+    final original = session.feature.tabs.entries.single;
+    expect(original.comparison.leftPath, RepoPath.text('old/chapter.md'));
     final oldPicker = tester.widget<GitChoice<GitOid>>(
       find.byType(GitChoice<GitOid>),
     );
@@ -161,12 +176,18 @@ void main() {
     ); // obsolete callback must already be retired
     await tester.pump();
     expect(client.reads.last.$1, client.otherParent);
-    expect(find.byType(GitDiffView), findsNothing);
+    expect(session.feature.tabs.entries.single, same(original));
+    obsoleteOpen();
+    expect(session.feature.tabs.entries, hasLength(1));
     client.reads.last.$2.complete(client.changes('side/東京.md'));
     await tester.pump();
-    final comparison = tester
-        .widget<GitDiffView>(find.byType(GitDiffView))
-        .comparison;
+    await tester.tap(
+      find.widgetWithText(GitButton, GitMessages.compareToParent),
+    );
+    await tester.pump();
+    expect(session.feature.tabs.entries, hasLength(2));
+    expect(session.feature.tabs.entries.first, same(original));
+    final comparison = session.feature.tabs.active!.comparison;
     expect(comparison.left.revision, client.otherParent);
     expect(comparison.leftPath, RepoPath.text('side/東京.md'));
     expect(comparison.path, RepoPath.text('new/chapter.md'));
@@ -207,52 +228,75 @@ void main() {
     },
   );
 
-  testWidgets('file history previews the renamed file against its parent', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1280, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    final client = _HistoryClient();
-    final session = GitSession(client: client, repository: repo, host: host());
-    await session.start();
-    await tester.pumpWidget(
-      GitTestApp(
-        home: Scaffold(
-          body: GitHostScope(
-            host: session.host,
-            child: GitFileHistoryView(
-              session: session,
-              path: RepoPath.text('new/chapter.md'),
+  testWidgets(
+    'file history opens a captured renamed comparison in a real tab',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final client = _HistoryClient();
+      final session = GitSession(
+        client: client,
+        repository: repo,
+        host: host(),
+      );
+      await session.start();
+      await tester.pumpWidget(
+        GitTestApp(
+          home: Scaffold(
+            body: GitHostScope(
+              host: session.host,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: GitFileHistoryView(
+                      session: session,
+                      path: RepoPath.text('new/chapter.md'),
+                    ),
+                  ),
+                  Expanded(
+                    child: GitReviewContent(controller: session.feature),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.runAsync(
-      () async => Future<void>.delayed(const Duration(milliseconds: 300)),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(
-      client.contentCalls.any(
-        (call) =>
-            call.$1.display == 'old/chapter.md' &&
-            call.$2.revision == client.parent,
-      ),
-      isTrue,
-    );
-    expect(
-      client.contentCalls.any(
-        (call) =>
-            call.$1.display == 'new/chapter.md' &&
-            call.$2.revision == client.commit,
-      ),
-      isTrue,
-    );
-    expect(find.byType(GitDiffView), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-    session.dispose();
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(GitDiffView), findsNothing);
+      expect(client.contentCalls, isEmpty);
+      await tester.tap(
+        find.widgetWithText(GitButton, GitMessages.compareToParent),
+      );
+      await tester.pump();
+      expect(find.byType(GitReviewTabStrip), findsOneWidget);
+      expect(session.feature.tabs.entries, hasLength(1));
+      await tester.runAsync(
+        () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        client.contentCalls.any(
+          (call) =>
+              call.$1.display == 'old/chapter.md' &&
+              call.$2.revision == client.parent,
+        ),
+        isTrue,
+      );
+      expect(
+        client.contentCalls.any(
+          (call) =>
+              call.$1.display == 'new/chapter.md' &&
+              call.$2.revision == client.commit,
+        ),
+        isTrue,
+      );
+      expect(find.byType(GitDiffView), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      session.dispose();
+    },
+  );
 }

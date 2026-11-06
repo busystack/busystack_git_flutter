@@ -31,6 +31,7 @@ Future<GitRevisionTarget?> gitChooseRevision(
   title,
   _RevisionPicker(session: session),
   expanded: true,
+  reviewSelection: true,
 );
 
 final class _RevisionPicker extends StatefulWidget {
@@ -43,7 +44,7 @@ final class _RevisionPicker extends StatefulWidget {
 final class _RevisionPickerState extends State<_RevisionPicker> {
   List<GitReference> _refs = [];
   String _search = '';
-  bool _loading = true, _log = false, _submitted = false;
+  bool _loading = true, _choosingHistory = false, _submitted = false;
   GitException? _error;
   int _generation = 0;
   GitCancellation? _cancellation;
@@ -64,6 +65,8 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
   void dispose() {
     _generation++;
     _cancellation?.cancel();
+    final route = _historyRoute;
+    if (route?.isActive == true) route!.navigator?.removeRoute(route);
     super.dispose();
   }
 
@@ -104,7 +107,7 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
 
   Future<void> _choose(GitReference reference) async {
     if (_loading ||
-        _log ||
+        _choosingHistory ||
         _submitted ||
         !mounted ||
         ModalRoute.of(context)?.isCurrent != true ||
@@ -160,14 +163,41 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
     }
   }
 
+  ModalRoute<dynamic>? _historyRoute;
+  Future<void> _selectHistory() async {
+    if (!mounted ||
+        _choosingHistory ||
+        _submitted ||
+        ModalRoute.of(context)?.isCurrent != true)
+      return;
+    final generation = ++_generation, session = widget.session;
+    _cancellation?.cancel();
+    setState(() {
+      _choosingHistory = true;
+      _loading = false;
+    });
+    try {
+      final commit = await gitSelectHistoryCommit(
+        context,
+        session,
+        allowCommitActions: false,
+        onRoute: (route) => _historyRoute = route,
+      );
+      if (!mounted || generation != _generation || widget.session != session)
+        return;
+      if (commit != null)
+        _complete(GitRevisionTarget(commit.oid, commit.subject));
+    } finally {
+      _historyRoute = null;
+      if (mounted && generation == _generation) {
+        setState(() => _choosingHistory = false);
+        if (!_submitted && _refs.isEmpty) unawaited(_load());
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_log)
-      return GitLogView(
-        session: widget.session,
-        onChooseCommit: (commit) =>
-            _complete(GitRevisionTarget(commit.oid, commit.subject)),
-      );
     final matches = _refs
         .where(
           (ref) => ref.shortName.toLowerCase().contains(_search.toLowerCase()),
@@ -202,11 +232,9 @@ final class _RevisionPickerState extends State<_RevisionPicker> {
         Row(
           children: [
             GitButton.icon(
-              onPressed: () {
-                _generation++;
-                _cancellation?.cancel();
-                setState(() => _log = true);
-              },
+              onPressed: _choosingHistory
+                  ? null
+                  : () => unawaited(_selectHistory()),
               icon: const GitIcon(GitGlyph.history),
               label: const GitLabel(GitMessages.selectCommitInLog),
             ),

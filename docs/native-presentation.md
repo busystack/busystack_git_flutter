@@ -5,37 +5,37 @@ BusyMark ea47942 (feature/git-package), BusyFiles a1a6721 (Release/v0.0.1).
 All four trees were clean. The parent engineering policy applies; there are no
 repository-specific AGENTS.md files at this baseline. No engine change is planned.
 
-## Native implementations inspected before migration
+## One Linux implementation (2026-11-06)
 
-| Git control category | BusyMark implementation | BusyFiles implementation |
-| --- | --- | --- |
-| Actions | BusyMarkGitActionButton, native primitive interaction with Yaru semantic tokens | BusyFilesPushButton standard/suggested |
-| Icon actions | BusyMarkHeaderIconButton backed by public YaruIconButton | BusyFilesToolbarButton |
-| Text/search/message/editor inputs | BusyMarkGitTextEntry, EditableText plus approved Yaru surface | BusyFilesTextField, extended for existing editor controllers |
-| Check choices | BusyMarkCheckbox | BusyFilesCheckbox |
-| Selectors | BusyMarkPopupSelector / BusyMarkMenuButton | BusyFilesSelectionButton / BusyFilesNativeMenuButton / BusyFilesModeSelector |
-| Rows | BusyMarkSidebarRecordRow / native row surfaces | BusyFilesActionRow / native row surfaces |
-| Dialogs | showBusyMarkModalDialog, BusyMarkGitDialogShell/titlebar | BusyFilesDialog/titlebar and existing modal presenter |
-| Scrollbars | BusyMark-themed RawScrollbar in the Git adapter | Existing Yaru scrollbar theme in the BusyFiles design boundary |
-| Notices/progress | Native surface colors, Yaru control implementations | BusyFilesFeedbackBanner, BusyFilesSpinner/Progress |
-| Typography, colors, focus, glyphs | BusyMark design, theme and glyph catalogs | BusyFiles design, surface and glyph catalogs |
+The 2026-11-06 decision supersedes all earlier allowances for separate host Git
+layouts or native control geometry. The original 2026-10-31 baseline above is
+historical. The current baseline and action inventory are in [one-git-ui.md](one-git-ui.md).
+Both adapters extend the same `YaruGitPresentation` without visual overrides.
 
-These are the required Linux mappings. A design-module location or BusyMark
-class name is not approval: BusyMark's complete adapter-to-widget chain is
-resolved and must not directly construct prohibited Material controls.
-Supported public Yaru components may retain their official upstream
-implementation dependencies. The inspected modules do not expose a
-Fluent adapter; Windows acceptance requires a verified supported host adapter.
+| Git control category | Shared owner used by both hosts |
+| --- | --- |
+| Sidebar/header/navigation | GitFeatureSidebar, GitFeatureHeader, GitSidebarSelector |
+| Buttons, input, checkbox, icon actions | NativeGitActionButton, NativeGitTextEntry, NativeGitCheckbox, NativeGitIconAction |
+| File/folder/status and reference rows | NativeGitTreeRow, NativeGitRowSurface |
+| Menus and glyph roles | GitMenuRole and gitLinuxIcons; host only presents the native menu |
+| Modal/history/date layout | GitNativeDialog, shared history layout and native date fields |
+| Comparison identity/tabs/navigation | GitReview, GitReviewTabs, GitFeatureController, GitReviewContent, GitReviewSurface |
+| Spacing, typography, colors, density and focus | GitSpacing, GitSizes, GitTypography, NativeGitSurface in linux_native.dart |
+
+All rendering uses BusyStack-owned primitives and supported official pinned
+Yaru APIs. No upstream source is modified. Host document/browser lifetime,
+authorization, localization and system services remain application responsibilities.
+There is no alternate Commit/Log split workspace or mutable single preview.
 
 ## Action destinations to preserve
 
 | Capability | Destination after integration |
 | --- | --- |
-| Working changes, staging, amend, message/templates/recent messages, commit/push | BusyMark Commit sidebar; existing BusyFiles workspace |
-| Selected commit, parent, metadata, changed files | Independent BusyMark Git Log sidebar, metadata before files |
-| History graph, refs, filters, pagination, Go to, HEAD | Existing Log browser in host modal for BusyMark selection |
+| Working changes, staging, amend, message/templates/recent messages, commit/push | Shared Commit sidebar in both main sidebar slots |
+| Selected commit, parent, metadata, changed files | Shared independent Git Log inspector, metadata before files |
+| History graph, refs, filters, pagination, Go to, HEAD | Shared full Git Log selection modal in both hosts |
 | Branch/tag/commit context operations and ordered cherry-pick/revert | History context menus and existing workflow dialogs |
-| Ordinary staged/unstaged/historical file activation | Ordinary BusyMark content comparison tabs; existing BusyFiles comparison placement |
+| Ordinary staged/unstaged/historical file activation | Independent shared comparison tabs in both content slots; BusyMark retains its document strip |
 | File/hunk/line staging, search, navigation, wrapping and correspondence | Existing shared comparison renderer and transaction paths |
 | Index editing and three-way conflict resolution | Existing guarded shared editors and native workflow surfaces |
 | File history, blame, snapshots, revision comparison | Existing history actions/workflow surfaces |
@@ -70,8 +70,7 @@ no feature-file exceptions. A second resolved pass begins at each concrete
 host adapter root and follows first-party declarations across that host package
 transitively, so an approved-looking wrapper cannot conceal `TextButton`,
 `IconButton`, `Material`, `InkWell`, `Dialog`, or another prohibited control.
-BusyMark requires the complete `BusyMarkGitPresentation` and
-`BusyMarkGitDialogShell` roots. The gate's own fixtures include forbidden
+Both complete host adapters and their reachable shared native surfaces are audited. The gate's own fixtures include forbidden
 aliased constructors, helpers, fallback paths, a wrapper-hidden control, and a
 legitimate primitive/Yaru implementation. Unresolved code and empty/missing
 input sets fail closed.
@@ -85,8 +84,7 @@ transaction, editor, graph, history and dismissal assertions. Runtime captures
 and native interaction acceptance remain separate from static compliance.
 
 Font-family assignments in Git sources must reference the existing host catalog
-(`BusyMarkTypography.monoFontFamily` / `monoFontFamilyFallback` in the approved
-design module); shared views use `GitPresentation.codeStyle`. The analyzer
+(`GitTypography.monoFontFamily` / `monoFontFamilyFallback` in the shared native implementation); shared views use `GitPresentation.codeStyle`. The analyzer
 resolves those exact symbols. A newly named feature constant is not an exception.
 
 ## BusyMark Commit correction (2026-11-01)
@@ -102,9 +100,8 @@ presentation contract. Branch records use the same row surface and spacing.
 Do not expand an allowlist or accept a golden to excuse circular Git actions.
 
 BusyMark's Commit layout is the compact sidebar allocation: branch/path tooltip,
-Refresh and Repository actions, then compact local tracking, then the tree.
-Commit and Commit and Push… share a measured, spaced row. BusyFiles retains its
-workspace layout, history shortcut, trust presentation and descendant browsing.
+Actions (including Refresh), then compact local tracking, then the tree.
+Commit and Commit and Push… share a measured, spaced row. BusyFiles uses that same shared layout and retains descendant discovery.
 BusyMark alone requires the canonical opened workspace to equal the discovered
 working-tree root, at attachment and authoring-command boundaries. Untrusted
 Commit shows only the native trust screen; drafts remain owned by the session.
@@ -127,22 +124,18 @@ must not map to filled standard buttons. Resting fills, interaction states,
 localized truncation and actual modal/menu destinations are tested.
 
 BusyMark's Commit repository menu contains Refresh and excludes its duplicate
-Branches entry. F5 and the dedicated branch keyboard commands remain. Other
-hosts retain the default repository menu and workspace toolbar. Workspace
+Branches entry. F5 and the dedicated branch keyboard commands remain. Both hosts consume these same shared menu destinations. Workspace
 identity owns the full-path tooltip. The earlier branch-path-tooltip and
 standalone-Refresh mapping above is superseded by this refinement.
 
-Git change rows use the Files-tree metrics with an explicit sibling action
-column, separated by the existing xs gap. The native row activation/selection
-surface ends before the stage/unstage hit region. Disabled actions, disclosure,
-selection and file activation retain their independent handlers.
+Git change rows use the shared Files-tree metrics with separate disclosure,
+file/folder icon, status and text slots. Entry actions are contextual in both
+hosts; no permanent stage/unstage or row Actions control is constructed.
 
 BusyMarkCheckbox's labelled form uses official YaruCheckButton/YaruCheckbox,
 with its native geometry, state painting, label activation, focus and merged
 semantics. Existing unlabelled non-Git checkboxes remain unchanged. Amend uses
-this labelled form; its draft/transaction logic is untouched. BusyFiles maps
-optional labelled requests to its established BusyFilesCheckOption; its current
-workspace amend layout is retained.
+this labelled form; its draft/transaction logic is untouched. Both hosts now use NativeGitCheckbox and the same amend layout.
 
 The exclusive trust sidebar is concise. The native confirmation identifies the
 repository and distinguishes limited passive metadata from authorization of
@@ -159,7 +152,11 @@ The pinned local Yaru checkbox/check-button APIs were inspected without changes.
 BusyMark's host components and the explicit product requirements remain the
 presentation authority; no upstream dependency or runtime pin changes apply.
 
-## Commit metadata remediation (2026-11-02)
+## Historical remediation evidence (2026-11-02)
+
+The old host class names and mappings below record the earlier implementation.
+The shared ownership table above replaces their rendering owners; the behavioral
+requirements and recorded historical checks remain relevant.
 
 The rendering chain is part of the contract, not a wrapper allowlist:
 
@@ -191,7 +188,7 @@ typed commit metadata, with forbidden and legitimate self-test examples. Actual
 host tests measure the painted BusyMarkGitDialogShell/Yaru surface rather than
 the full-window route wrapper, natural height, long-content reachability,
 native copying, all historical actions, glyphs and disjoint target geometry.
-Shared/BusyFiles compact presentation retains each host's own dialog/navigation;
+Both hosts use the shared compact dialog/navigation;
 large history browsers and three-way editors retain expanded surfaces.
 
 ## History selector and property mappings (2026-11-03)
@@ -206,32 +203,31 @@ comparison. Commit-row context menus retain the historical Git operations and
 compact View Commit Details. There is no selector button opening the old 500px
 `_detailPane()` surface. Confirm/cancel and immutable comparisons are unchanged.
 
-| Shared request | BusyMark native mapping | BusyFiles native mapping |
-| --- | --- | --- |
-| `isDense` field | Single-line native entry, titlebar-item minimum, natural scaled content height | Existing grouped entry with compact vertical insets and icon constraints |
-| Label/hint | Compact: inline placeholder plus persistent semantic label; standard: label above editor and separate hint | Compact: inline placeholder plus persistent semantic label; standard: existing grouped InputDecorator |
-| Prefix/suffix | Logical start/end siblings of editor | Existing entry prefix/suffix slots |
-| `contentPadding` field | Requested directional insets on the single native surface | Requested directional insets on the single native surface; internal decorator stays unpadded |
-| `alignLabelWithHint`, vertical alignment | Standard label is always above multiline content; hint honors requested vertical alignment; supplied editor requests use top alignment | Forwarded to the existing entry/decorator |
-| Disabled/read-only | Disabled excludes pointer/focus and dims text; read-only retains selection/focus/copy | Existing entry disabled/read-only behavior |
-| Editing properties | Original controller, focus, selection, composing range, undo/scroll controllers, callbacks, line limits, direction, alignment and editing options are forwarded | Same, through existing native entry |
-| Dense row | Sidebar row geometry with compact insets and natural scaled content | Existing sidebar `YaruMasterTile` with BusyFiles sidebar geometry |
-| Row insets | `GitCheckRow` forwards its insets to `GitActionRow`; native row uses them | Dense sidebar theme/standard native action row use them |
-| Row states | Existing sidebar selected/hover/pressed/focus surface and semantic selected/enabled state | Existing native master/action row states and semantic selected/enabled state |
-| Trailing action | Separate sibling outside row selection target | Separate sibling outside row selection target |
-| Choice expansion | Full allocated width when `isExpanded` is requested | Same through the native push-button content |
-| Choice underline | Native action surface owns boundary/focus; the supplied empty underline requests no additional decoration | Same native equivalent |
-| Choice-bar artwork | Current supplied segments are text-only; BusyMark uses labelled native radio choices | Current supplied segments are text-only native tabs |
-| Progress stroke/label | Forwarded to official Yaru progress controls | Forwarded to official Yaru progress controls |
-| Tooltip, scrollbar, activation, notices | Existing host tooltip/scrollbar/focus/native notice controls | Existing host equivalents |
-| Localized sizing/RTL | TextPainter uses active text scale and direction; natural content sizing and directional insets/start/end slots | Same; native entry/row layouts inherit direction |
-| Menu positioning | Existing global pointer anchor or control bottom at logical start, passed with direction to native service | Existing native presenter with the same anchor contract |
+| Shared request | Common native mapping in both hosts |
+| --- | --- |
+| Dense fields | NativeGitTextEntry, titlebar-item minimum, scaled natural content height |
+| Label/hint | Dense placeholder with persistent semantic label; standard label above editor and separate hint |
+| Prefix/suffix and contentPadding | Logical start/end siblings; one native input boundary with requested directional insets |
+| Multiline/vertical alignment | Label above multiline content; supplied editor requests use top alignment |
+| Disabled/read-only | Disabled excludes pointer/focus and dims text; read-only preserves selection/focus/copy |
+| Editing properties | Original controller, focus, selection, composing range, undo/scroll controllers, line limits, direction and callbacks |
+| Dense/action rows | NativeGitRowSurface with shared GitSizes/GitSpacing, natural scaled height and semantic selected/enabled state |
+| Row states | Shared normal, selected, hover, pressed, focus and disabled treatments with official Yaru focus border |
+| Entry actions | Secondary click and Menu/Shift+F10; no permanent trailing action control; delayed replies bind the captured row |
+| Non-entry trailing controls | Separate sibling outside the row selection target |
+| Choice expansion | Full allocated width when requested; native checked menus for choices |
+| Choice boundary | Native surface owns boundary/focus without additional underline |
+| Choice bars | Shared native rendering for remaining transaction/editor choices; no Commit/Log workspace switcher |
+| Progress | Official unmodified Yaru progress controls |
+| Tooltip, scrollbar, activation, notices | Shared NativeGitTooltip, native scrollbars, focus/pointer primitives and semantic notice surfaces |
+| Localized sizing/RTL | Shared TextPainter uses active scale and direction, natural content height and directional insets |
+| Menu positioning | Pointer anchor or control bottom at logical start, passed to the host native service |
 
 Branch/reference entries use shared mouse and keyboard context menus without
-permanent action buttons in either host. Historical file entry controls follow
-the host placement policy and request the horizontal glyph explicitly. Other menu defaults are unchanged. Diff semantic foregrounds still
-come from each host's Yaru semantic colors. Backgrounds are host-owned translucent
-treatments: word changes 20%, staged/unstaged 16%, conflict 24%; ordinary line
+permanent action buttons in either host. Historical file, snapshot, remote,
+worktree and submodule rows use the same contextual contract. Diff semantic
+foregrounds come from the active official Yaru palette. Shared backgrounds are
+translucent treatments: word changes 20%, staged/unstaged 16%, conflict 24%; ordinary line
 backgrounds multiply the word treatment by 0.4 rather than replacing its opacity.
 The editor renderer consumes the supplied staged/unstaged/conflict treatment
 without making it opaque. Search uses the host accent background, active matches
@@ -258,9 +254,8 @@ must report separately whether the test runner and native display were available
 
 This revision supersedes the earlier BusyMark sibling action-column and inline
 branch-button requirements. `GitPresentation.entryActionPlacement` is required:
-BusyMark declares `contextMenu`; BusyFiles declares `trailing`. This is a host
-native equivalent, not an optional fallback. Shared Commit, historical-file and
-historical file entries only construct trailing controls for the latter. Branch
+Both hosts declare `contextMenu` through YaruGitPresentation. Shared Commit
+and historical-file entries never construct permanent trailing controls. Branch
 and reference entries use contextual commands in both hosts. All existing
 entry action destinations remain in their context menus. View-level commands,
 disclosure controls, status markers and metadata remain visible in both hosts.
@@ -357,15 +352,15 @@ toggle, Files sidebar surface/tree rows, and dialog footer insets. The main
 filters belong inside the history pane. The modal retains reference search,
 selection, expansion and width when hidden. Narrow layouts open the same pane
 temporarily over the table; resizing does not retire a focused filter editor.
-BusyFiles retains its full-width filter area, splitter, compact reference dialog
-and native expandable reference groups through its own adapter.
+Both hosts use this one modal grid, full-height reference sidebar, centered
+whole-modal title and padded confirmation footer.
 
 The selected subject is neutral information with complete tooltip/semantics.
 Select another commit is a dedicated icon immediately before Commit Actions,
 with the host's normal spacing. It is absent from the menu. Commit Actions still
 owns full details, exact hash/message copying and all commit workflows.
-Historical status markers occupy the Files icon slot at every text scale;
-they never add a second hierarchy offset. Selection/comparison ownership is
+Historical status markers occupy their own shared slot beside Files-quality
+icons at every text scale; root files start at hierarchy depth zero. Selection/comparison ownership is
 unchanged. The confirmation footer is outside the table scroll area and uses
 the native lg inset on every side, including logical end in RTL.
 
@@ -412,8 +407,8 @@ EditableText/controllers, ModalRoute dismissal, Semantics and Directionality.
 
 View-level menus request `GitMenuRole.viewActions`; dynamic repository and
 selected-commit menus request `GitIconButton.actions`. Callers cannot override
-their icon. `GitGlyph.actions` is mapped once by each real host: BusyMark uses
-its approved three-bar `mainMenu` artwork (including the Yaru path), while BusyFiles retains `more`.
+their icon. `GitGlyph.actions` is mapped once by gitLinuxIcons to the approved Yaru
+three-bar menu artwork in both hosts.
 Entry menus request `entryContext`; display and checked choice menus retain
 separate roles. The source inventory test enumerates every production menu,
 including remote, worktree, snapshot, and historical-file contexts. The resolved
@@ -422,8 +417,8 @@ symbol audit rejects direct overflow artwork in feature controls.
 `GitButton.toolbar` and `GitButton.diffInline` distinguish compact toolbar and
 inline region actions from ordinary/suggested push actions. Required native
 `toolbarMetrics` drive shared width measurement and overflow allocation, rather
-than guessed icon widths. The host owns repository-action captions and compact
-Log content insets. BusyMark's modal composition places headers inside each pane;
+than guessed icon widths. The shared renderer owns the Actions caption and
+compact Log content insets. The shared modal centers its title across the entire surface;
 its narrow overlay retains the confirmation footer outside the overlay.
 
 `test/support/actions_presentation_contract.dart` runs in both applications'
@@ -438,8 +433,7 @@ Git executable and supervisor configured. Native application and release
 acceptance remain separate from this package result.
 
 Both consumer gates now audit the resolved first-party host rendering chain and
-run the cross-consumer pin/archive check. BusyFiles retains its own native button
-themes and field geometry through Widgets focus, pointer, EditableText and
-RawTooltip primitives; approved public Yaru widgets remain unmodified. Its
-monospace catalog token is resolved and checked just like BusyMark typography.
+run the cross-consumer pin/archive check. Both hosts consume the exact same
+shared button, field and typography implementation through Widgets focus,
+pointer, EditableText and native tooltip primitives; official Yaru remains unmodified.
 Material control constructions hidden behind host wrappers remain prohibited.

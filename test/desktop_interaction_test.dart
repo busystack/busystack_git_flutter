@@ -347,66 +347,66 @@ void main() {
     session.dispose();
   });
 
-  testWidgets(
-    'repository menu uses the invoking control as its native anchor',
-    (tester) async {
-      Size? anchorSize;
-      final original = host();
-      final configured = GitHost(
-        presentation: const TestGitPresentation(),
-        icons: testGitIcons,
+  testWidgets('repository menu uses the invoking control as its native anchor', (
+    tester,
+  ) async {
+    Size? anchorSize;
+    final original = host();
+    final configured = GitHost(
+      presentation: const TestGitPresentation(),
+      icons: testGitIcons,
 
-        present: original.present,
-        openDocument: original.openDocument,
-        prepareMutation: original.prepareMutation,
-        chooseDirectory: original.chooseDirectory,
-        notify: original.notify,
-        drafts: original.drafts,
-        presentMenu: (context, entries, {position}) async {
-          anchorSize = (context.findRenderObject()! as RenderBox).size;
-          expect(
-            entries.map((e) => e.id),
-            containsAll(['fetch', 'pull', 'push', 'recovery']),
-          );
-          return null;
-        },
-      );
-      final session = GitSession(
-        client: FixtureClient(),
-        repository: repo,
-        host: configured,
-      );
-      await session.start();
-      await tester.pumpWidget(
-        GitTestApp(
-          home: Scaffold(
-            body: Align(
-              alignment: Alignment.topLeft,
-              child: SizedBox(
-                width: 350,
-                child: GitCommitView(
-                  session: session,
-                  onReview: (_) {},
-                  onLog: () {},
-                  onBranches: () {},
-                  onPush: () {},
-                  onMore: (anchor) => GitWorkflowUi(anchor, session).more(),
-                ),
+      present: original.present,
+      openDocument: original.openDocument,
+      prepareMutation: original.prepareMutation,
+      chooseDirectory: original.chooseDirectory,
+      notify: original.notify,
+      drafts: original.drafts,
+      presentMenu: (context, entries, {position}) async {
+        anchorSize = (context.findRenderObject()! as RenderBox).size;
+        expect(
+          entries.map((e) => e.id),
+          containsAll(['fetch', 'pull', 'push', 'recovery']),
+        );
+        return null;
+      },
+    );
+    final session = GitSession(
+      client: FixtureClient(),
+      repository: repo,
+      host: configured,
+    );
+    await session.start();
+    await tester.pumpWidget(
+      GitTestApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              // Synthetic Ahem controls need their measured two-button minimum.
+              width: 500,
+              child: GitCommitView(
+                session: session,
+                onReview: (_) {},
+                onLog: () {},
+                onBranches: () {},
+                onPush: () {},
+                onMore: (anchor) => GitWorkflowUi(anchor, session).more(),
               ),
             ),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('Repository actions'));
-      await tester.pumpAndSettle();
-      expect(anchorSize, isNotNull);
-      expect(anchorSize!.width, lessThanOrEqualTo(56));
-      expect(anchorSize!.height, lessThanOrEqualTo(56));
-      await tester.pumpWidget(const SizedBox());
-      session.dispose();
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Repository actions'));
+    await tester.pumpAndSettle();
+    expect(anchorSize, isNotNull);
+    expect(anchorSize!.width, lessThanOrEqualTo(56));
+    expect(anchorSize!.height, lessThanOrEqualTo(56));
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
 
   testWidgets('operation banner opens actual continuation controls directly', (
     tester,

@@ -6,7 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Native accessibility prerequisites
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev cmake ninja-build xvfb at-spi2-core dbus-daemon clang llvm
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev cmake ninja-build xvfb at-spi2-core dbus-daemon clang llvm libsecret-1-dev pkg-config libcurl4-openssl-dev libssl-dev libexpat1-dev zlib1g-dev openssh-server
       - run: python3 tool/checkout_shared_dependencies.py
       - uses: subosito/flutter-action@v2
         with:
@@ -15,10 +15,18 @@ jobs:
           cache: true
       - run: flutter pub get --enforce-lockfile
       - run: dart format --set-exit-if-changed .
+      - run: python3 tool/test_consumer_consistency.py
       - run: dart run tool/test_native_presentation_audit.dart
       - run: dart run tool/check_native_presentation.dart
       - run: flutter analyze
-      - run: flutter test
+      - name: Controlled Git and supervisor for real-index tests
+        run: |
+          python3 ../busystack_git/tool/build_runtime.py --build-dir "$PWD/build/git-native"
+          printf 'BUSYSTACK_GIT_EXECUTABLE=%s/build/git-native/git-runtime/bin/git\n' "$PWD" >> "$GITHUB_ENV"
+          printf 'BUSYSTACK_TEST_GIT=%s/build/git-native/git-runtime/bin/git\n' "$PWD" >> "$GITHUB_ENV"
+          printf 'BUSYSTACK_TEST_GIT_256=%s/build/git-native/git-runtime/bin/git\n' "$PWD" >> "$GITHUB_ENV"
+          printf 'BUSYSTACK_GIT_HELPER_PATH=%s/build/git-native/busystack-git-helper\n' "$PWD" >> "$GITHUB_ENV"
+      - run: flutter test --concurrency=1
       - name: Native GTK accessibility
         run: |
           cmake -S linux/native -B build/native -G Ninja

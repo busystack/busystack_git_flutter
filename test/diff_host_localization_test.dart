@@ -1,5 +1,6 @@
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
@@ -8,7 +9,7 @@ void main() {
   for (final workspaceLog in [false, true]) {
     for (final width in [1000.0, 1600.0]) {
       testWidgets(
-        'literal repository path keeps its rendered leading slash in RTL ${workspaceLog ? 'Log workspace' : 'Commit'} at $width',
+        'repository basename and full-path tooltip preserve literal LTR in RTL ${workspaceLog ? 'Log workspace' : 'Commit'} at $width',
         (tester) async {
           tester.view.physicalSize = Size(width, 1000);
           tester.view.devicePixelRatio = 1;
@@ -29,13 +30,11 @@ void main() {
                   child: Scaffold(
                     body: workspaceLog
                         ? GitWorkspace(session: session)
-                        : GitCommitView(
-                            session: session,
-                            onReview: (_) {},
-                            onLog: () {},
-                            onBranches: () {},
-                            onPush: () {},
-                            onMore: (_) {},
+                        : GitFeatureSidebar(
+                            controller: session.feature,
+                            view: GitSidebarView.commit,
+                            onSelectView: session.feature.select,
+                            onReview: session.feature.open,
                           ),
                   ),
                 ),
@@ -44,19 +43,21 @@ void main() {
           );
           await tester.pumpAndSettle();
           if (workspaceLog) {
-            await tester.tap(
-              find.descendant(
-                of: find.byType(GitChoiceBar<bool>),
-                matching: find.text('Log'),
-              ),
-            );
+            session.feature.select(GitSidebarView.log);
             await tester.pumpAndSettle();
           }
-          final path = find.text(repo.root).hitTestable();
+          final name = find.text('repo').hitTestable();
+          expect(name, findsOneWidget);
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: Offset.zero);
+          await mouse.moveTo(tester.getCenter(name));
+          await tester.pump(const Duration(seconds: 2));
+          await tester.pumpAndSettle();
+          final path = find.text(repo.root);
           expect(path, findsOneWidget);
-          final chrome = workspaceLog
-              ? find.byType(GitChoiceBar<bool>)
-              : find.text(GitMessages.commitScopeEntireRepository);
+          final chrome = find.byType(GitSidebarSelector);
           expect(Directionality.of(tester.element(chrome)), TextDirection.rtl);
           void expectLiteralGlyphOrder(Finder text) {
             final paragraph = tester.renderObject<RenderParagraph>(
@@ -86,7 +87,7 @@ void main() {
             (widget) =>
                 widget is RichText && widget.text.toPlainText() == repo.root,
           );
-          expect(tooltipText, findsNWidgets(2));
+          expect(tooltipText, findsOneWidget);
           for (final element in tooltipText.evaluate()) {
             final paragraph = element.renderObject! as RenderParagraph;
             final slash = paragraph
@@ -102,6 +103,7 @@ void main() {
             expect(slash.right, lessThanOrEqualTo(firstLetter.left));
           }
           expect(tester.takeException(), isNull);
+          await mouse.removePointer();
           await tester.pumpWidget(const SizedBox());
           session.dispose();
         },

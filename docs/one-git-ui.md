@@ -1,0 +1,184 @@
+# One Git UI: ownership, action inventory and acceptance
+
+2026-11-06. Product decision: both Linux hosts consume one shared Git sidebar,
+review and workflow implementation. This supersedes earlier statements allowing
+BusyFiles a different workspace or trailing row controls. No Git engine or
+third-party modification is authorized. Baseline revisions below are observed,
+not reset targets. All four working trees were clean.
+
+## Baseline
+
+```json
+[
+  {
+    "repository": "busystack_git",
+    "head": "7d8e55d8034aeb85cddac1c0f498b0f3cc33105b",
+    "branch": "main",
+    "status": ""
+  },
+  {
+    "repository": "busystack_git_flutter",
+    "head": "b58637269fea78008911e598bd0cb19422c46592",
+    "branch": "main",
+    "status": ""
+  },
+  {
+    "repository": "busymark",
+    "head": "b348968c9d71d01dd2b98a9e4fe66790fe9957c9",
+    "branch": "feature/git-package",
+    "status": ""
+  },
+  {
+    "repository": "busyfiles",
+    "head": "e97bf8c4495cfcd281c0e54ab8d2c10dc717216e",
+    "branch": "Release/v0.0.1",
+    "status": ""
+  }
+]
+```
+
+Both supplied consumers pin engine 7d8e55d8034aeb85cddac1c0f498b0f3cc33105b
+and UI b58637269fea78008911e598bd0cb19422c46592. Official installed Flutter
+3.47.5 / Dart 3.13.4; both lockfiles resolve Yaru 10.2.0 and Intl 0.20.3.
+Ubuntu 26.04.1, DISPLAY :0 and Wayland socket available. Initial disk 39 GiB
+and available memory 6.5 GiB; builds and desktop runs must be sequential.
+
+## Before-removal action and destination inventory
+
+The old shared workspace adds Return to Files, Commit/Log choice, compact Back
+to Commit, branch management, working comparison file navigation and full Log.
+Only the first is a host action. The other routes must resolve through the
+canonical sidebar/review model. Removing split/preview routes must not remove
+any workflow below. This is a source inventory, not a runtime acceptance claim.
+
+| User-accessible capability in either baseline host | Canonical destination |
+| --- | --- |
+| Discover repository, descendant discovery in BusyFiles; init/clone without repository | Host attachment/entry, existing GitCreationView |
+| Limited passive inspection; trust/revoke, credential prompts | Shared trust notice; host authorization and existing prompt/revoke services |
+| Current branch, upstream and known/unknown ahead/behind | Commit context header; branch opens complete GitBranchesView |
+| Refresh/F5, Git commands/shortcuts | Commit Actions and host shortcut bridge |
+| Staged/Unstaged/Untracked/Conflicts, folders, folding, selection | Shared Commit sidebar tree |
+| File, selected, directory and group stage/unstage; discard/restore/delete, ignore; conflict resolution | Existing contextual Commit actions and guarded transactions |
+| Working file diff, original/open document, history/blame, source snapshots | Shared review tabs and existing file context/history workflows |
+| Whole-file/hunk/line stage/unstage and index editing | Existing GitDiffView and guarded index editor |
+| Normal/amend messages, message-only amend, templates/recent messages, AI draft (BusyMark service) | Shared Commit editor/message menu, host persistent draft/AI service |
+| Commit, Commit and Push; signoff/signing/identity/hooks and errors | Shared Commit footer/options and commit-then-push review |
+| Commit/Log view selection | Shared sidebar navigation; BusyMark existing selector slot |
+| Selected commit subject, details/full hash/copy, author/committer/date/message/refs/all parents | Shared Git Log inspector, Commit Actions/details/parent menu |
+| Select another commit, graph, paging, Go to, Back to HEAD | Shared full Git Log modal with explicit confirmation/cancel |
+| Message/author/path/date/reference filters; search and reference tree groups | Shared Git Log modal and native date fields |
+| Historical file/rename/parent-specific diff; history/blame/snapshot | Immutable shared review identity; historical context menu without staging |
+| Multi-commit/selected-commit branch/tag/compare/snapshot/cherry-pick/revert/rebase/reset | Existing GitHistoryActions, selected Commit Actions and history context menus |
+| Local/Remote/Tags, search, create/checkout/rename/delete/tracking/worktree branch actions | Shared Branches tree and reference context menus |
+| General merge/rebase, root/onto/options, branch-specific directions | Shared Branches Actions and reference context workflows |
+| Fetch/Pull/Push, preview/force lease/remotes/authentication/errors | Commit Actions and existing network views |
+| Conflict editor, current operation, Continue/Abort/Skip, progress/cancel | Existing operation banner and workflow surfaces |
+| Stashes, worktrees, submodules, open destination | Commit Actions organization workflows, host openFolder service |
+| Reflog/recovery/reset/revert/restore | Existing recovery/history/file workflows |
+| Diff mode/display/wrap/context/search/refresh/previous-next file/change | Shared GitDiffView compact toolbar/context actions |
+| Independent comparison selection/close/close others/close all, retained scroll/search | Shared review model; host content/tab lifecycle and dismissal guards |
+| Return to Files with browser tab/location/selection/scroll/search/sidebar | BusyFiles shell keeps browser subtree mounted and owns exit |
+| Document/Local History tabs, dirty buffers, window/repository close guards | BusyMark shell; shared editor/draft guards remain authoritative |
+| External Git invalidation, delayed responses, reconnect/Retry | Existing session generations, engine snapshots and authenticated BusyFiles daemon |
+| Localization, RTL, IME, keyboard/context menus, accessibility | Existing host localizations/system services; shared controls |
+
+Source inventory: shared workspace.dart, commit_view.dart, log_view.dart,
+branch_views.dart, workflow_ui.dart, history_actions.dart, reference_context_menu.dart,
+diff_view.dart, organization_views.dart, network_views.dart and both host Git
+integration files and command registries. Snapshot/transaction guards are retained.
+
+## Ownership and slots
+
+| Responsibility | Shared owner | BusyMark mount/service | BusyFiles mount/service |
+| --- | --- | --- | --- |
+| Session/view state and immutable review identity/navigation | busystack_git_flutter | Workspace attachment and document-tab integration | Browser Git attachment and comparison-tab integration |
+| Commit/Git Log sidebar composition and workflow navigation | busystack_git_flutter | Established sidebar selector/slot | Main sidebar slot while Git mode active |
+| Comparison widget/toolbar | GitDiffView and shared review surface | Ordinary content tabs beside documents/Local History | Independent Git content tabs |
+| Branches/history/date/workflows and Linux native contract | busystack_git_flutter | Native menu/dialog lifecycle, locale | Native menu/dialog lifecycle, locale |
+| Git execution/security | busystack_git | Direct adapter with root-only authoring policy | Authenticated typed IPC, controlled daemon supervisor |
+
+## Retired production surfaces and regression ownership
+
+BusyFiles' old shared GitWorkspace segmented Commit/Log control, split staging
+workspace and single compact preview have been replaced, not retained behind a
+mode. GitWorkspace now mounts GitFeatureSidebar and GitReviewContent, whose
+retained tabs use GitReviewSurface. BusyMark's app-owned GitSidebarTab, GitChangesView, GitFileHistoryView,
+GitProjectHistoryView and identity dialog formed an unreachable older cluster:
+application source mounted the shared integration already at the observed
+baseline. Those competing production widgets are removed. The Files status-color
+helper and GitDiffViewer used by non-Git document/disk recovery remain host-owned.
+
+Tests of those unreachable widgets are migrated to the shipped shared surfaces.
+They are not retained as a legacy test-only UI. Obsolete checkbox-selection,
+counted-commit-caption, no-tracking-strip and global-identity-form expectations
+never define the new product contract. In particular the pinned shared engine
+already configures repository identity; this change does not add a global config
+write or revive the disconnected direct gateway. The new identity host test
+exercises real shared fields, native Enter/focus, exact identity values and index
+scope, and ensures it does not create a commit.
+
+| Retired assertions/capability | Maintained observable coverage |
+| --- | --- |
+| Working groups, same staged/unstaged path, root/nested/rename/scope and context stage operations | Shared commit_files_state, commit_nested_tree, index_regions, staging_navigation and real-index tests |
+| Multiline messages, delayed success/failure, normal/amend/repository drafts | Shared commit_amend_draft, draft_ordering, draft_cross_store; both actual-host dismissal suites |
+| File/history actions, historical parent/path and reset/recovery destinations | Shared file_history_selection, log_changed_files_state, action_destinations, git_actions_inventory; BusyMark actual log comparison tests |
+| Native form/control layout, trust, unavailable states, menu/keyboard access | Both native presentation/action contracts, BusyFiles location/browser/draft suites; BusyMark root/trust and localization suites |
+| Identity form and host error/notification services | BusyMark migrated git_author_identity_dialog_test and status_semantics_test using the actual shared workflow/host |
+| Non-Git document/disk source comparisons, gutter, font, absent content and dirty banner | Retained BusyMark git_widget_test document comparison cases |
+
+## Intermediate native observations
+
+Actual debug processes have shown the canonical sidebar in BusyFiles' main slot,
+independent staged/working comparison tabs and Log navigation without retargeting,
+and Return to Files restoring its browser subtree. Its real daemon used the
+bundle's controlled Git and supervisor through authenticated typed IPC; no UI Git
+execution was introduced. Source-bound X11 receipts show the mapped engine hash
+matches the official SDK. The disposable fixture was unchanged on normal exit.
+These observations exposed inherited host typography/button differences, which
+are corrected in the shared Yaru metrics resolver and still require new captures.
+Earlier images are intermediate evidence, not final acceptance. Empty-tooltip
+black-rectangle reproduction and final installed-app matrix remain unaccepted.
+
+## Additional comparison-route inventory and consolidation
+
+The workflow audit found ordinary reviews outside the original sidebar:
+`GitRevisionComparison`, file-history parent/current comparisons, affected-file
+selectors, and standalone `GitLogView`. Their file activation now calls
+`gitOpenComparison`; only `GitReviewSurface` constructs an ordinary diff. A
+captured read-only selector chain closes its exact routes when dispatching a tab.
+An unrelated newer dialog blocks stale activation, and an operation plan below
+such a selector remains open. No main document or transaction is implicitly closed.
+
+`GitCommitFiles` embeds `GitReviewSurface` for transaction plans (push, stash,
+cherry-pick and rebase); read-only affected-file selection opens normal tabs.
+Both contexts use the shared historical tree and captured parent/rename identity.
+`gitSelectHistoryCommit` is the one full history-modal factory, used by the Log
+inspector and workflow reference selection. Cancel preserves its candidate but
+never changes the inspector or repository. The existing specialized conflict-stage
+inspection is the only dialog diff construction outside the canonical surface.
+The architecture gate tests this precise exception and rejects new ordinary
+preview constructors, including aliased and named constructor calls.
+
+## Verification status
+
+The canonical sidebar/review model and common Yaru renderer are implemented.
+The current shared suite passed 425 tests after workflow-route consolidation.
+The unchanged engine suite passed 142 tests plus both explicit configured-hook
+and authenticated localhost SSH fixtures. Shared analysis and both resolved
+native presentation chains passed. The final context-only row focus correction
+also passes the same native contract in both real host renderers. Final source pins,
+installed-app parity, the complete regression/build/DEB matrix
+and delivery identities remain pending. Earlier captures are intermediate evidence.
+The first full BusyMark diagnostic run failed and was interrupted at a fake-time
+filesystem wait; it is not a passing full-suite result. Selected non-Git failures
+also reproduce on the original b348968c9d71 source in an isolated baseline copy.
+Native-menu/editor/finder migrations preserve the underlying behavior assertions;
+affected tests and a corrected full run still require verification.
+
+## Official references consulted
+
+- IntelliJ IDEA current Help pages identify themselves as **2026.3**: [Commit and push](https://www.jetbrains.com/help/idea/commit-and-push-changes.html), [Git Log](https://www.jetbrains.com/help/idea/log-tab.html), [Compare versions](https://www.jetbrains.com/help/idea/comparing-file-versions.html), [Conflicts](https://www.jetbrains.com/help/idea/resolve-conflicts.html).
+- GNOME HIG [Sidebars](https://developer.gnome.org/hig/patterns/nav/sidebars.html), [Header Bars](https://developer.gnome.org/hig/patterns/containers/header-bars.html), [Menus](https://developer.gnome.org/hig/patterns/controls/menus.html), [List/Column Views](https://developer.gnome.org/hig/patterns/containers/list-column-views.html), [Buttons](https://developer.gnome.org/hig/patterns/controls/buttons.html).
+- [Official Yaru changelog](https://pub.dev/packages/yaru/changelog); installed pinned 10.2.0 source APIs remain authoritative, regardless of newer published versions.
+- Flutter official Actions/Shortcuts, Focus, PopScope, TextEditingController and Semantics documentation; pinned installed SDK APIs.
+- Git 2.56 rev-parse, status, diff, apply, rebase and push manuals. No Git semantics or execution paths are being replaced.

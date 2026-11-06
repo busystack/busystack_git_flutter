@@ -24,3 +24,6 @@ export 'src/value_labels.dart';
 export 'src/presentation.dart';
 
 export 'src/context_menu_keys.dart' show GitContextMenuKeys;
+
+export 'src/feature.dart';
+export 'src/linux_native.dart';

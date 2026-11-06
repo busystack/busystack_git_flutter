@@ -62,6 +62,7 @@ final class GitDiffView extends StatefulWidget {
     super.key,
     required this.session,
     required this.comparison,
+    this.initialReviewToken,
     this.preview = false,
     this.initialSideBySide = false,
     this.showFileHeader = true,
@@ -73,6 +74,11 @@ final class GitDiffView extends StatefulWidget {
   searchMatches;
   final GitSession session;
   final GitComparison comparison;
+
+  /// The sidebar snapshot that identified a new mutable tab. If that review
+  /// expired before its first read, require an explicit Refresh; never silently
+  /// load another snapshot under the captured identity.
+  final String? initialReviewToken;
   final bool preview;
   final bool initialSideBySide;
 
@@ -96,6 +102,7 @@ final class _GitDiffViewState extends State<GitDiffView> {
       _collapse = true,
       _ignoreWhitespace = false;
   bool _stale = false;
+  bool _initialReviewRead = true;
   GitCancellation? _readCancellation;
   TextDiff? _rowSource;
   String? _rowSettings;
@@ -220,9 +227,16 @@ final class _GitDiffViewState extends State<GitDiffView> {
       // A file review uses exact content handles and the observed HEAD/index
       // preconditions. Its mutations revalidate those identities in the engine;
       // opening each file must not rescan every untracked repository path.
-      final before =
-          session.snapshot ??
-          await session.readStatus(cancellation: cancellation);
+      final expected = _initialReviewRead && !refreshStatus
+          ? widget.initialReviewToken
+          : null;
+      final before = expected != null
+          ? await session.readStatus(cancellation: cancellation)
+          : session.snapshot ??
+                await session.readStatus(cancellation: cancellation);
+      if (expected != null && before.token != expected) {
+        throw const GitException(GitErrorCode.staleReview);
+      }
       final values = await Future.wait([
         session.client.content(
           session.repository,
@@ -240,6 +254,12 @@ final class _GitDiffViewState extends State<GitDiffView> {
           cancellation: cancellation,
         ),
       ]);
+      if (expected != null &&
+          (await session.readStatus(cancellation: cancellation)).token !=
+              expected) {
+        throw const GitException(GitErrorCode.staleReview);
+      }
+      _initialReviewRead = false;
       final left = values[0], right = values[1];
       final a = left.availability == ContentAvailability.absent
           ? ''

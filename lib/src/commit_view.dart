@@ -1,4 +1,6 @@
 import 'presentation.dart';
+import 'feature.dart' show gitSidebarMinimumWidth;
+import 'dart:math' as math;
 import 'value_labels.dart';
 import 'messages.dart';
 import 'dart:async';
@@ -16,10 +18,7 @@ import 'operation_banner.dart';
 import 'text_undo.dart';
 import 'dismissal.dart';
 
-/// Compact hosts retain the workspace layout's operations in their own sidebar
-/// navigation and repository menu. Other hosts keep their existing workspace.
-enum GitCommitLayout { workspace, sidebar }
-
+/// Canonical Commit sidebar. Git feature composition and navigation live in GitFeatureSidebar.
 final class GitCommitView extends StatelessWidget {
   const GitCommitView({
     super.key,
@@ -31,7 +30,6 @@ final class GitCommitView extends StatelessWidget {
     required this.onMore,
     this.selectedComparison,
     this.notice,
-    this.layout = GitCommitLayout.workspace,
     this.trackingDescription,
     this.branchActionLabel,
     this.minimumWidth = 220,
@@ -43,7 +41,6 @@ final class GitCommitView extends StatelessWidget {
   final ValueChanged<GitComparison> onReview;
   final GitComparison? selectedComparison;
   final Widget? notice;
-  final GitCommitLayout layout;
   final double minimumWidth;
   final String? branchActionLabel;
   final String Function(GitSnapshot snapshot)? trackingDescription;
@@ -83,7 +80,6 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   GitOid? _amendTarget;
   GitSession get session => view.session;
   GitHost get host => session.host;
-  bool get _sidebar => view.layout == GitCommitLayout.sidebar;
   void _leaveReview(VoidCallback action) {
     _reviewGeneration++;
     action();
@@ -339,7 +335,12 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   Widget _build(BuildContext context) => LayoutBuilder(
     builder: (context, bounds) {
       if (bounds.maxWidth < 1 || bounds.maxHeight < 1) return const SizedBox();
-      final width = bounds.maxWidth.clamp(view.minimumWidth, double.infinity);
+      final width = bounds.maxWidth
+          .clamp(
+            math.max(view.minimumWidth, gitSidebarMinimumWidth(context)),
+            double.infinity,
+          )
+          .toDouble();
       final minimumHeight = _minimumHeight(context, width);
       final messageMinimum = _messageMinimum(context, width);
       return ClipRect(
@@ -402,36 +403,15 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     final messageMinimum = _messageMinimum(context, width);
     final header =
         row +
-        spacing * (_sidebar ? 3 : 2) +
-        (_sidebar
-            ? (session.snapshot == null
-                  ? 0
-                  : height(
-                      GitMessages.noUpstream,
-                      theme.bodySmall,
-                      inner,
-                      maxLines: 1,
-                    ))
+        spacing * ((3)) +
+        (((session.snapshot == null
+            ? 0
             : height(
-                    GitMessages.commitScopeEntireRepository,
-                    theme.bodySmall,
-                    inner,
-                    maxLines: 1,
-                  ) +
-                  height(
-                    session.repository.root,
-                    theme.bodySmall,
-                    inner,
-                    maxLines: 1,
-                  ) +
-                  (session.snapshot?.upstream == null
-                      ? 0
-                      : height(
-                          GitMessages.cachedTracking,
-                          theme.bodySmall,
-                          inner,
-                          maxLines: 1,
-                        ))) +
+                GitMessages.noUpstream,
+                theme.bodySmall,
+                inner,
+                maxLines: 1,
+              )))) +
         (view.notice == null ? 0 : row * 3) +
         (session.repository.bare ? row * 3 : 0) +
         (session.snapshot?.capabilities.writeMetadata == false ? row * 3 : 0);
@@ -473,7 +453,8 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
       return height;
     }
 
-    return row * 2 +
+    // Reserve the persistent message label as well as two editable lines.
+    return row * 3 +
         textHeight(
           GitMessages.amendLastCommit,
           theme.bodyMedium,
@@ -527,7 +508,8 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
   }) {
     final snapshot = session.snapshot;
     final branchButton = GitTooltip(
-      message: view.branchActionLabel ?? session.repository.root,
+      message:
+          view.branchActionLabel ?? gitString(context, GitMessages.branches),
       child: Semantics(
         label: view.branchActionLabel,
         child:
@@ -580,31 +562,13 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                 Row(
                   children: [
                     Expanded(
-                      child: _sidebar
-                          ? Align(
-                              alignment: AlignmentDirectional.centerStart,
-                              child: branchButton,
-                            )
-                          : branchButton,
+                      child: (Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: branchButton,
+                      )),
                     ),
                     SizedBox(width: host.spacing),
-                    if (!_sidebar)
-                      GitIconButton(
-                        tooltip: gitString(context, GitMessages.log),
-                        onPressed: () => _leaveReview(view.onLog),
-                        icon: GitIcon(GitGlyph.history, size: 18),
-                      ),
-                    if (!_sidebar)
-                      GitIconButton(
-                        tooltip: gitString(context, GitMessages.refresh),
-                        onPressed: session.refreshing
-                            ? null
-                            : () => unawaited(
-                                session.refresh(clearOperationFailure: true),
-                              ),
-                        icon: const GitIcon(GitGlyph.refresh, size: 18),
-                      ),
-                    if (!_sidebar) SizedBox(width: host.spacing),
+
                     Builder(
                       builder: (anchor) => GitIconButton.actions(
                         tooltip: gitPresentation(
@@ -616,33 +580,8 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     ),
                   ],
                 ),
-                if (!_sidebar)
-                  Directionality(
-                    textDirection: TextDirection.ltr,
-                    child: GitTooltip(
-                      message: session.repository.root,
-                      child: Text(
-                        session.repository.root,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GitTheme.of(context).textTheme.bodySmall,
-                      ),
-                    ),
-                  ),
-                if (!_sidebar)
-                  GitTooltip(
-                    message: gitString(
-                      context,
-                      GitMessages.commitScopeEntireRepository,
-                    ),
-                    child: GitLabel(
-                      GitMessages.commitScopeEntireRepository,
-                      style: GitTheme.of(context).textTheme.bodySmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                if (_sidebar && snapshot != null) ...[
+
+                if ((snapshot != null)) ...[
                   SizedBox(height: host.spacing),
                   GitTooltip(
                     message:
@@ -673,29 +612,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                     ),
                   ),
                 ],
-                if (!_sidebar && snapshot?.upstream != null)
-                  GitTooltip(
-                    message: gitString(
-                      context,
-                      GitMessages.cachedTrackingUpstreamAheadAheadBehindBehind,
-                      values: {
-                        'upstream': snapshot!.upstream!,
-                        'ahead': snapshot.ahead,
-                        'behind': snapshot.behind,
-                      },
-                    ),
-                    child: GitLabel(
-                      GitMessages.cachedTrackingUpstreamAheadAheadBehindBehind,
-                      values: {
-                        'upstream': snapshot.upstream!,
-                        'ahead': snapshot.ahead,
-                        'behind': snapshot.behind,
-                      },
-                      style: GitTheme.of(context).textTheme.bodySmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
+
                 if (session.repository.bare)
                   const GitLabel(
                     GitMessages.bareRepositoryNoWorkingTreeOpenLogToInspectIts,
@@ -760,29 +677,8 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                   children: [
                     Row(
                       children: [
-                        if (_sidebar)
-                          Expanded(
-                            child: GitCheckbox(
-                              label: gitString(
-                                context,
-                                _amend
-                                    ? GitMessages.amendRevision
-                                    : GitMessages.amendLastCommit,
-                                values: {
-                                  'revision': _amend
-                                      ? _amendTarget?.abbreviated ?? ''
-                                      : snapshot?.head?.abbreviated ?? '',
-                                },
-                              ),
-                              value: _amend,
-                              onChanged:
-                                  session.running || snapshot?.head == null
-                                  ? null
-                                  : (value) => unawaited(_setAmend(value!)),
-                            ),
-                          )
-                        else ...[
-                          Semantics(
+                        Expanded(
+                          child: GitCheckbox(
                             label: gitString(
                               context,
                               _amend
@@ -794,38 +690,12 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                                     : snapshot?.head?.abbreviated ?? '',
                               },
                             ),
-                            checked: _amend,
-                            enabled: !session.running && snapshot?.head != null,
-                            onTap: session.running || snapshot?.head == null
+                            value: _amend,
+                            onChanged: session.running || snapshot?.head == null
                                 ? null
-                                : () => unawaited(_setAmend(!_amend)),
-                            child: ExcludeSemantics(
-                              child: GitCheckbox(
-                                value: _amend,
-                                onChanged:
-                                    session.running || snapshot?.head == null
-                                    ? null
-                                    : (value) => unawaited(_setAmend(value!)),
-                              ),
-                            ),
+                                : (value) => unawaited(_setAmend(value!)),
                           ),
-                          Expanded(
-                            child: ExcludeSemantics(
-                              child: GitLabel(
-                                _amend
-                                    ? GitMessages.amendRevision
-                                    : GitMessages.amendLastCommit,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                values: {
-                                  'revision': _amend
-                                      ? _amendTarget?.abbreviated ?? ''
-                                      : snapshot?.head?.abbreviated ?? '',
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                         GitMenuButton(
                           role: GitMenuRole.selectionOptions,
                           host: session.host,
@@ -877,8 +747,11 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
                               'identity',
                               GitMessages.authorIdentityAndConfiguredHooks,
                             ),
-                            if (host.draftMessage != null)
-                              GitMenuEntry('draft', GitMessages.draftMessage),
+                            GitMenuEntry(
+                              'draft',
+                              GitMessages.draftMessage,
+                              enabled: host.draftMessage != null,
+                            ),
                           ],
                           tooltip: gitString(
                             context,
@@ -982,14 +855,7 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     child: _actionLayout([
       GitButton.primary(
         onPressed: _canCommit() ? () => unawaited(_commit(false)) : null,
-        child: GitLabel(
-          _sidebar
-              ? GitMessages.commit
-              : (_amend
-                    ? GitMessages.amendStaged
-                    : GitMessages.commitStagedCount),
-          values: {'count': staged},
-        ),
+        child: GitLabel((GitMessages.commit), values: {'count': staged}),
       ),
       GitButton.standard(
         onPressed: _canCommit() ? () => unawaited(_commit(true)) : null,
@@ -998,19 +864,13 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     ]),
   );
 
-  Widget _actionLayout(List<Widget> actions) => _sidebar
-      ? Row(
-          children: [
-            actions.first,
-            SizedBox(width: host.spacing),
-            actions.last,
-          ],
-        )
-      : Wrap(
-          spacing: host.spacing,
-          runSpacing: host.spacing,
-          children: actions,
-        );
+  Widget _actionLayout(List<Widget> actions) => (Row(
+    children: [
+      actions.first,
+      SizedBox(width: host.spacing),
+      actions.last,
+    ],
+  ));
 
   void _options(String option) {
     if (option.startsWith('recoverAmend:')) {
@@ -1233,6 +1093,32 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
   @override
   GitSession get session => widget.session;
   final name = TextEditingController(), email = TextEditingController();
+  final _emailFocus = FocusNode();
+  Future<void> _save() async {
+    final reviewed = session.snapshot;
+    if (loading ||
+        session.running ||
+        reviewed == null ||
+        !mounted ||
+        ModalRoute.of(context)?.isCurrent != true ||
+        name.text.trim().isEmpty ||
+        email.text.trim().isEmpty)
+      return;
+    final result = await apply(
+      ConfigureIdentity(
+        name.text,
+        email.text,
+        expectedHead: reviewed.head,
+        expectedIndex: reviewed.indexToken,
+      ),
+    );
+    if (mounted &&
+        result?.completed == true &&
+        ModalRoute.of(context)?.isCurrent == true) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1250,6 +1136,7 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
 
   @override
   void dispose() {
+    _emailFocus.dispose();
     name.dispose();
     email.dispose();
     super.dispose();
@@ -1263,12 +1150,15 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
       states(),
       GitTextField(
         controller: name,
+        onSubmitted: (_) => _emailFocus.requestFocus(),
         decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.commitAuthorName),
         ),
       ),
       GitTextField(
         controller: email,
+        focusNode: _emailFocus,
+        onSubmitted: (_) => unawaited(_save()),
         decoration: GitFieldDecoration(
           labelText: gitString(context, GitMessages.commitAuthorEmail),
         ),
@@ -1296,21 +1186,7 @@ final class _IdentityState extends GitDialogState<GitIdentityView> {
       ),
       const GitLabel(GitMessages.aSignOffTrailerIsAStatementInTheMessage),
       GitButton.primary(
-        onPressed: loading
-            ? null
-            : () async {
-                final s = session.snapshot!;
-                final result = await apply(
-                  ConfigureIdentity(
-                    name.text,
-                    email.text,
-                    expectedHead: s.head,
-                    expectedIndex: s.indexToken,
-                  ),
-                );
-                if (mounted && result?.completed == true)
-                  Navigator.of(context).pop();
-              },
+        onPressed: loading ? null : () => unawaited(_save()),
         child: const GitLabel(GitMessages.saveRepositoryIdentity),
       ),
     ],
@@ -1406,7 +1282,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
       rows.add(
         _ChangeRow(
           group.key,
-          '${group.key} (${entries.length})',
+          group.key,
           group.key,
           null,
           0,
@@ -1501,18 +1377,13 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           return GitNativeRow(
             id: row.key,
             textInsets: [
-              gitPresentation(context).changeRowTextInset(context, row.depth),
+              gitPresentation(
+                context,
+              ).changeRowTextInset(context, math.max(0, row.depth - 1)),
             ],
             cells: [
               change == null && row.depth == 0
-                  ? gitString(
-                      context,
-                      GitMessages.groupCount,
-                      values: {
-                        'group': gitString(context, row.group),
-                        'count': row.count,
-                      },
-                    )
+                  ? gitString(context, row.group)
                   : row.label,
             ],
             description: change == null
@@ -1700,16 +1571,9 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                 : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
                             child: GitChangeRow(
                               title: change == null && row.depth == 0
-                                  ? gitString(
-                                      context,
-                                      GitMessages.groupCount,
-                                      values: {
-                                        'group': gitString(context, row.group),
-                                        'count': row.count,
-                                      },
-                                    )
+                                  ? gitString(context, row.group)
                                   : row.label,
-                              depth: row.depth,
+                              depth: math.max(0, row.depth - 1),
                               group: row.depth == 0,
                               selected: _selected.contains(row.key),
                               expanded: change == null
@@ -2161,6 +2025,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           GitMessages.fileHistory,
           GitFileHistoryView(session: session, path: change!.path),
           expanded: true,
+          reviewSelection: true,
         );
       case 'discard':
         GitContent working;

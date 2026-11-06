@@ -396,7 +396,7 @@ void main() {
       first.setDraft('local B');
       await first.flushMessageDrafts();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Log').first);
+      first.feature.select(GitSidebarView.log);
       await tester.pumpAndSettle();
       final closing = registry.mayDismiss();
       expect(registry.mayDismiss(), same(closing));

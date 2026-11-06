@@ -58,7 +58,7 @@ Json _row(String oid, String path, String subject) => {
     message: subject,
   ).toJson(),
   'pathAtCommit': RepoPath.text(path).toJson(),
-  'pathInParent': null,
+  'pathInParent': RepoPath.text(path).toJson(),
   'status': 'A',
   'deleted': false,
 };

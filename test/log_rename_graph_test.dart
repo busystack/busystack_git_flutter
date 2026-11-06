@@ -71,7 +71,14 @@ void main() {
     await session.start();
     await tester.pumpWidget(
       GitTestApp(
-        home: Scaffold(body: GitLogView(session: session)),
+        home: Scaffold(
+          body: Row(
+            children: [
+              Expanded(child: GitLogView(session: session)),
+              Expanded(child: GitReviewContent(controller: session.feature)),
+            ],
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -82,21 +89,20 @@ void main() {
     expect(find.byType(GitDiffView), findsOneWidget);
     expect(
       tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
-      isTrue,
-    );
-    await tester.tap(find.byTooltip('Review difference'));
-    await tester.pump();
-    expect(
-      tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
       isFalse,
     );
-    expect(find.text('Log'), findsWidgets);
-    await tester.tap(find.widgetWithText(TextButton, 'Log').last);
+    expect(find.byType(GitReviewTabStrip), findsOneWidget);
+    final captured = session.feature.tabs.entries.single;
+    expect(captured.comparison.leftPath, RepoPath.text('old/chapter.md'));
+    expect(captured.comparison.path, RepoPath.text('new/chapter.md'));
+    await tester.runAsync(
+      () async => Future<void>.delayed(const Duration(milliseconds: 300)),
+    );
     await tester.pump();
-    expect(find.byType(GitDiffView), findsOneWidget);
     expect(
-      tester.widget<GitDiffView>(find.byType(GitDiffView)).preview,
-      isTrue,
+      find.byTooltip('Review difference'),
+      findsNothing,
+      reason: 'Ordinary reviews have no under-tab preview or expand route',
     );
     expect(
       client.calls.any(

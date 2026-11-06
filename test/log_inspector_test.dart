@@ -223,6 +223,15 @@ void main() {
       expect(session.viewState['inspectorRevision'], 'a' * 40);
       await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
       await tester.pumpAndSettle();
+      final reopened = tester.widget<GitNativeTable>(
+        find.byType(GitNativeTable).last,
+      );
+      expect(
+        reopened.rowAt(reopened.selected.single).id,
+        'b' * 40,
+        reason:
+            'Cancel preserves the candidate without applying it to the inspector',
+      );
       await tester.tap(find.text('Subject b'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Select this commit'));
@@ -231,6 +240,19 @@ void main() {
       expect(opened, 0);
       expect(client.mutations, isEmpty);
       expect(find.byType(GitLogView), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
+      await tester.pumpAndSettle();
+      final anchored = tester.widget<GitNativeTable>(
+        find.byType(GitNativeTable).last,
+      );
+      expect(
+        anchored.rowAt(anchored.selected.single).id,
+        'b' * 40,
+        reason:
+            'A newly confirmed inspector anchor owns the reopened selection',
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
     },
   );
   testWidgets(
@@ -356,7 +378,9 @@ void main() {
           find.byKey(ValueKey('git-historical-menu:${file.key}')),
         );
         await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
+        await tester.tap(
+          find.byKey(const ValueKey('git-select-another-commit')),
+        );
         await tester.pumpAndSettle();
         await tester.tap(find.text('Subject b'));
         await tester.pumpAndSettle();

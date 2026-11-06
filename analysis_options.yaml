@@ -1,0 +1,6 @@
+# Build directories contain generated native/test outputs and historical,
+# materialized source fixtures, not the package's maintained Dart sources.
+analyzer:
+  exclude:
+    - build/**
+    - linux/**

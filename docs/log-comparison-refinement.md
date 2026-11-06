@@ -2,7 +2,7 @@
 
 This records action destinations before repository-menu entries are removed.
 BusyMark retains its independent sidebars and ordinary comparison tabs. The
-engine and Git semantics do not change. BusyFiles retains its workspace layout.
+engine and Git semantics do not change. Both hosts now consume the same GitFeatureSidebar and GitReviewSurface composition, per the 2026-11-06 decision.
 
 | Existing capability | Retained destination |
 | --- | --- |
@@ -38,8 +38,8 @@ Native appearance and real transaction/regression checks remain required.
 
 | Request | BusyMark / BusyFiles implementation |
 | --- | --- |
-| Flat selected-commit and mode buttons | Existing host inline action; BusyMarkGitActionButton / BusyFiles native inline button |
-| Historical rows and separate trailing actions | Existing required changeRow; BusyMarkSidebarTreeRow / BusyFiles tree-row adapter |
+| Flat selected-commit and mode buttons | Shared NativeGitActionButton in both hosts |
+| Historical rows and contextual actions | Shared NativeGitTreeRow with file/folder and separate status slots |
 | Copy, Commit Actions, Display Options | Required semantic copy/moreHorizontal/options glyphs mapped to existing host glyph catalogs |
 | Human-readable metadata dates | Required formatCommitDate in each approved design boundary, host localized date/time and 12/24-hour preference |
 | Full exact message/identity/timestamps | Existing host native details modal, selectable text and clipboard interaction |

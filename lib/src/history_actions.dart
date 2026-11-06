@@ -4,7 +4,8 @@ import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
 import 'package:flutter/material.dart';
-import 'diff_view.dart';
+import 'feature.dart' show gitOpenComparison;
+import 'historical_change_tree.dart';
 import 'host.dart';
 import 'network_views.dart';
 import 'reference_picker.dart';
@@ -99,6 +100,7 @@ final class GitHistoryActions {
       ),
       GitRevisionComparison(session: session, left: left, right: right),
       expanded: true,
+      reviewSelection: true,
     );
   }
 
@@ -314,77 +316,134 @@ final class _ComparisonState extends GitDialogState<GitRevisionComparison> {
     );
   }
 
+  RepoPath? _fileFocus;
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      states(),
-      Text(
-        gitString(
-          context,
-          GitMessages.completeTreesArg0Arg1,
-          values: {
-            'arg0': widget.left.abbreviated,
-            'arg1': widget.right.abbreviated,
-          },
+  void didUpdateWidget(GitRevisionComparison oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.session != widget.session ||
+        oldWidget.left != widget.left ||
+        oldWidget.right != widget.right) {
+      offset = 0;
+      _fileFocus = null;
+      unawaited(_loadPage());
+    }
+  }
+
+  Future<void> _loadPage() => load(
+    GitInspection(
+      GitInspectionKind.compareRevisions,
+      revision: widget.right,
+      otherRevision: widget.left,
+      offset: offset,
+      limit: 300,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final owner = session,
+        left = widget.left,
+        right = widget.right,
+        page = data;
+    final files = List<GitChange>.unmodifiable(
+      (page?['changes'] as List? ?? []).cast<Json>().map(GitChange.fromJson),
+    );
+    GitComparison comparison(GitChange file) => GitComparison(
+      file.path,
+      ContentVersion(ContentKind.commit, revision: left),
+      ContentVersion(ContentKind.commit, revision: right),
+      leftPath: file.originalPath,
+    );
+    final comparisons = List<GitComparison>.unmodifiable(files.map(comparison));
+    bool current() =>
+        mounted &&
+        widget.session == owner &&
+        widget.left == left &&
+        widget.right == right &&
+        identical(data, page);
+    void open(GitChange file) {
+      if (current() && files.contains(file))
+        gitOpenComparison(context, owner, comparison(file), files: comparisons);
+    }
+
+    return Column(
+      children: [
+        states(),
+        Text(
+          gitString(
+            context,
+            GitMessages.completeTreesArg0Arg1,
+            values: {'arg0': left.abbreviated, 'arg1': right.abbreviated},
+          ),
         ),
-      ),
-      Expanded(
-        child: ListView(
+        Expanded(
+          child: GitHistoricalChangeTree(
+            key: ValueKey((owner.repository.key, left, right, offset)),
+            session: owner,
+            files: files,
+            selected: _fileFocus,
+            onHighlight: (file) {
+              if (current()) setState(() => _fileFocus = file.path);
+            },
+            onActivate: open,
+            onAction: (file, action) async {
+              if (!current() || !files.contains(file)) return;
+              if (action == 'review') {
+                open(file);
+              } else if (action == 'history') {
+                await owner.host.present<void>(
+                  context,
+                  GitMessages.fileHistoryAndBlame,
+                  GitFileHistoryView(
+                    session: owner,
+                    path: file.path,
+                    revision: right,
+                  ),
+                  expanded: true,
+                  reviewSelection: true,
+                );
+              } else if (action == 'snapshot') {
+                await owner.host.present<void>(
+                  context,
+                  GitMessages.openSnapshot,
+                  GitSnapshotView(session: owner, revision: right),
+                  expanded: true,
+                );
+              }
+            },
+          ),
+        ),
+        Row(
           children: [
-            for (final row in (data?['changes'] as List? ?? []).cast<Json>())
-              Builder(
-                builder: (context) {
-                  final change = GitChange.fromJson(row);
-                  return GitActionRow(
-                    dense: true,
-                    leading: Text(change.index),
-                    title: Text(change.path.display),
-                    onTap: () => session.host.present<void>(
-                      context,
-                      change.path.display,
-                      GitDiffView(
-                        session: session,
-                        comparison: GitComparison(
-                          change.path,
-                          ContentVersion(
-                            ContentKind.commit,
-                            revision: widget.left,
-                          ),
-                          ContentVersion(
-                            ContentKind.commit,
-                            revision: widget.right,
-                          ),
-                          leftPath: change.originalPath,
-                        ),
-                      ),
-                      expanded: true,
-                    ),
-                  );
-                },
+            if (offset > 0)
+              GitButton(
+                onPressed: loading
+                    ? null
+                    : () {
+                        if (current()) {
+                          offset = (offset - 300).clamp(0, 1000000);
+                          unawaited(_loadPage());
+                        }
+                      },
+                child: const GitLabel(GitMessages.previousPage),
+              ),
+            if (page?['hasMore'] == true)
+              GitButton(
+                onPressed: loading
+                    ? null
+                    : () {
+                        if (current()) {
+                          offset += 300;
+                          unawaited(_loadPage());
+                        }
+                      },
+                child: const GitLabel(GitMessages.nextChangedFilePage),
               ),
           ],
         ),
-      ),
-      if (data?['hasMore'] == true)
-        GitButton(
-          onPressed: () {
-            offset += 300;
-            unawaited(
-              load(
-                GitInspection(
-                  GitInspectionKind.compareRevisions,
-                  revision: widget.right,
-                  otherRevision: widget.left,
-                  offset: offset,
-                  limit: 300,
-                ),
-              ),
-            );
-          },
-          child: const GitLabel(GitMessages.nextChangedFilePage),
-        ),
-    ],
-  );
+      ],
+    );
+  }
 }
 
 final class GitSnapshotView extends StatefulWidget {
@@ -508,6 +567,7 @@ final class _SnapshotState extends GitDialogState<GitSnapshotView> {
           revision: widget.revision,
         ),
         expanded: true,
+        reviewSelection: true,
       );
       return;
     }
@@ -686,6 +746,10 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
       session: session,
       row: row,
       parent: _parents[commit.oid],
+      canOpen: () =>
+          mounted &&
+          widget.session == _session &&
+          reviewGeneration == _reviewGeneration,
       onParent: (parent) {
         if (mounted &&
             widget.session == _session &&
@@ -701,7 +765,8 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
       context,
       gitString(context, GitMessages.compareToParent),
       _comparison(row),
-      expanded: true,
+      expanded: false,
+      reviewSelection: true,
     );
     if (mounted) setState(() {});
   }
@@ -779,132 +844,134 @@ final class _FileHistoryState extends GitDialogState<GitFileHistoryView> {
                         ),
                       )
                     : const SizedBox.expand()
-              : GitSplitter(
-                  axis: Axis.vertical,
-                  initial: .42,
-                  minimum: 130,
-                  minimumSecond: 210,
-                  value: session.split('fileHistoryPreviewSplit', .42),
-                  onChanged: (value) =>
-                      session.setViewState('fileHistoryPreviewSplit', value),
-                  first: ListView(
-                    children: [
-                      for (final row in entries)
-                        Builder(
-                          builder: (context) {
-                            final commit = GitCommit.fromJson(
-                                  row['commit'] as Json,
-                                ),
-                                path = RepoPath.fromJson(row['pathAtCommit']);
-                            return GitActionRow(
-                              dense: true,
-                              selected:
-                                  commit.oid ==
-                                  GitCommit.fromJson(
-                                    selected['commit'] as Json,
-                                  ).oid,
-                              title: Text(commit.subject),
-                              subtitle: Text(
-                                '${commit.oid.abbreviated} · ${commit.author} · ${path.display}',
-                              ),
-                              onTap: () {
-                                if (!current()) return;
-                                setState(() {
-                                  _reviewGeneration++;
-                                  selectedRevision = commit.oid;
-                                });
-                              },
-                              trailing: GitMenuButton(
-                                role: GitMenuRole.entryContext,
-                                host: session.host,
-                                onSelected: (action) async {
-                                  if (!current()) return;
-                                  if (action == 'open') {
-                                    final value = await session.client.content(
-                                      session.repository,
-                                      path,
-                                      ContentVersion(
-                                        ContentKind.commit,
-                                        revision: commit.oid,
-                                      ),
+              : Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          for (final row in entries)
+                            Builder(
+                              builder: (context) {
+                                final commit = GitCommit.fromJson(
+                                      row['commit'] as Json,
+                                    ),
+                                    path = RepoPath.fromJson(
+                                      row['pathAtCommit'],
                                     );
+                                return GitActionRow(
+                                  dense: true,
+                                  selected:
+                                      commit.oid ==
+                                      GitCommit.fromJson(
+                                        selected['commit'] as Json,
+                                      ).oid,
+                                  title: Text(commit.subject),
+                                  subtitle: Text(
+                                    '${commit.oid.abbreviated} · ${commit.author} · ${path.display}',
+                                  ),
+                                  onTap: () {
                                     if (!current()) return;
-                                    await session.host.openDocument(
-                                      session.repository,
-                                      path,
-                                      snapshot: value,
-                                    );
-                                  } else if (action == 'current') {
-                                    await session.host.present<void>(
-                                      context,
-                                      gitString(
-                                        context,
-                                        GitMessages.arg0WorkingTree,
-                                        values: {
-                                          'arg0': commit.oid.abbreviated,
-                                        },
-                                      ),
-                                      GitDiffView(
-                                        session: session,
-                                        comparison: GitComparison(
-                                          widget.path,
-                                          ContentVersion(
-                                            ContentKind.commit,
-                                            revision: commit.oid,
+                                    setState(() {
+                                      _reviewGeneration++;
+                                      selectedRevision = commit.oid;
+                                    });
+                                  },
+                                  trailing: GitMenuButton(
+                                    role: GitMenuRole.entryContext,
+                                    host: session.host,
+                                    onSelected: (action) async {
+                                      if (!current()) return;
+                                      if (action == 'open') {
+                                        final value = await session.client
+                                            .content(
+                                              session.repository,
+                                              path,
+                                              ContentVersion(
+                                                ContentKind.commit,
+                                                revision: commit.oid,
+                                              ),
+                                            );
+                                        if (!current()) return;
+                                        await session.host.openDocument(
+                                          session.repository,
+                                          path,
+                                          snapshot: value,
+                                        );
+                                      } else if (action == 'current') {
+                                        gitOpenComparison(
+                                          context,
+                                          session,
+                                          GitComparison(
+                                            widget.path,
+                                            ContentVersion(
+                                              ContentKind.commit,
+                                              revision: commit.oid,
+                                            ),
+                                            const ContentVersion.working(),
+                                            leftPath: path,
                                           ),
-                                          const ContentVersion.working(),
-                                          leftPath: path,
-                                        ),
+                                        );
+                                      } else if (action == 'parent') {
+                                        await _showParent(row);
+                                      } else if (action == 'files') {
+                                        await GitWorkflowUi(
+                                          context,
+                                          session,
+                                        ).present(
+                                          gitString(
+                                            context,
+                                            GitMessages.commitArg0,
+                                            values: {
+                                              'arg0': commit.oid.abbreviated,
+                                            },
+                                          ),
+                                          GitCommitFiles(
+                                            session: session,
+                                            commit: commit,
+                                            onActivate:
+                                                (context, comparison, files) =>
+                                                    gitOpenComparison(
+                                                      context,
+                                                      session,
+                                                      comparison,
+                                                      files: files,
+                                                    ),
+                                          ),
+                                          expanded: true,
+                                          reviewSelection: true,
+                                        );
+                                      }
+                                    },
+                                    entries: const [
+                                      GitMenuEntry(
+                                        'open',
+                                        GitMessages.openReadOnlyHistoricalFile,
                                       ),
-                                      expanded: true,
-                                    );
-                                  } else if (action == 'parent') {
-                                    await _showParent(row);
-                                  } else if (action == 'files') {
-                                    await GitWorkflowUi(
-                                      context,
-                                      session,
-                                    ).present(
-                                      gitString(
-                                        context,
-                                        GitMessages.commitArg0,
-                                        values: {
-                                          'arg0': commit.oid.abbreviated,
-                                        },
+                                      GitMenuEntry(
+                                        'current',
+                                        GitMessages.compareToCurrentFile,
                                       ),
-                                      GitCommitFiles(
-                                        session: session,
-                                        commit: commit,
+                                      GitMenuEntry(
+                                        'parent',
+                                        GitMessages.compareToParent,
                                       ),
-                                      expanded: true,
-                                    );
-                                  }
-                                },
-                                entries: const [
-                                  GitMenuEntry(
-                                    'open',
-                                    GitMessages.openReadOnlyHistoricalFile,
+                                      GitMenuEntry(
+                                        'files',
+                                        GitMessages.showAllAffectedFiles,
+                                      ),
+                                    ],
                                   ),
-                                  GitMenuEntry(
-                                    'current',
-                                    GitMessages.compareToCurrentFile,
-                                  ),
-                                  GitMenuEntry(
-                                    'parent',
-                                    GitMessages.compareToParent,
-                                  ),
-                                  GitMenuEntry(
-                                    'files',
-                                    GitMessages.showAllAffectedFiles,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                    ],
-                  ),
-                  second: _comparison(selected),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.all(session.host.spacing),
+                      child: _comparison(selected),
+                    ),
+                  ],
                 ),
         ),
         Row(
@@ -950,8 +1017,10 @@ final class _FileHistoryComparison extends StatefulWidget {
     required this.row,
     this.parent,
     required this.onParent,
+    required this.canOpen,
   });
   final GitSession session;
+  final bool Function() canOpen;
   final Json row;
   final GitOid? parent;
   final ValueChanged<GitOid> onParent;
@@ -1042,6 +1111,8 @@ final class _FileHistoryComparisonState extends State<_FileHistoryComparison> {
   Widget build(BuildContext context) {
     final generation = _generation;
     return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_commit.parents.length > 1)
           GitChoice<GitOid>(
@@ -1074,17 +1145,25 @@ final class _FileHistoryComparisonState extends State<_FileHistoryComparison> {
               unawaited(_load());
             },
           ),
-        Expanded(
-          child: _loading
-              ? const Center(child: GitLoading.spinner())
-              : _error != null
-              ? GitFailurePanel(error: _error!, onRefresh: _load)
-              : GitDiffView(
-                  key: ValueKey((_commit.oid, _parent, _comparison?.leftPath)),
-                  session: _session,
-                  comparison: _comparison!,
-                ),
-        ),
+        if (_loading)
+          const GitLoading()
+        else if (_error != null)
+          GitFailurePanel(error: _error!, onRefresh: _load)
+        else
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: GitButton.standard(
+              compact: true,
+              onPressed: _comparison == null
+                  ? null
+                  : () {
+                      if (!mounted || generation != _generation) return;
+                      if (!widget.canOpen()) return;
+                      gitOpenComparison(context, _session, _comparison!);
+                    },
+              child: const GitLabel(GitMessages.compareToParent),
+            ),
+          ),
       ],
     );
   }
@@ -1173,6 +1252,7 @@ final class _BlameState extends GitDialogState<GitBlameView> {
                   revision: GitOid(row['revision'] as String),
                 ),
                 expanded: true,
+                reviewSelection: true,
               ),
               child: Padding(
                 padding: EdgeInsets.symmetric(

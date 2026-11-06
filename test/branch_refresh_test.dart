@@ -230,7 +230,10 @@ void main() {
         await tester.enterText(field, query);
         await tester.pumpAndSettle();
         expect(
-          find.widgetWithText(GitActionRow, query == 'origin' ? 'origin/main' : query),
+          find.widgetWithText(
+            GitActionRow,
+            query == 'origin' ? 'origin/main' : query,
+          ),
           findsOneWidget,
         );
         expect(find.text('main'), findsNothing);
@@ -259,6 +262,9 @@ void main() {
         selection: TextSelection.collapsed(offset: 7),
       );
       await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pump();
+      // The collapsible Local group is now a real keyboard tree item.
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);

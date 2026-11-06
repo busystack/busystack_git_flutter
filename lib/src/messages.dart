@@ -1,5 +1,11 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const gitLog = "Git Log";
+  static const closeOtherTabs = "Close other tabs";
+  static const closeAllTabs = "Close all tabs";
+  static const operationsRequireTrust =
+      "Git operations require workspace trust.";
+  static const trustWorkspace = "Trust workspace";
   static const selectAnotherCommit = "Select another commit…";
   static const removeFilter = "Remove filter";
   static const noCommitsYet = "No commits yet";
@@ -1811,5 +1817,10 @@ abstract final class GitMessages {
     commitReferences,
     copyCommitMessage,
     selectAnotherCommit,
+    gitLog,
+    operationsRequireTrust,
+    trustWorkspace,
+    closeOtherTabs,
+    closeAllTabs,
   ];
 }

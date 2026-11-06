@@ -2,6 +2,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/presentation_fixture.dart';
@@ -25,7 +26,7 @@ void main() {
         GitTestApp(
           home: Scaffold(
             body: SizedBox(
-              width: 350,
+              width: 500,
               child: GitCommitView(
                 session: session,
                 onReview: (_) {},
@@ -54,7 +55,7 @@ void main() {
       );
       await tester.pump();
       final editor = tester.getRect(find.byType(TextField));
-      final action = tester.getRect(find.text('Commit staged (1)'));
+      final action = tester.getRect(find.text('Commit'));
       for (final text in [
         'Receiving a long remote progress message that wraps onto multiple lines',
         'Receiving objects\nResolving deltas',
@@ -63,7 +64,7 @@ void main() {
         client.progress!(GitProgress(GitOperationPhase.running, text: text));
         await tester.pump();
         expect(tester.getRect(find.byType(TextField)), editor);
-        expect(tester.getRect(find.text('Commit staged (1)')), action);
+        expect(tester.getRect(find.text('Commit')), action);
         expect(find.text('draft stays here'), findsOneWidget);
         expect(find.text('Cancel').hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -119,7 +120,11 @@ void main() {
             repository: repo,
             host: host(),
           );
-      final target = GitSession(client: client, repository: repo, host: host());
+      final target = GitSession(
+        client: client,
+        repository: repo,
+        host: _contextHost(),
+      );
       await target.start();
       await session.start();
       final reviews = <GitComparison>[];
@@ -127,7 +132,7 @@ void main() {
         GitTestApp(
           home: Scaffold(
             body: SizedBox(
-              width: 340,
+              width: 500,
               child: GitCommitView(
                 session: target,
                 onReview: reviews.add,
@@ -147,7 +152,10 @@ void main() {
       expect(client.mutations, isEmpty);
       expect(reviews.single.left.kind, ContentKind.indexVersion);
       expect(reviews.single.right.kind, ContentKind.workingTree);
-      await tester.tap(find.byTooltip('Stage file'));
+      await tester.tap(
+        find.text('notes.md').last,
+        buttons: kSecondaryMouseButton,
+      );
       await tester.pump(const Duration(milliseconds: 350));
       await tester.pumpAndSettle();
       expect(client.mutations.single, isA<StagePaths>());
@@ -190,7 +198,7 @@ void main() {
         GitTestApp(
           home: Scaffold(
             body: SizedBox(
-              width: 350,
+              width: 500,
               child: GitCommitView(
                 session: session,
                 onReview: (_) {},
@@ -205,7 +213,7 @@ void main() {
       );
       await tester.enterText(find.byType(TextField), 'first draft');
       await tester.pump();
-      await tester.tap(find.text('Commit staged (1)'));
+      await tester.tap(find.text('Commit'));
       await tester.pump();
       await tester.enterText(find.byType(TextField), 'next draft');
       await tester.pump();
@@ -300,4 +308,22 @@ class _ProgressClient extends FixtureClient {
     progress = onProgress;
     return completion.future;
   }
+}
+
+GitHost _contextHost() {
+  final original = host();
+  return GitHost(
+    presentation: const TestGitPresentation(
+      entryActionPlacement: GitEntryActionPlacement.contextMenu,
+    ),
+    icons: original.icons,
+    present: original.present,
+    presentMenu: (_, entries, {position}) async =>
+        entries.any((entry) => entry.id == 'stage') ? 'stage' : null,
+    openDocument: original.openDocument,
+    prepareMutation: original.prepareMutation,
+    chooseDirectory: original.chooseDirectory,
+    notify: original.notify,
+    drafts: original.drafts,
+  );
 }

@@ -3,14 +3,16 @@
 The shared core requires Linux 5.3 or newer with process pidfds. Both applications
 ship its native supervisor and Git runtime; installed helpers use no SDK.
 
-Shared specialized desktop Git views for BusyMark and BusyFiles. Depends only
-on Flutter and the sibling `busystack_git` engine. Requires Flutter 3.47.5 or
-newer and Dart `>=3.12.1 <4.0.0` within the consuming application's approved
-toolchain. It contains no application shell, nested MaterialApp, independent
+Shared specialized desktop Git views for BusyMark and BusyFiles. Uses Flutter,
+the sibling `busystack_git` engine, and the already approved official Yaru 10.2.0
+and Intl 0.20.3 packages shared by both consumers. Both applications use the
+approved official Flutter 3.47.5 / Dart 3.13.4 toolchain. It contains no application shell, nested MaterialApp, independent
 theme, application navigator or cloud/global state container.
 
-The primary surfaces are `GitCommitView`, `GitLogView`, `GitDiffView` and
-`GitWorkspace`. Focused components handle branches/remotes/tags, creation,
+The primary surfaces are `GitFeatureSidebar`, `GitReviewContent` and
+`GitReviewSurface`. `GitWorkspace` mounts those canonical slots; the session-bound
+`GitFeatureController` owns Commit/Log choice and captured review-tab navigation.
+Focused components handle branches/remotes/tags, creation,
 fetch/pull/push review, history/snapshots/blame, conflict results, Git rebase plans,
 stashes, worktrees, submodules and reflog recovery. `GitWorkflowUi` connects
 context actions to those views. `GitSession` owns one immutable worktree identity,
@@ -19,21 +21,22 @@ Stash creation virtualizes its eligible path list, explains empty selections,
 and excludes hidden paths when the reviewed content options change.
 Stash requests bind the reviewed working snapshot. An explicit refresh after a
 stale review preserves the name, options and still-eligible path selections.
-The full Git workspace keeps its worktree root, current branch or detached HEAD,
-and recovered operation visible in Log. Returning to Commit retains its draft.
-When the active font and available width cannot support both Commit and a
-readable comparison, selecting a file opens a full-width review with Back to
-Commit. Resizing preserves the draft, selection and review. Compact diff controls
-keep display settings and explicit staging actions in focused menus; search is
-opened on demand with Ctrl+F inside the review.
+The shared sidebar keeps repository identity and the Commit/Git Log selector
+visible. Changing views retains the draft. File activation opens an independent
+comparison tab in the content area at every width; the sidebar can be hidden
+without replacing a review or document. Resizing preserves draft, selection and
+review state. Compact diff controls keep display settings and explicit staging
+actions in focused menus; search opens on demand with Ctrl+F inside the review.
 
 `GitHost` supplies native application dialogs, document/folder opening, directory
 selection, native contextual menus, mutation/inspection preflight, draft persistence
 and notifications. Native menu cancellation remains distinct from an unavailable
 menu service. An unavailable service reports an operational error; Git never substitutes a Material menu.
-The required `GitPresentation` adapter supplies the host’s approved native controls, text menus, typography, semantic status/diff colors and input behavior. Host density, text measurement, the complete glyph catalog and translation remain explicit. There is no default presentation adapter.
-Every shared icon uses a semantic `GitGlyph` key in `GitHost.icons`, so hosts can
-use their existing glyph catalog throughout Commit, Log and workflow dialogs.
+Both Linux adapters are const-only subclasses of `YaruGitPresentation`. Shared
+native controls, tokens, typography, text measurement, semantic colors and
+`gitLinuxIcons` define one Git design. Hosts bridge native menu/dialog lifetimes,
+translations and system services; they do not own another Git rendering chain.
+Every shared icon uses a semantic `GitGlyph` key with the common Linux mapping.
 BusyMark's optional message drafting remains a host action. Native Git prompts
 use `presentGitPrompt` with the host's own dialog presenter. BusyFiles transports
 those prompts through its authenticated private daemon channel.
@@ -131,19 +134,26 @@ preview requests have separate generations. Replaced plans and obsolete row
 callbacks cannot change the active review or retarget its repository.
 
 
-## BusyMark sidebars and ordinary comparison tabs (2026-10-31)
+## Shared sidebars and ordinary comparison tabs (2026-11-06)
 
-BusyMark has independent Commit and Git Log sidebar views. Git Log places the
-selected-commit button first, commit information next, and Changed files last.
-Information and files have independent scroll allocations. The button opens the
-existing graph/history browser in a native modal; browsing never applies a
-candidate, while confirmation does. History operations remain in context menus.
+Both hosts mount the same Commit and Git Log sidebar. Git Log places the neutral
+selected-commit header first, commit information next, and Changed files last.
+A dedicated graph-selection icon opens the full Git Log modal. Browsing changes
+only its candidate; confirmation applies it and Cancel retains the inspector.
+The same modal serves workflow revision selection. Its search, reference groups,
+filters, sidebar widths and candidate survive reopening. History operations
+remain in contextual menus.
 
 Ordinary file activation opens an independently selectable/closable comparison
 in the existing content tab strip. Captured repository, paths, versions, parent
 and mutable review context identify each tab. Documents remain mounted with their
 buffers intact. Staging does not open a tab; modified multi-selection does not
-activate files. BusyFiles retains its existing Git workspace placement.
+activate files. BusyMark mounts reviews in its document strip via `mountReview`;
+BusyFiles mounts `GitReviewContent` in its main content slot and replaces Favorites
+with `GitFeatureSidebar` while Git is active. Return to Files restores the retained
+browser subtree. File-history and revision-pair selectors dispatch captured tabs
+through the same coordinator. Reviewed operation plans retain their transaction
+and embed `GitReviewSurface`; they do not construct another diff toolbar.
 
 The resolved-symbol gate is `dart run tool/check_native_presentation.dart`; its
 self-test is `dart run tool/test_native_presentation_audit.dart`. Consumer checks
@@ -186,8 +196,8 @@ Implementation order and acceptance checklist:
 - Integration: pin source archives/checksums in both consumers; run final suites,
   integrity checks and builds; inspect native captures; commit without pushing.
 
-Layout/interaction: keep Commit beside BusyMark's authoring area and BusyFiles'
-contextual workspace; retain focused operation dialogs. Diff labels, divider and
+Layout/interaction: mount the canonical sidebar beside each host’s content slot;
+retain focused operation dialogs. Diff labels, divider and
 pane viewports stay fixed while document contents scroll. Selection reviews;
 explicit stage/unstage mutates the real index. Index and conflict results are
 separate drafts with explicit Apply/Save. User dismissal consults dirty guards;

@@ -160,4 +160,133 @@ void actionsPresentationContract({
       );
     }
   }
+
+  testWidgets(
+    'entry rows share secondary-click and released-key menus without trailing controls',
+    (tester) async {
+      final answers = <Completer<String?>>[];
+      var selected = 0, activations = 0;
+      final owner = ValueNotifier(0);
+      addTearDown(owner.dispose);
+      final host = GitHost(
+        presentation: presentation,
+        icons: icons,
+        presentMenu: (_, entries, {position}) {
+          expect(HardwareKeyboard.instance.isShiftPressed, isFalse);
+          expect(
+            HardwareKeyboard.instance.logicalKeysPressed,
+            isNot(contains(LogicalKeyboardKey.f10)),
+          );
+          expect(entries.map((e) => e.id), ['inspect', 'disabled']);
+          final answer = Completer<String?>();
+          answers.add(answer);
+          return answer.future;
+        },
+        present: <T>(_, _, _, {bool expanded = false}) async => null,
+        openDocument: (_, _, {snapshot}) async {},
+        prepareMutation: (_, _) async => false,
+        chooseDirectory: (_) async => null,
+        notify: (_) {},
+        drafts: MemoryGitDraftStore(),
+      );
+      await tester.pumpWidget(
+        shell(
+          GitHostScope(
+            host: host,
+            child: Center(
+              child: SizedBox(
+                width: 400,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: owner,
+                  builder: (_, value, _) => GitActionRow(
+                    key: const ValueKey('contextual-row'),
+                    dense: true,
+                    title: Text('Captured row $value'),
+                    onTap: value == 2 ? null : () => activations++,
+                    trailing: GitMenuButton(
+                      host: host,
+                      role: GitMenuRole.entryContext,
+                      entries: const [
+                        GitMenuEntry('inspect', 'Inspect'),
+                        GitMenuEntry('disabled', 'Disabled', enabled: false),
+                      ],
+                      onSelected: (_) => selected++,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Brightness.light,
+          TextDirection.ltr,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey('contextual-row'));
+      expect(
+        find.descendant(of: row, matching: find.byType(GitIconButton)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: row, matching: find.byType(GitMenuButton)),
+        findsNothing,
+      );
+      await tester.tap(row, buttons: kSecondaryMouseButton);
+      await tester.pump();
+      expect(activations, 0);
+      expect(answers, hasLength(1));
+      owner.value++;
+      await tester.pump();
+      answers[0].complete('inspect');
+      await tester.pumpAndSettle();
+      expect(
+        selected,
+        0,
+        reason: 'A delayed native reply cannot act on a replaced row',
+      );
+      await tester.tap(row);
+      expect(activations, 1);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.f10);
+      await tester.pump();
+      expect(answers, hasLength(1));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.f10);
+      await tester.pump();
+      expect(answers, hasLength(1));
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pump();
+      expect(answers, hasLength(2));
+      answers[1].complete('inspect');
+      await tester.pumpAndSettle();
+      expect(selected, 1);
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pump();
+      expect(answers, hasLength(3));
+      answers[2].complete('disabled');
+      await tester.pumpAndSettle();
+      expect(
+        selected,
+        1,
+        reason:
+            'Disabled entries cannot execute even after an invalid native reply',
+      );
+      // Management rows with only contextual actions must remain focusable.
+      owner.value = 2;
+      await tester.pump();
+      await tester.tap(row, buttons: kSecondaryMouseButton);
+      await tester.pump();
+      expect(answers, hasLength(4));
+      answers[3].complete(null);
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.contextMenu);
+      await tester.pump();
+      expect(answers, hasLength(5));
+      answers[4].complete('inspect');
+      await tester.pumpAndSettle();
+      expect(selected, 2);
+      expect(activations, 1);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }
