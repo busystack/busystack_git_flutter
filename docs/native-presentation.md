@@ -22,6 +22,9 @@ Both adapters extend the same `YaruGitPresentation` without visual overrides.
 | Comparison identity/tabs/navigation | GitReview, GitReviewTabs, GitFeatureController, GitReviewContent, GitReviewSurface |
 | Spacing, typography, colors, density and focus | GitSpacing, GitSizes, GitTypography, GitPalette, NativeGitSurface in linux_native.dart |
 
+The shared modal frame clips its full-height reference sidebar to the official
+Yaru window radius through the public container clipBehavior API.
+
 All rendering uses BusyStack-owned primitives and supported official pinned
 Yaru APIs. No upstream source is modified. Host document/browser lifetime,
 authorization, localization and system services remain application responsibilities.

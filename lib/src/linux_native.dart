@@ -2237,6 +2237,7 @@ class GitNativeDialog extends StatelessWidget {
             child: YaruBorderContainer(
               color: NativeGitSurface.of(context).panel,
               borderRadius: BorderRadius.circular(kYaruWindowRadius),
+              clipBehavior: Clip.antiAlias,
               child: SizedBox(
                 width: expanded ? size.width * .94 : GitSizes.dialogWide,
                 height: expanded ? size.height * .86 : null,
