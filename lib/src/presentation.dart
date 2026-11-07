@@ -50,7 +50,11 @@ abstract interface class GitPresentation {
   Widget scrollbar(BuildContext context, GitScrollbar control);
   Widget activation(BuildContext context, GitActivation control);
   Widget changeRow(BuildContext context, GitChangeRow control);
-  double changeRowTextInset(BuildContext context, int depth);
+  double changeRowTextInset(
+    BuildContext context,
+    int depth, {
+    GitEntryIdentity identity = GitEntryIdentity.file,
+  });
   Widget notice(BuildContext context, GitNotice control);
   Widget selectable(BuildContext context, GitSelectableText control);
   Widget selectionArea(BuildContext context, Widget child);

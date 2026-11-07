@@ -224,7 +224,11 @@ class TestGitPresentation implements GitPresentation {
     ),
   );
   @override
-  double changeRowTextInset(BuildContext context, int depth) => depth * 16 + 24;
+  double changeRowTextInset(
+    BuildContext context,
+    int depth, {
+    GitEntryIdentity identity = GitEntryIdentity.file,
+  }) => depth * 16 + 24;
   @override
   Widget changeRow(BuildContext context, GitChangeRow c) => activation(
     context,

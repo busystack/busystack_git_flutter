@@ -4,6 +4,7 @@ import 'package:busystack_git_flutter/src/native_table.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:yaru/yaru.dart';
 import 'support/presentation_fixture.dart';
 
 const channelName = 'busystack_git_flutter/accessibility';
@@ -58,6 +59,134 @@ void main() {
     await tester.pump();
     return result.future;
   }
+
+  Future<List<Map>> changeTreeRows(WidgetTester tester) async {
+    final nativeHost = host(presentation: const YaruGitPresentation());
+    final session = GitSession(
+      client: FixtureClient(),
+      repository: repo,
+      host: nativeHost,
+    );
+    await session.start();
+    session.snapshot = GitSnapshot(
+      repository: repo,
+      token: 'semantic rows',
+      indexToken: 'reviewed index',
+      changes: [
+        GitChange(path: RepoPath.text('same.txt'), index: 'A', worktree: 'M'),
+        GitChange(path: RepoPath.text('gone.txt'), index: 'M', worktree: 'D'),
+        GitChange(
+          path: RepoPath.text('topics/renamed.md'),
+          originalPath: RepoPath.text('topics/old.md'),
+          index: 'R',
+          worktree: 'M',
+        ),
+        GitChange(
+          path: RepoPath.text('untracked.txt'),
+          index: '?',
+          worktree: '?',
+        ),
+      ],
+      operation: const RepositoryOperation(GitOperationKind.none),
+      observedAt: DateTime.utc(2026),
+    );
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: createYaruLightTheme(primaryColor: YaruColors.orange),
+        home: Scaffold(
+          body: GitHostScope(
+            host: nativeHost,
+            child: SizedBox(
+              width: 330,
+              height: 580,
+              child: GitChangeTree(session: session, onReview: (_) {}),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final wire = calls.lastWhere((c) => c.method == 'update').arguments as Map;
+    expect(wire['name'], 'Repository change tree');
+    return (wire['rows'] as List).cast<Map>();
+  }
+
+  testWidgets(
+    'native change descriptions use semantic side, rename paths and group counts',
+    (tester) async {
+      final rows = await changeTreeRows(tester);
+      Map file(String group, String name) => rows.singleWhere(
+        (r) =>
+            (r['id'] as String).startsWith('$group:') &&
+            (r['cells'] as List).single == name,
+      );
+      expect(
+        file('Staged', 'same.txt')['description'],
+        'same.txt, Added, staged',
+      );
+      expect(
+        file('Unstaged', 'same.txt')['description'],
+        'same.txt, Modified, unstaged',
+      );
+      expect(
+        file('Staged', 'gone.txt')['description'],
+        'gone.txt, Modified, staged',
+      );
+      expect(
+        file('Unstaged', 'gone.txt')['description'],
+        'gone.txt, Deleted, unstaged',
+      );
+      expect(
+        file('Staged', 'renamed.md')['description'],
+        'topics/old.md → topics/renamed.md, Renamed, staged',
+      );
+      expect(
+        file('Unstaged', 'renamed.md')['description'],
+        'topics/renamed.md, Modified, unstaged',
+      );
+      expect(
+        file('Untracked', 'untracked.txt')['description'],
+        'untracked.txt, Untracked, unstaged',
+      );
+      expect(
+        rows.singleWhere((r) => r['id'] == 'Staged')['description'],
+        'Staged (3)',
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
+
+  testWidgets(
+    'native change text bounds match painted group, root and child columns',
+    (tester) async {
+      final rows = await changeTreeRows(tester);
+      final group = rows.singleWhere((r) => r['id'] == 'Staged');
+      final root = rows.singleWhere(
+        (r) =>
+            (r['id'] as String).startsWith('Staged:') &&
+            (r['cells'] as List).single == 'same.txt',
+      );
+      final child = rows.singleWhere(
+        (r) =>
+            (r['id'] as String).startsWith('Staged:') &&
+            (r['cells'] as List).single == 'renamed.md',
+      );
+      expect((group['textInsets'] as List).single, 34);
+      expect((root['textInsets'] as List).single, 60);
+      expect((child['textInsets'] as List).single, 74);
+      final origin = tester.getTopLeft(find.byType(GitNativeTable)).dx;
+      expect(
+        (group['textInsets'] as List).single,
+        tester.getTopLeft(find.text('Staged')).dx - origin,
+      );
+      expect(
+        (root['textInsets'] as List).single,
+        tester.getTopLeft(find.text('same.txt').first).dx - origin,
+      );
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
 
   testWidgets(
     'native row pages stay bounded and actions stay with their view',
@@ -523,7 +652,9 @@ void main() {
           calls.lastWhere((c) => c.method == 'update').arguments as Map;
       final rows = (frame['rows'] as List).cast<Map>();
       final unstaged = rows.firstWhere(
-        (r) => (r['description'] as String).contains('Unstaged'),
+        (r) =>
+            (r['description'] as String).contains('unstaged') &&
+            (r['cells'] as List).single == 'notes.md',
       );
       final directory = rows.firstWhere(
         (r) => r['index'] == unstaged['parent'],

@@ -1216,14 +1216,19 @@ base class YaruGitPresentation implements git.GitPresentation {
   );
 
   @override
-  double changeRowTextInset(BuildContext context, int depth) =>
+  double changeRowTextInset(
+    BuildContext context,
+    int depth, {
+    git.GitEntryIdentity identity = git.GitEntryIdentity.file,
+  }) =>
       GitSpacing.sm +
       GitSizes.sidebarTreeDepthBase +
       depth * GitSizes.sidebarTreeDepthIndent +
       GitSizes.sidebarTreeControl +
       GitSpacing.xs +
-      GitSizes.sidebarTreeControl +
-      GitSpacing.sm;
+      (identity == git.GitEntryIdentity.changeGroup
+          ? 0
+          : GitSizes.sidebarTreeControl + GitSpacing.sm);
   @override
   Widget changeRow(BuildContext context, git.GitChangeRow control) {
     if (control.trailing != null) {

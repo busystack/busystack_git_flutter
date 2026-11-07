@@ -291,3 +291,10 @@ Current correction evidence lives in the consumer's local
 `build/git-corrections-20261107/` directory. Baseline images are explicitly
 baseline evidence. Final source builds, installed parity and all native gates
 must be completed separately before this correction is accepted.
+
+Native accessibility change-tree rows use the same side-specific semantic status
+and identity-aware text grid as painted rows. Change-group headings have no file
+icon cell; their accessible descriptions include localized counts. Rename/copy
+paths belong to the side being described, rather than leaking index rename
+metadata into an ordinary unstaged modification. Wire-level regressions compare
+the actual native requests with rendered label bounds.

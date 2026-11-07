@@ -1369,6 +1369,22 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
         rowHeight: host.rowHeight(context),
         rowAt: (index) {
           final row = rows[index], change = row.change;
+          final side = row.group == GitMessages.staged
+              ? GitStatusContext.staged
+              : GitStatusContext.unstaged;
+          final status = change == null ? null : gitFileStatus(change, side);
+          final identity = change != null
+              ? gitEntryIdentity(change, side)
+              : row.depth == 0
+              ? GitEntryIdentity.changeGroup
+              : GitEntryIdentity.directory;
+          final path = change == null
+              ? null
+              : change.originalPath != null &&
+                    (status == GitFileStatus.renamed ||
+                        status == GitFileStatus.copied)
+              ? '${change.originalPath!.display} → ${change.path.display}'
+              : change.path.display;
           final canStage =
               change != null &&
               !change.conflicted &&
@@ -1378,9 +1394,11 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
           return GitNativeRow(
             id: row.key,
             textInsets: [
-              gitPresentation(
+              gitPresentation(context).changeRowTextInset(
                 context,
-              ).changeRowTextInset(context, math.max(0, row.depth - 1)),
+                math.max(0, row.depth - 1),
+                identity: identity,
+              ),
             ],
             cells: [
               change == null && row.depth == 0
@@ -1388,9 +1406,17 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                   : row.label,
             ],
             description: change == null
-                ? ''
-                : '${change.path.display}, ${gitString(context, row.group)}, '
-                      '${change.index}${change.worktree}',
+                ? gitString(
+                    context,
+                    GitMessages.groupCount,
+                    values: {
+                      'group': row.depth == 0
+                          ? gitString(context, row.group)
+                          : row.label,
+                      'count': row.count,
+                    },
+                  )
+                : '$path, ${gitFileStatusDescription(context, status!, side)}',
             parent: parents[index],
             depth: row.depth,
             expanded: change == null
