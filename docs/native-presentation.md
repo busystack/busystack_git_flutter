@@ -14,7 +14,7 @@ Both adapters extend the same `YaruGitPresentation` without visual overrides.
 
 | Git control category | Shared owner used by both hosts |
 | --- | --- |
-| Sidebar/header/navigation | GitFeatureSidebar, GitFeatureHeader, GitSidebarSelector |
+| Application sidebar header/navigation | Host workspace header and ordinary sidebar destination selector; typed GitSidebarView selects GitFeatureSidebar content |
 | Buttons, input, checkbox, icon actions | NativeGitActionButton, NativeGitTextEntry, NativeGitCheckbox, NativeGitIconAction |
 | File/folder/status and reference rows | NativeGitTreeRow, NativeGitRowSurface |
 | Menus and glyph roles | GitMenuRole and gitLinuxIcons; host only presents the native menu |
@@ -121,7 +121,7 @@ Do not expand an allowlist or accept a golden to excuse circular Git actions.
 
 BusyMark's Commit layout is the compact sidebar allocation: branch/path tooltip,
 Actions (including Refresh), then compact local tracking, then the tree.
-Commit and Commit and Push… share a measured, spaced row. BusyFiles uses that same shared layout and retains descendant discovery.
+Commit and Commit and Push share a measured, spaced row. BusyFiles uses that same shared layout and retains descendant discovery.
 BusyMark alone requires the canonical opened workspace to equal the discovered
 working-tree root, at attachment and authoring-command boundaries. Untrusted
 Commit shows only the native trust screen; drafts remain owned by the session.

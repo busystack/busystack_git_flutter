@@ -39,7 +39,7 @@ Native appearance and real transaction/regression checks remain required.
 | Request | BusyMark / BusyFiles implementation |
 | --- | --- |
 | Flat selected-commit and mode buttons | Shared NativeGitActionButton in both hosts |
-| Historical rows and contextual actions | Shared NativeGitTreeRow with file/folder and separate status slots |
+| Historical rows and contextual actions | Shared NativeGitTreeRow with conditional file/folder identity and semantic filename styling; no status-letter slot |
 | Copy, Commit Actions, Display Options | Required semantic copy/moreHorizontal/options glyphs mapped to existing host glyph catalogs |
 | Human-readable metadata dates | Required formatCommitDate in each approved design boundary, host localized date/time and 12/24-hour preference |
 | Full exact message/identity/timestamps | Existing host native details modal, selectable text and clipboard interaction |
