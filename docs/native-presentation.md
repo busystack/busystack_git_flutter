@@ -508,3 +508,10 @@ The shared `historyToggleSemanticsContract` dispatches through the semantic owne
 in both themes and in both actual host adapters; native AT-SPI activation remains
 an independent installed-application gate. Do not restore selected/accent painting
 to provide this state or alter third-party semantics implementations.
+
+Pointer activation of a standard Git action preserves the previous keyboard
+focus owner, matching the approved BusyMark secondary control. Do not force
+focus on mouse press or hide keyboard/semantic focus to remove an outline.
+The host contract exercises actual mouse gestures on TargetPlatform.linux,
+compares against the approved control, and verifies Tab/Enter focus and return.
+Touch-only widget input cannot qualify desktop pointer-focus behavior.

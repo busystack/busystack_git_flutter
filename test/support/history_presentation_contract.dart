@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// Measured against actual consumer controls, including their painted surfaces.
 void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
+  required Widget Function(FocusNode, VoidCallback) referenceAction,
 }) {
   historyToggleSemanticsContract(mount: mount);
   for (final brightness in Brightness.values) {
@@ -70,12 +71,17 @@ void historyPresentationContract({
     testWidgets(
       'native Date pointer and keyboard focus return without a stuck outline $brightness',
       (tester) async {
+        final referenceFocus = FocusNode();
+        addTearDown(referenceFocus.dispose);
         await mount(
           tester,
           Builder(
             builder: (context) => Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                referenceAction(referenceFocus, () async {
+                  await gitPresentation(context).dateRange(context);
+                }),
                 NativeGitActionButton(
                   role: NativeGitActionRole.standard,
                   child: const Text('Date test'),
@@ -117,11 +123,39 @@ void historyPresentationContract({
               .a;
         }
 
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        addTearDown(mouse.removePointer);
+        Future<void> mouseTap(Finder target) async {
+          final point = tester.getCenter(target);
+          await mouse.moveTo(point);
+          await mouse.down(point);
+          await tester.pump(const Duration(milliseconds: 50));
+          await mouse.up();
+          await tester.pumpAndSettle();
+        }
+
+        await mouseTap(find.text('Approved secondary'));
+        await mouseTap(
+          find
+              .text(
+                MaterialLocalizations.of(
+                  tester.element(find.text('Date filter')),
+                ).cancelButtonLabel,
+              )
+              .last,
+        );
+        expect(
+          referenceFocus.hasFocus,
+          isFalse,
+          reason:
+              'The approved BusyMark secondary button does not force mouse focus.',
+        );
         expect(borderAlpha(), 0);
-        await tester.tap(find.text('Date test'));
+        await mouseTap(find.text('Date test'));
         await tester.pumpAndSettle();
         expect(find.text('Date filter'), findsOneWidget);
-        await tester.tap(
+        await mouseTap(
           find
               .text(
                 MaterialLocalizations.of(
@@ -132,12 +166,30 @@ void historyPresentationContract({
         );
         await tester.pumpAndSettle();
         expect(borderAlpha(), 0);
+        final dateButton = find.ancestor(
+          of: find.text('Date test'),
+          matching: find.byType(NativeGitActionButton),
+        );
+        bool dateFocused() => tester
+            .widget<FocusableActionDetector>(
+              find.descendant(
+                of: dateButton,
+                matching: find.byType(FocusableActionDetector),
+              ),
+            )
+            .focusNode!
+            .hasPrimaryFocus;
         await tester.sendKeyEvent(LogicalKeyboardKey.tab);
         await tester.pumpAndSettle();
-        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
-        await tester.pumpAndSettle();
+        for (var step = 0; step < 4 && !dateFocused(); step++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pumpAndSettle();
+        }
+        expect(
+          dateFocused(),
+          isTrue,
+          reason: 'Date stays reachable by keyboard.',
+        );
         expect(borderAlpha(), greaterThan(0));
         await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pumpAndSettle();
@@ -154,6 +206,7 @@ void historyPresentationContract({
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       },
+      variant: TargetPlatformVariant.only(TargetPlatform.linux),
     );
     testWidgets(
       'native history close exposes one named enabled button $brightness',

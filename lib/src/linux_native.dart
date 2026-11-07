@@ -276,15 +276,7 @@ class NativeGitActionButton extends StatefulWidget {
 }
 
 class NativeGitActionButtonState extends State<NativeGitActionButton> {
-  late final _focusNode = FocusNode(
-    debugLabel: 'Git action',
-    onKeyEvent: (_, event) {
-      if (event is KeyDownEvent && _pointerFocus)
-        setState(() => _pointerFocus = false);
-      return KeyEventResult.ignored;
-    },
-  );
-  var _pointerFocus = false;
+  final _focusNode = FocusNode(debugLabel: 'Git action');
   var _hovered = false;
   var _pressed = false;
   var _focused = false;
@@ -294,7 +286,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
     if (widget.onPressed == null) WidgetState.disabled,
     if (_hovered) WidgetState.hovered,
     if (_pressed) WidgetState.pressed,
-    if (_focused && !_pointerFocus) WidgetState.focused,
+    if (_focused) WidgetState.focused,
   };
 
   void _setPressed(bool value) {
@@ -336,7 +328,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
         ? null
         : _pressed
         ? colors.controlActive
-        : _hovered || (_focused && !_pointerFocus)
+        : _hovered || (_focused)
         ? colors.controlHover
         : null;
     final overlay = style?.overlayColor?.resolve(states) ?? fallbackOverlay;
@@ -423,7 +415,6 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
           if (_hasFocus != focused)
             setState(() {
               _hasFocus = focused;
-              if (!focused) _pointerFocus = false;
             });
         },
         mouseCursor: enabled
@@ -463,8 +454,9 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
             onTap: enabled ? _activate : null,
             onTapDown: enabled
                 ? (_) {
-                    _pointerFocus = true;
-                    _focusNode.requestFocus();
+                    // Match the approved host secondary control: pointer
+                    // activation preserves the previous keyboard-focus owner.
+                    // Tab and the semantic Focus action still focus this node.
                     _setPressed(true);
                   }
                 : null,
@@ -479,7 +471,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
         ? YaruFocusBorder.primary(
             borderRadius: radius,
             focused: true,
-            borderColor: _focused && !_pointerFocus
+            borderColor: _focused
                 ? theme.colorScheme.primary
                 : theme.colorScheme.primary.withValues(alpha: 0),
             onFocusChange: (_) {},

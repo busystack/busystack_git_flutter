@@ -102,3 +102,8 @@ to one semantic node. Keep the shared action/history host contracts and actual
 native AT-SPI inspection; class-name or inner-label checks alone are insufficient.
 Use supported Focus/Semantics APIs and the common unmodified-Yaru close wrapper;
 never patch Flutter/Yaru or fix the same Git control independently in each host.
+
+Desktop pointer-focus regressions use actual mouse gestures on
+TargetPlatform.linux and compare the approved host secondary control.
+Touch-only taps cannot qualify desktop focus return. Pointer activation
+preserves keyboard focus; Tab and semantic Focus remain available.
