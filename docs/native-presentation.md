@@ -515,3 +515,10 @@ focus on mouse press or hide keyboard/semantic focus to remove an outline.
 The host contract exercises actual mouse gestures on TargetPlatform.linux,
 compares against the approved control, and verifies Tab/Enter focus and return.
 Touch-only widget input cannot qualify desktop pointer-focus behavior.
+
+Reference results use the public parent-scope traversal edge for Tab/Shift+Tab.
+Their explicit Up/Down commands cycle eligible results in the inherited public
+traversal-policy order. Search composition remains with its editor, and toolbar
+arrows do not enter the reference scope. A results-only closed loop traps native
+Tab before Date, Actions and the history table; the shared and actual-host
+contracts cover both traversal boundaries as well as local arrow wraparound.

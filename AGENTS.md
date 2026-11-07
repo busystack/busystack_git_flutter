@@ -107,3 +107,8 @@ Desktop pointer-focus regressions use actual mouse gestures on
 TargetPlatform.linux and compare the approved host secondary control.
 Touch-only taps cannot qualify desktop focus return. Pointer activation
 preserves keyboard focus; Tab and semantic Focus remain available.
+
+Reference results keep Up/Down navigation local, including wraparound, while
+Tab and Shift+Tab leave the results scope for the surrounding dialog controls.
+Do not use a closed-loop results scope for all traversal or consume search
+composition keys. Verify the full native history Tab route after pointer Cancel.

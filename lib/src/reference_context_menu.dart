@@ -70,7 +70,12 @@ final class GitReferenceNavigation extends StatefulWidget {
 }
 
 class _GitReferenceNavigationState extends State<GitReferenceNavigation> {
-  final results = FocusScopeNode(debugLabel: 'Git reference results');
+  final results = FocusScopeNode(
+    debugLabel: 'Git reference results',
+    // Tab belongs to the surrounding dialog/toolbar traversal. Only the
+    // reference arrow commands cycle within these results.
+    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  );
   @override
   void dispose() {
     results.dispose();
@@ -105,11 +110,30 @@ Widget gitReferenceResults({
   required Widget child,
 }) => FocusScope(
   node: focus,
-  child: CallbackShortcuts(
-    bindings: {
-      const SingleActivator(LogicalKeyboardKey.arrowDown): focus.nextFocus,
-      const SingleActivator(LogicalKeyboardKey.arrowUp): focus.previousFocus,
+  child: Builder(
+    builder: (context) {
+      void cycle(int step) {
+        final policy = FocusTraversalGroup.of(context);
+        final first = policy.findFirstFocus(focus, ignoreCurrentFocus: true);
+        final last = policy.findLastFocus(focus, ignoreCurrentFocus: true);
+        if (first == null || first == focus || last == focus) return;
+        final current = FocusManager.instance.primaryFocus;
+        if (current == (step > 0 ? last : first)) {
+          (step > 0 ? first : last).requestFocus();
+        } else if (step > 0) {
+          focus.nextFocus();
+        } else {
+          focus.previousFocus();
+        }
+      }
+
+      return CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.arrowDown): () => cycle(1),
+          const SingleActivator(LogicalKeyboardKey.arrowUp): () => cycle(-1),
+        },
+        child: child,
+      );
     },
-    child: child,
   ),
 );

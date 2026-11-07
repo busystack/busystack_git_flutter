@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui' show Tristate;
 import 'presentation_fixture.dart' show FixtureClient, repo;
+import 'package:busystack_git_flutter/src/reference_context_menu.dart';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
@@ -9,12 +10,124 @@ import 'package:flutter/semantics.dart';
 import 'package:yaru/yaru.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+/// Reference arrow ownership and both Tab boundaries use the same real rows
+/// under the shared presentation and both actual host adapters.
+void referenceNavigationContract({
+  required Future<void> Function(WidgetTester, Widget, Brightness) mount,
+}) {
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'reference arrows stay local while Tab reaches the toolbar $brightness',
+      (tester) async {
+        final search = TextEditingController(), searchFocus = FocusNode();
+        addTearDown(search.dispose);
+        addTearDown(searchFocus.dispose);
+        await mount(
+          tester,
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GitReferenceNavigation(
+                builder: (results) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    gitReferenceSearchNavigation(
+                      controller: search,
+                      results: results,
+                      child: GitTextField(
+                        controller: search,
+                        focusNode: searchFocus,
+                      ),
+                    ),
+                    gitReferenceResults(
+                      focus: results,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final title in [
+                            'First reference',
+                            'Middle reference',
+                            'Last reference',
+                          ])
+                            GitReferenceRow(title: title, onTap: () {}),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              NativeGitActionButton(
+                role: NativeGitActionRole.standard,
+                onPressed: () {},
+                child: const Text('Date after references'),
+              ),
+            ],
+          ),
+          brightness,
+        );
+        FocusNode rowFocus(String title) =>
+            Focus.of(tester.element(find.text(title)));
+        final dateFocus = Focus.of(
+          tester.element(find.text('Date after references')),
+        );
+        Future<void> key(LogicalKeyboardKey key) async {
+          await tester.sendKeyEvent(key);
+          await tester.pump();
+        }
+
+        searchFocus.requestFocus();
+        await tester.pump();
+        await key(LogicalKeyboardKey.arrowDown);
+        expect(rowFocus('First reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.arrowUp);
+        expect(rowFocus('Last reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.arrowDown);
+        expect(rowFocus('First reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.tab);
+        expect(rowFocus('Middle reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.tab);
+        expect(rowFocus('Last reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.tab);
+        expect(
+          dateFocus.hasPrimaryFocus,
+          isTrue,
+          reason: 'Tab must leave reference results and reach Date.',
+        );
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await key(LogicalKeyboardKey.tab);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump();
+        expect(rowFocus('Last reference').hasPrimaryFocus, isTrue);
+        await key(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await key(LogicalKeyboardKey.tab);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pump();
+        expect(searchFocus.hasPrimaryFocus, isTrue);
+        search.value = const TextEditingValue(
+          text: 'ma',
+          composing: TextRange(start: 0, end: 2),
+        );
+        await tester.pump();
+        await key(LogicalKeyboardKey.arrowDown);
+        expect(searchFocus.hasPrimaryFocus, isTrue);
+        dateFocus.requestFocus();
+        await tester.pump();
+        await key(LogicalKeyboardKey.arrowDown);
+        expect(dateFocus.hasPrimaryFocus, isTrue);
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.linux),
+    );
+  }
+}
+
 /// Measured against actual consumer controls, including their painted surfaces.
 void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
   required Widget Function(FocusNode, VoidCallback) referenceAction,
 }) {
   historyToggleSemanticsContract(mount: mount);
+  referenceNavigationContract(mount: mount);
   for (final brightness in Brightness.values) {
     testWidgets(
       'native tooltip timers retire with empty text, reused candidates and disposed anchors $brightness',
