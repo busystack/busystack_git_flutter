@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:ui' show Tristate;
 import 'presentation_fixture.dart' show FixtureClient, repo;
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/semantics.dart';
 import 'package:yaru/yaru.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -11,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
 }) {
+  historyToggleSemanticsContract(mount: mount);
   for (final brightness in Brightness.values) {
     testWidgets(
       'native tooltip timers retire with empty text, reused candidates and disposed anchors $brightness',
@@ -696,4 +699,68 @@ class _WordsClient extends FixtureClient {
           : 'first new word\nunchanged\nadded line\n',
     ),
   );
+}
+
+/// Verify the semantic node exported to the native accessibility bridge.
+void historyToggleSemanticsContract({
+  required Future<void> Function(WidgetTester, Widget, Brightness) mount,
+}) {
+  for (final brightness in Brightness.values) {
+    testWidgets(
+      'native history toggle has one named state and semantic activation $brightness',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+        var visible = true, activations = 0;
+        try {
+          await mount(
+            tester,
+            SizedBox(
+              width: 800,
+              height: 500,
+              child: StatefulBuilder(
+                builder: (context, setState) => GitHistoryLayout(
+                  sidebar: const Text('Native references'),
+                  main: const Text('Native history'),
+                  toolbar: const Text('Native filters'),
+                  sidebarVisible: visible,
+                  onToggle: () => setState(() {
+                    visible = !visible;
+                    activations++;
+                  }),
+                  onCompactReferences: () {},
+                  sidebarFraction: .28,
+                  onResize: (_) {},
+                  minimumHistoryWidth: 400,
+                ),
+              ),
+            ),
+            brightness,
+          );
+          for (final expanded in [true, false, true]) {
+            final label = gitString(
+              tester.element(find.byType(GitHistoryLayout)),
+              GitMessages.branches,
+            );
+            final named = find.bySemanticsLabel(label);
+            expect(named, findsOneWidget);
+            final node = tester.getSemantics(named);
+            final data = node.getSemanticsData();
+            expect(data.flagsCollection.isButton, isTrue);
+            expect(data.flagsCollection.isToggled != Tristate.none, isTrue);
+            expect(data.flagsCollection.isToggled == Tristate.isTrue, expanded);
+            expect(data.hasAction(SemanticsAction.tap), isTrue);
+            expect(data.hasAction(SemanticsAction.focus), isTrue);
+            expect(visible, expanded);
+            node.owner!.performAction(node.id, SemanticsAction.tap);
+            await tester.pumpAndSettle();
+          }
+          expect(activations, 3);
+          expect(visible, isFalse);
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
+  }
 }

@@ -497,3 +497,14 @@ Supported APIs: [FocusableActionDetector.includeFocusSemantics](https://api.flut
 [Semantics](https://api.flutter.dev/flutter/widgets/Semantics-class.html), and the
 actual pinned Flutter 3.47.5/Yaru 10.2.0 sources. Do not infer an original tooltip
 rectangle's cause from this independently reproduced accessibility defect.
+
+### History toggle semantic ownership
+
+The neutral reference-sidebar toggle keeps its accessible toggled state, focus
+and activation on the same named node. The shared history layout merges the
+state wrapper and native action through the public `MergeSemantics` widget.
+A named parent with an actionable but unnamed child is not an accessible action.
+The shared `historyToggleSemanticsContract` dispatches through the semantic owner
+in both themes and in both actual host adapters; native AT-SPI activation remains
+an independent installed-application gate. Do not restore selected/accent painting
+to provide this state or alter third-party semantics implementations.

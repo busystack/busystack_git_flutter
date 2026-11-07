@@ -103,21 +103,23 @@ class FixtureClient implements GitClient {
   Stream<void> watch(RepositoryId repository) => Stream<void>.multi((_) {});
 }
 
-GitHost host() => GitHost(
-  presentation: const TestGitPresentation(),
-  icons: testGitIcons,
-  presentMenu: testGitMenu,
+GitHost host({GitPresentation presentation = const TestGitPresentation()}) =>
+    GitHost(
+      presentation: presentation,
+      icons: testGitIcons,
+      presentMenu: testGitMenu,
 
-  present: <T>(context, title, child, {bool expanded = false}) => showDialog<T>(
-    context: context,
-    builder: (_) => GitHostScope(
-      host: host(),
-      child: Dialog(child: child),
-    ),
-  ),
-  openDocument: (_, _, {snapshot}) async {},
-  prepareMutation: (_, _) async => true,
-  chooseDirectory: (_) async => null,
-  notify: (_) {},
-  drafts: MemoryGitDraftStore(),
-);
+      present: <T>(context, title, child, {bool expanded = false}) =>
+          showDialog<T>(
+            context: context,
+            builder: (_) => GitHostScope(
+              host: host(),
+              child: Dialog(child: child),
+            ),
+          ),
+      openDocument: (_, _, {snapshot}) async {},
+      prepareMutation: (_, _) async => true,
+      chooseDirectory: (_) async => null,
+      notify: (_) {},
+      drafts: MemoryGitDraftStore(),
+    );

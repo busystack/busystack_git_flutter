@@ -2257,15 +2257,17 @@ class _GitHistoryLayout extends StatelessWidget {
               top:
                   (needsSecondHeaderRow ? GitSizes.toolbarHeight : 0) +
                   (GitSizes.toolbarHeight - GitSizes.iconButton) / 2,
-              child: Semantics(
-                toggled: visible,
-                child: NativeGitIconAction(
-                  key: const ValueKey('git-history-sidebar-toggle'),
-                  tooltip: git.gitString(context, git.GitMessages.branches),
-                  icon: YaruIcons.sidebar,
-                  onPressed: wide
-                      ? control.onToggle
-                      : control.onToggleCompact ?? control.onToggle,
+              child: MergeSemantics(
+                child: Semantics(
+                  toggled: visible,
+                  child: NativeGitIconAction(
+                    key: const ValueKey('git-history-sidebar-toggle'),
+                    tooltip: git.gitString(context, git.GitMessages.branches),
+                    icon: YaruIcons.sidebar,
+                    onPressed: wide
+                        ? control.onToggle
+                        : control.onToggleCompact ?? control.onToggle,
+                  ),
                 ),
               ),
             ),
