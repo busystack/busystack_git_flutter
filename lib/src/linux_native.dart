@@ -1878,7 +1878,18 @@ class _NativeGitTooltipState extends State<_NativeGitTooltip> {
   @override
   void didUpdateWidget(_NativeGitTooltip oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.message != oldWidget.message) _hide();
+    if (widget.message != oldWidget.message) {
+      _timer?.cancel();
+      // OverlayPortal cannot mutate its overlay during this build phase.
+      // Retire only this anchor's overlay after the update; a disposed anchor
+      // cancels its timer and owns no deferred controller operation.
+      final message = widget.message;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.message == message && _controller.isShowing) {
+          _controller.hide();
+        }
+      });
+    }
   }
 
   @override
@@ -1976,9 +1987,7 @@ TextStyle gitFilenameStyle(
   }
 
   final target = MediaQuery.highContrastOf(context) ? 7.0 : 4.5;
-  final endpoint = background.computeLuminance() < .5
-      ? const Color(0xffffffff)
-      : const Color(0xff000000);
+  final endpoint = contrastColor(background);
   for (var step = 0; contrast(color) < target && step < 20; step++) {
     color = Color.lerp(color, endpoint, .12)!;
   }
