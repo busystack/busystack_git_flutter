@@ -306,12 +306,29 @@ final class GitHost {
   double rowHeight(BuildContext context) {
     final style = GitTheme.of(context).textTheme.bodyMedium;
     final painter = TextPainter(
-      text: TextSpan(text: 'Ag', style: style),
+      // Include supported filename scripts and localized bold change headings.
+      // Latin-only probes miss fallback-font ascent/descent, especially in RTL.
+      text: TextSpan(
+        style: style,
+        children: [
+          const TextSpan(text: 'Ag العربية 日本語 '),
+          TextSpan(
+            text: [
+              message(GitMessages.staged),
+              message(GitMessages.unstaged),
+              message(GitMessages.untracked),
+            ].join(' '),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+      locale: Localizations.maybeLocaleOf(context),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     );
     painter.layout();
-    final height = measureText?.call(context, style) ?? painter.height;
+    final measured = measureText?.call(context, style) ?? 0;
+    final height = measured > painter.height ? measured : painter.height;
     painter.dispose();
     return (height + spacing).clamp(minimumRowHeight, double.infinity);
   }

@@ -298,3 +298,14 @@ icon cell; their accessible descriptions include localized counts. Rename/copy
 paths belong to the side being described, rather than leaking index rename
 metadata into an ordinary unstaged modification. Wire-level regressions compare
 the actual native requests with rendered label bounds.
+
+Uniform Git tree/history rows measure supported filename scripts and localized
+bold group labels with the current locale and text scaler. A Latin-only ascent
+probe cannot bound Arabic fallback glyphs. The native font contract uses the
+existing Ubuntu and Noto Sans Arabic faces from the approved Linux baseline;
+missing fonts fail explicitly. Normal Files-grid insets are independent of this
+font-aware vertical sizing.
+The Linux renderer resolves official Yaru typography with Flutter's public
+localized geometry API before measuring and painting. Modal titles and footer
+captions use their complete painted styles and current locale; header height
+follows the measured title while its horizontal center remains the full modal.

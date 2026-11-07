@@ -103,7 +103,7 @@ final _gitYaruMetrics = <(Brightness, Color, bool), ThemeData>{};
 ThemeData _gitNativeTheme(BuildContext context) {
   final app = Theme.of(context);
   final highContrast = MediaQuery.highContrastOf(context);
-  final base = _gitYaruMetrics.putIfAbsent(
+  final pinned = _gitYaruMetrics.putIfAbsent(
     (app.brightness, app.colorScheme.primary, highContrast),
     () => highContrast
         ? app.brightness == Brightness.dark
@@ -112,6 +112,18 @@ ThemeData _gitNativeTheme(BuildContext context) {
         : app.brightness == Brightness.dark
         ? createYaruDarkTheme(primaryColor: app.colorScheme.primary)
         : createYaruLightTheme(primaryColor: app.colorScheme.primary),
+  );
+  final script =
+      Localizations.of<MaterialLocalizations>(
+        context,
+        MaterialLocalizations,
+      )?.scriptCategory ??
+      ScriptCategory.englishLike;
+  // Resolve the official locale geometry before measuring or painting. Raw
+  // Yaru text styles otherwise inherit different line heights inside controls.
+  final base = ThemeData.localize(
+    pinned,
+    pinned.typography.geometryThemeFor(script),
   );
   final scheme = GitPalette.resolve(
     base,
@@ -178,6 +190,29 @@ ThemeData _gitNativeTheme(BuildContext context) {
       style: action(base.textButtonTheme.style, foreground, transparent),
     ),
   );
+}
+
+({double titleWidth, double rowHeight}) _gitNativeHeaderMetrics(
+  BuildContext context,
+  String title,
+) {
+  final painter = TextPainter(
+    text: TextSpan(
+      text: title,
+      style: DefaultTextStyle.of(
+        context,
+      ).style.merge(_gitNativeTheme(context).textTheme.titleMedium),
+    ),
+    textDirection: Directionality.of(context),
+    textScaler: MediaQuery.textScalerOf(context),
+    locale: Localizations.maybeLocaleOf(context),
+  )..layout();
+  final result = (
+    titleWidth: painter.width,
+    rowHeight: math.max(GitSizes.toolbarHeight, painter.height + GitSpacing.sm),
+  );
+  painter.dispose();
+  return result;
 }
 
 final class NativeGitSurface {
@@ -989,10 +1024,11 @@ base class YaruGitPresentation implements git.GitPresentation {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
-        style: style?.textStyle?.resolve({}) ?? theme.textTheme.labelLarge,
+        style: theme.textTheme.bodyMedium!.merge(style?.textStyle?.resolve({})),
       ),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
+      locale: Localizations.maybeLocaleOf(context),
     )..layout();
     final width = painter.width + GitSpacing.lg * 2;
     painter.dispose();
@@ -2220,21 +2256,16 @@ class _GitHistoryLayout extends StatelessWidget {
           : control.compactSidebarVisible;
       final title = git.gitString(context, git.GitMessages.gitLog);
       final titleStyle = _gitNativeTheme(context).textTheme.titleMedium;
-      final titleMeasure = TextPainter(
-        text: TextSpan(text: title, style: titleStyle),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-      )..layout();
-      final titleStart = (bounds.maxWidth - titleMeasure.width) / 2;
+      final titleMeasure = _gitNativeHeaderMetrics(context, title);
+      final titleStart = (bounds.maxWidth - titleMeasure.titleWidth) / 2;
       final toggleStart = visible
           ? sidebarWidth + GitSpacing.headerInset
           : GitSpacing.headerInset;
       final needsSecondHeaderRow =
-          toggleStart < titleStart + titleMeasure.width + GitSpacing.sm &&
+          toggleStart < titleStart + titleMeasure.titleWidth + GitSpacing.sm &&
           toggleStart + GitSizes.iconButton + GitSpacing.sm > titleStart;
-      titleMeasure.dispose();
       final headerHeight =
-          GitSizes.toolbarHeight * (needsSecondHeaderRow ? 2 : 1);
+          titleMeasure.rowHeight * (needsSecondHeaderRow ? 2 : 1);
       final footer = control.footer == null
           ? null
           : Padding(
@@ -2248,7 +2279,7 @@ class _GitHistoryLayout extends StatelessWidget {
         child: Stack(
           children: [
             SizedBox(
-              height: GitSizes.toolbarHeight,
+              height: titleMeasure.rowHeight,
               child: Center(
                 child: Text(
                   title,
@@ -2260,8 +2291,8 @@ class _GitHistoryLayout extends StatelessWidget {
             PositionedDirectional(
               start: toggleStart,
               top:
-                  (needsSecondHeaderRow ? GitSizes.toolbarHeight : 0) +
-                  (GitSizes.toolbarHeight - GitSizes.iconButton) / 2,
+                  (needsSecondHeaderRow ? titleMeasure.rowHeight : 0) +
+                  (titleMeasure.rowHeight - GitSizes.iconButton) / 2,
               child: MergeSemantics(
                 child: Semantics(
                   toggled: visible,
@@ -2278,7 +2309,7 @@ class _GitHistoryLayout extends StatelessWidget {
             ),
             PositionedDirectional(
               end: GitSpacing.headerInset,
-              top: (GitSizes.toolbarHeight - kYaruWindowControlSize) / 2,
+              top: (titleMeasure.rowHeight - kYaruWindowControlSize) / 2,
               child: _NativeGitWindowClose(
                 onPressed: () => _nativeGitClose(context),
               ),
@@ -2405,6 +2436,7 @@ class GitNativeDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
+    final header = _gitNativeHeaderMetrics(context, title);
     final ownsHeader = git.GitDialogBody.ownsHeader(child);
     final content = DefaultTextStyle(
       style: _gitNativeTheme(context).textTheme.bodyMedium!,
@@ -2436,7 +2468,7 @@ class GitNativeDialog extends StatelessWidget {
                   children: [
                     if (!ownsHeader)
                       SizedBox(
-                        height: GitSizes.toolbarHeight,
+                        height: header.rowHeight,
                         child: Stack(
                           children: [
                             Center(
@@ -2451,7 +2483,9 @@ class GitNativeDialog extends StatelessWidget {
                             ),
                             PositionedDirectional(
                               end: GitSpacing.headerInset,
-                              top: 6,
+                              top:
+                                  (header.rowHeight - kYaruWindowControlSize) /
+                                  2,
                               child: _NativeGitWindowClose(
                                 onPressed: () => _nativeGitClose(context),
                               ),
