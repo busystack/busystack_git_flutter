@@ -389,7 +389,13 @@ void main() {
       await second.flushMessageDrafts();
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(body: GitWorkspace(session: first)),
+          home: Scaffold(
+            body: GitWorkspace(
+              session: first,
+              sidebarHeader: const SizedBox.shrink(),
+              mayCloseReview: () async => true,
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();

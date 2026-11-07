@@ -1,3 +1,4 @@
+import 'file_status.dart';
 import 'package:busystack_git/busystack_git.dart'
     show GitException, GitErrorCode;
 import 'messages.dart';
@@ -344,6 +345,8 @@ final class GitChangeRow extends StatelessWidget {
     this.selected = false,
     this.group = false,
     this.status,
+    this.statusDescription,
+    this.identity = GitEntryIdentity.file,
     this.tooltip,
     this.trailing,
   });
@@ -351,7 +354,9 @@ final class GitChangeRow extends StatelessWidget {
   final int depth;
   final bool selected, group;
   final bool? expanded;
-  final String? status, tooltip;
+  final GitFileStatus? status;
+  final String? statusDescription, tooltip;
+  final GitEntryIdentity identity;
   final Widget? trailing;
   final VoidCallback onTap;
   final VoidCallback? onDoubleTap, onToggle;

@@ -221,9 +221,7 @@ final class GitFeatureSidebar extends StatefulWidget {
     this.onTrust,
     this.selectedComparison,
     this.reviewContext,
-    this.destinations = const [],
   });
-  final List<GitSidebarDestination> destinations;
   final GitFeatureController controller;
   final GitSidebarView view;
   final ValueChanged<GitSidebarView> onSelectView;
@@ -248,12 +246,6 @@ final class _GitFeatureSidebarState extends State<GitFeatureSidebar> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller, session = controller.session;
-    final generation = controller.generation;
-    bool current() =>
-        mounted &&
-        widget.active &&
-        identical(widget.controller, controller) &&
-        controller.generation == generation;
     final log = widget.view == GitSidebarView.log;
     _logVisited |= log;
     return GitHostScope(
@@ -271,25 +263,6 @@ final class _GitFeatureSidebarState extends State<GitFeatureSidebar> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            GitFeatureHeader(
-              repository: session.repository,
-              view: widget.view,
-              onSelectView: (view) {
-                if (!current()) return;
-                controller.select(view);
-                widget.onSelectView(view);
-              },
-              destinations: [
-                for (final destination in widget.destinations)
-                  GitSidebarDestination(
-                    id: destination.id,
-                    label: destination.label,
-                    onSelect: () {
-                      if (current()) destination.onSelect();
-                    },
-                  ),
-              ],
-            ),
             Expanded(
               child: IndexedStack(
                 index: log ? 1 : 0,
@@ -423,9 +396,13 @@ final class GitReviewSurface extends StatelessWidget {
 /// Reusable content slot for hosts without an existing document-tab strip.
 /// Retained keyed surfaces keep each captured review's scroll/search/selection.
 final class GitReviewContent extends StatelessWidget {
-  const GitReviewContent({super.key, required this.controller, this.mayClose});
+  const GitReviewContent({
+    super.key,
+    required this.controller,
+    required this.mayClose,
+  });
   final GitFeatureController controller;
-  final Future<bool> Function()? mayClose;
+  final Future<bool> Function() mayClose;
   @override
   Widget build(BuildContext context) => GitHostScope(
     host: controller.session.host,
@@ -463,129 +440,6 @@ final class GitReviewContent extends StatelessWidget {
           ),
         ],
       ),
-    ),
-  );
-}
-
-/// Host navigation is data and callbacks; Git controls and choices are shared.
-final class GitSidebarDestination {
-  const GitSidebarDestination({
-    required this.id,
-    required this.label,
-    required this.onSelect,
-  });
-  final String id, label;
-  final VoidCallback onSelect;
-}
-
-final class GitFeatureHeader extends StatelessWidget {
-  const GitFeatureHeader({
-    super.key,
-    required this.repository,
-    required this.view,
-    required this.onSelectView,
-    this.destinations = const [],
-  });
-  final RepositoryId repository;
-  final GitSidebarView view;
-  final ValueChanged<GitSidebarView> onSelectView;
-  final List<GitSidebarDestination> destinations;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(
-      GitSpacing.mdPlus,
-      GitSpacing.sm,
-      GitSpacing.sm,
-      GitSpacing.sm,
-    ),
-    child: SizedBox(
-      height: GitSizes.iconButton,
-      child: Row(
-        children: [
-          const GitIcon(GitGlyph.repository, size: GitSizes.iconSm),
-          const SizedBox(width: GitSpacing.sm),
-          Expanded(
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: GitTooltip(
-                message: repository.root,
-                child: Text(
-                  repository.root
-                          .split(RegExp(r'[/\\]'))
-                          .where((part) => part.isNotEmpty)
-                          .lastOrNull ??
-                      repository.root,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: GitTheme.of(context).textTheme.bodyMedium,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: GitSpacing.sm),
-          GitSidebarSelector(
-            view: view,
-            onChanged: onSelectView,
-            destinations: destinations,
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// The same checked native menu is used in each host's main sidebar slot.
-final class GitSidebarSelector extends StatelessWidget {
-  const GitSidebarSelector({
-    super.key,
-    required this.view,
-    required this.onChanged,
-    this.destinations = const [],
-  });
-  final GitSidebarView view;
-  final ValueChanged<GitSidebarView> onChanged;
-  final List<GitSidebarDestination> destinations;
-  @override
-  Widget build(BuildContext context) => GitButton(
-    compact: true,
-    onPressed: () async {
-      final action = await GitHostScope.of(context)!
-          .menu(context, GitMessages.git, [
-            for (final destination in destinations)
-              GitMenuEntry(destination.id, destination.label, localize: false),
-            GitMenuEntry(
-              'commit',
-              GitMessages.commit,
-              checked: view == GitSidebarView.commit,
-              radio: true,
-              sectionStart: destinations.isNotEmpty,
-            ),
-            GitMenuEntry(
-              'log',
-              GitMessages.gitLog,
-              checked: view == GitSidebarView.log,
-              radio: true,
-            ),
-          ]);
-      if (!context.mounted || action == null) return;
-      if (action == 'commit' || action == 'log') {
-        onChanged(action == 'log' ? GitSidebarView.log : GitSidebarView.commit);
-      } else {
-        destinations
-            .where((entry) => entry.id == action)
-            .firstOrNull
-            ?.onSelect();
-      }
-    },
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GitLabel(
-          view == GitSidebarView.log ? GitMessages.gitLog : GitMessages.commit,
-        ),
-        const SizedBox(width: GitSpacing.sm),
-        const GitIcon(GitGlyph.down, size: 16),
-      ],
     ),
   );
 }
@@ -646,22 +500,46 @@ final class GitDialogForm extends StatelessWidget {
 
 /// Independent review tabs for content hosts without a document strip. All
 /// endpoints, selection and dismissal transitions remain in the shared model.
-final class GitReviewTabStrip extends StatelessWidget {
+final class GitReviewTabStrip extends StatefulWidget {
   const GitReviewTabStrip({
     super.key,
     required this.controller,
     required this.mayClose,
   });
   final GitFeatureController controller;
-  final Future<bool> Function()? mayClose;
-  Future<void> _close(BuildContext context, List<String> ids) async {
-    final generation = controller.generation;
-    if (mayClose == null ||
-        !await mayClose!() ||
+  final Future<bool> Function() mayClose;
+  @override
+  State<GitReviewTabStrip> createState() => _GitReviewTabStripState();
+}
+
+final class _GitReviewTabStripState extends State<GitReviewTabStrip> {
+  GitFeatureController get controller => widget.controller;
+  Future<void>? _pendingClose;
+  Future<void> _close(BuildContext context, List<String> ids) =>
+      _pendingClose ??= _guardedClose(
+        context,
+        ids,
+      ).whenComplete(() => _pendingClose = null);
+
+  Future<void> _guardedClose(BuildContext context, List<String> ids) async {
+    if (ids.isEmpty || controller.session.isDisposed) return;
+    final owner = controller;
+    final captured = [
+      for (final entry in owner.tabs.entries)
+        if (ids.contains(entry.id)) entry,
+    ];
+    final generation = owner.generation;
+    if (!await widget.mayClose() ||
         !context.mounted ||
-        controller.generation != generation)
+        owner.session.isDisposed ||
+        !identical(owner, controller) ||
+        owner.generation != generation ||
+        !captured.every(
+          (entry) =>
+              owner.tabs.entries.any((current) => identical(current, entry)),
+        ))
       return;
-    controller.closeEntries(ids);
+    owner.closeEntries(captured.map((entry) => entry.id));
   }
 
   Future<void> _menu(

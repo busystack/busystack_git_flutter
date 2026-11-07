@@ -551,6 +551,59 @@ final class GitSession extends ChangeNotifier {
     }
   }
 
+  Future<GitOutcome?> stagePaths(
+    List<RepoPath> paths, {
+    required GitSnapshot reviewed,
+    bool unstage = false,
+  }) async {
+    if (_disposed ||
+        running ||
+        paths.isEmpty ||
+        reviewed.repository != repository)
+      return null;
+    // Resolve directory selections once against the reviewed snapshot. Renames
+    // unstage both recorded paths; opaque nested repositories stay engine-owned.
+    final resolved = <RepoPath>{};
+    for (final requested in paths) {
+      final matches = reviewed.changes
+          .where(
+            (change) =>
+                change.path == requested ||
+                change.path.display.startsWith('${requested.display}/'),
+          )
+          .toList();
+      if (matches.isEmpty) resolved.add(requested);
+      for (final change in matches) {
+        resolved.add(change.path);
+        if (unstage && change.index == 'R' && change.originalPath != null)
+          resolved.add(change.originalPath!);
+      }
+    }
+    paths = resolved.toList();
+    final tokens = <String, String>{};
+    if (!unstage) {
+      for (final path in paths) {
+        final content = await client.content(
+          repository,
+          path,
+          const ContentVersion.working(),
+        );
+        if (_disposed) return null;
+        tokens[path.key] = content.token;
+      }
+    }
+    return mutate(
+      StagePaths(
+        paths,
+        expectedHead: reviewed.head,
+        expectedIndex: reviewed.indexToken,
+        expectedSnapshot: reviewed.token,
+        contentTokens: tokens,
+        unstage: unstage,
+      ),
+    );
+  }
+
   Future<GitOutcome?> mutate(GitMutation request) async {
     if (running || _disposed) return null;
     if (snapshot != null &&

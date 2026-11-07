@@ -1,5 +1,17 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const fileUnchanged = "Unchanged";
+  static const fileAdded = "Added";
+  static const fileModified = "Modified";
+  static const fileDeleted = "Deleted";
+  static const fileRenamed = "Renamed";
+  static const fileCopied = "Copied";
+  static const fileConflicted = "Conflicted";
+  static const fileIgnored = "Ignored";
+  static const fileTypeChanged = "Type changed";
+  static const fileStatusStaged = "{status}, staged";
+  static const fileStatusUnstaged = "{status}, unstaged";
+  static const fileStatusHistorical = "{status} in this commit";
   static const gitLog = "Git Log";
   static const closeOtherTabs = "Close other tabs";
   static const closeAllTabs = "Close all tabs";
@@ -423,7 +435,7 @@ abstract final class GitMessages {
   static const cancel = "Cancel";
   static const amendStaged = "Amend staged";
   static const commitStagedCount = "Commit staged ({count})";
-  static const commitAndPush = "Commit and Push…";
+  static const commitAndPush = "Commit and Push";
   static const noReadableCommitTemplateIsConfigured =
       "No readable commit template is configured.";
   static const commitIdentityAndHooks = "Commit identity and hooks";
@@ -1060,6 +1072,7 @@ abstract final class GitMessages {
     locked,
     openInBusyStack,
     statusNotInspected,
+
     dirty,
     clean,
     openWorkingFolder,
@@ -1822,5 +1835,17 @@ abstract final class GitMessages {
     trustWorkspace,
     closeOtherTabs,
     closeAllTabs,
+    fileUnchanged,
+    fileAdded,
+    fileModified,
+    fileDeleted,
+    fileRenamed,
+    fileCopied,
+    fileConflicted,
+    fileIgnored,
+    fileTypeChanged,
+    fileStatusStaged,
+    fileStatusUnstaged,
+    fileStatusHistorical,
   ];
 }

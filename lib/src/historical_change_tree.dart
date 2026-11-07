@@ -1,3 +1,4 @@
+import 'file_status.dart';
 import 'dart:async';
 import 'dart:ui' show SemanticsRole;
 import 'package:busystack_git/busystack_git.dart';
@@ -286,7 +287,9 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                     expanded: file == null
                         ? !_collapsed.contains(row.key)
                         : null,
-                    label: file == null ? row.title : '$path, ${file.index}',
+                    label: file == null
+                        ? row.title
+                        : '$path, ${gitFileStatusDescription(context, gitFileStatus(file, GitStatusContext.historical), GitStatusContext.historical)}',
                     child: GitChangeRow(
                       key: ValueKey('git-historical-row:${row.key}'),
                       title: row.title,
@@ -294,7 +297,19 @@ final class _HistoricalTreeState extends State<GitHistoricalChangeTree> {
                       selected: file != null
                           ? widget.selected == file.path
                           : _focus.hasFocus && _focused == index,
-                      status: file?.index,
+                      status: file == null
+                          ? null
+                          : gitFileStatus(file, GitStatusContext.historical),
+                      statusDescription: file == null
+                          ? null
+                          : gitFileStatusDescription(
+                              context,
+                              gitFileStatus(file, GitStatusContext.historical),
+                              GitStatusContext.historical,
+                            ),
+                      identity: file == null
+                          ? GitEntryIdentity.directory
+                          : gitEntryIdentity(file, GitStatusContext.historical),
                       tooltip: path,
                       expanded: file == null
                           ? !_collapsed.contains(row.key)

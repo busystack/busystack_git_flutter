@@ -128,7 +128,13 @@ Future<(GitSession, FixtureClient)> mount(
                   ),
                   child: const Text('Open plan'),
                 ),
-                Expanded(child: GitWorkspace(session: session)),
+                Expanded(
+                  child: GitWorkspace(
+                    session: session,
+                    sidebarHeader: const SizedBox.shrink(),
+                    mayCloseReview: () async => true,
+                  ),
+                ),
               ],
             ),
           ),

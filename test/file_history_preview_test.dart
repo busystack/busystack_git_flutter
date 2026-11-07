@@ -131,7 +131,12 @@ Future<GitSession> _mountHistory(
                   path: RepoPath.text('new/chapter.md'),
                 ),
               ),
-              Expanded(child: GitReviewContent(controller: session.feature)),
+              Expanded(
+                child: GitReviewContent(
+                  controller: session.feature,
+                  mayClose: () async => true,
+                ),
+              ),
             ],
           ),
         ),
@@ -256,7 +261,10 @@ void main() {
                     ),
                   ),
                   Expanded(
-                    child: GitReviewContent(controller: session.feature),
+                    child: GitReviewContent(
+                      controller: session.feature,
+                      mayClose: () async => true,
+                    ),
                   ),
                 ],
               ),

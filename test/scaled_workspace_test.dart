@@ -86,7 +86,11 @@ void main() {
       session.setDraft('retained prose');
       await scaled(
         tester,
-        GitWorkspace(session: session),
+        GitWorkspace(
+          session: session,
+          sidebarHeader: const SizedBox.shrink(),
+          mayCloseReview: () async => true,
+        ),
         const Size(1200, 650),
       );
       tester

@@ -28,3 +28,5 @@ export 'src/context_menu_keys.dart' show GitContextMenuKeys;
 export 'src/feature.dart';
 export 'src/linux_native.dart';
 export 'src/notifications.dart';
+
+export 'src/file_status.dart';

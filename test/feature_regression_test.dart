@@ -51,92 +51,108 @@ class _ChangingSnapshotClient extends FixtureClient {
 }
 
 void main() {
-  testWidgets(
-    'delayed sidebar menu cannot navigate a replacement repository or newer view',
-    (tester) async {
-      final original = host();
-      Completer<String?>? pending;
-      final configured = GitHost(
-        presentation: original.presentation,
-        icons: original.icons,
-        present: original.present,
-        presentMenu: (_, entries, {position}) {
-          expect(entries.map((entry) => entry.id), ['files', 'commit', 'log']);
-          pending = Completer<String?>();
-          return pending!.future;
+  for (final allow in [false, true]) {
+    for (final switchView in [false, true]) {
+      testWidgets(
+        'review close coalesces repeated requests and captures identity allow=$allow switch=$switchView',
+        (tester) async {
+          final session = GitSession(
+            client: FixtureClient(),
+            repository: repo,
+            host: host(),
+          );
+          await session.start();
+          final first = session.feature.capture(
+            GitComparison(
+              RepoPath.text('first.md'),
+              const ContentVersion.index(),
+              const ContentVersion.working(),
+            ),
+          );
+          final second = session.feature.capture(
+            GitComparison(
+              RepoPath.text('second.md'),
+              const ContentVersion.index(),
+              const ContentVersion.working(),
+            ),
+          );
+          session.feature.open(first);
+          session.feature.open(second);
+          final decision = Completer<bool>();
+          var prompts = 0;
+          await tester.pumpWidget(
+            GitTestApp(
+              home: Scaffold(
+                body: GitHostScope(
+                  host: session.host,
+                  child: GitReviewTabStrip(
+                    controller: session.feature,
+                    mayClose: () {
+                      prompts++;
+                      return decision.future;
+                    },
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final close = find.byType(GitIconButton).first;
+          await tester.tap(close);
+          await tester.pump();
+          await tester.tap(close);
+          await tester.pump();
+          expect(prompts, 1);
+          expect(session.feature.tabs.entries, [first, second]);
+          if (switchView) session.feature.select(GitSidebarView.log);
+          decision.complete(allow);
+          await tester.pumpAndSettle();
+          expect(
+            session.feature.tabs.entries,
+            allow && !switchView ? [second] : [first, second],
+          );
+          await tester.pumpWidget(const SizedBox());
+          session.dispose();
         },
-        openDocument: original.openDocument,
-        prepareMutation: original.prepareMutation,
-        chooseDirectory: original.chooseDirectory,
-        notify: original.notify,
-        drafts: original.drafts,
       );
-      final first = GitSession(
+    }
+  }
+
+  testWidgets(
+    'host navigation selects retained shared content without replacement chrome',
+    (tester) async {
+      final session = GitSession(
         client: FixtureClient(),
         repository: repo,
-        host: configured,
+        host: host(),
       );
-      final second = GitSession(
-        client: FixtureClient(),
-        repository: repo,
-        host: configured,
-      );
-      await first.start();
-      await second.start();
-      var active = first;
-      var choices = 0, files = 0;
-      late StateSetter rebuild;
+      await session.start();
+      session.setDraft('retained draft');
       await tester.pumpWidget(
         GitTestApp(
-          home: StatefulBuilder(
-            builder: (_, update) {
-              rebuild = update;
-              return Scaffold(
-                body: GitFeatureSidebar(
-                  controller: active.feature,
-                  view: active.feature.view,
-                  onSelectView: (_) => rebuild(() => choices++),
-                  onReview: (_) {},
-                  destinations: [
-                    GitSidebarDestination(
-                      id: 'files',
-                      label: 'Files',
-                      onSelect: () => files++,
-                    ),
-                  ],
-                ),
-              );
-            },
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: session.feature,
+              builder: (_, _) => GitFeatureSidebar(
+                controller: session.feature,
+                view: session.feature.view,
+                onSelectView: session.feature.select,
+                onReview: session.feature.open,
+              ),
+            ),
           ),
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(GitSidebarSelector));
-      await tester.pump();
-      rebuild(() => active = second);
-      await tester.pump();
-      pending!.complete('log');
+      expect(find.text('repo'), findsNothing);
+      expect(find.byType(GitChoice<GitSidebarView>), findsNothing);
+      session.feature.select(GitSidebarView.log);
       await tester.pumpAndSettle();
-      expect(choices, 0);
-      expect(first.feature.view, GitSidebarView.commit);
-      expect(second.feature.view, GitSidebarView.commit);
-      await tester.tap(find.byType(GitSidebarSelector));
-      await tester.pump();
-      second.feature.toggleSidebar();
-      pending!.complete('files');
+      session.feature.select(GitSidebarView.commit);
       await tester.pumpAndSettle();
-      expect(files, 0);
-      rebuild(() {});
-      await tester.pump();
-      await tester.tap(find.byType(GitSidebarSelector));
-      await tester.pump();
-      pending!.complete('log');
-      await tester.pumpAndSettle();
-      expect(choices, 1);
-      expect(second.feature.view, GitSidebarView.log);
+      expect(session.draft, 'retained draft');
       await tester.pumpWidget(const SizedBox());
-      first.dispose();
-      second.dispose();
+      session.dispose();
     },
   );
   testWidgets(
@@ -259,7 +275,13 @@ void main() {
       session.feature.open(review);
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(body: GitWorkspace(session: session)),
+          home: Scaffold(
+            body: GitWorkspace(
+              session: session,
+              sidebarHeader: const SizedBox.shrink(),
+              mayCloseReview: () async => true,
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -354,7 +376,13 @@ void main() {
       session.setDraft('unsaved authoring draft');
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(body: GitWorkspace(session: session)),
+          home: Scaffold(
+            body: GitWorkspace(
+              session: session,
+              sidebarHeader: const SizedBox.shrink(),
+              mayCloseReview: () async => true,
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();

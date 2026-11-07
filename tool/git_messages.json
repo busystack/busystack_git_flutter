@@ -318,7 +318,7 @@
   "cancel": "Cancel",
   "amendStaged": "Amend staged",
   "commitStagedCount": "Commit staged ({count})",
-  "commitAndPush": "Commit and Push…",
+  "commitAndPush": "Commit and Push",
   "noReadableCommitTemplateIsConfigured": "No readable commit template is configured.",
   "commitIdentityAndHooks": "Commit identity and hooks",
   "recentMessages": "Recent messages",
@@ -803,5 +803,17 @@
   "operationsRequireTrust": "Git operations require workspace trust.",
   "trustWorkspace": "Trust workspace",
   "closeOtherTabs": "Close other tabs",
-  "closeAllTabs": "Close all tabs"
+  "closeAllTabs": "Close all tabs",
+  "fileUnchanged": "Unchanged",
+  "fileAdded": "Added",
+  "fileModified": "Modified",
+  "fileDeleted": "Deleted",
+  "fileRenamed": "Renamed",
+  "fileCopied": "Copied",
+  "fileConflicted": "Conflicted",
+  "fileIgnored": "Ignored",
+  "fileTypeChanged": "Type changed",
+  "fileStatusStaged": "{status}, staged",
+  "fileStatusUnstaged": "{status}, unstaged",
+  "fileStatusHistorical": "{status} in this commit"
 }

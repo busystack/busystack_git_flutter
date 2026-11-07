@@ -241,7 +241,15 @@ class NativeGitActionButton extends StatefulWidget {
 }
 
 class NativeGitActionButtonState extends State<NativeGitActionButton> {
-  final _focusNode = FocusNode(debugLabel: 'Git action');
+  late final _focusNode = FocusNode(
+    debugLabel: 'Git action',
+    onKeyEvent: (_, event) {
+      if (event is KeyDownEvent && _pointerFocus)
+        setState(() => _pointerFocus = false);
+      return KeyEventResult.ignored;
+    },
+  );
+  var _pointerFocus = false;
   var _hovered = false;
   var _pressed = false;
   var _focused = false;
@@ -251,7 +259,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
     if (widget.onPressed == null) WidgetState.disabled,
     if (_hovered) WidgetState.hovered,
     if (_pressed) WidgetState.pressed,
-    if (_focused) WidgetState.focused,
+    if (_focused && !_pointerFocus) WidgetState.focused,
   };
 
   void _setPressed(bool value) {
@@ -293,7 +301,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
         ? null
         : _pressed
         ? colors.controlActive
-        : _hovered || _focused
+        : _hovered || (_focused && !_pointerFocus)
         ? colors.controlHover
         : null;
     final overlay = style?.overlayColor?.resolve(states) ?? fallbackOverlay;
@@ -377,7 +385,11 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
         focusNode: _focusNode,
         enabled: enabled,
         onFocusChange: (focused) {
-          if (_hasFocus != focused) setState(() => _hasFocus = focused);
+          if (_hasFocus != focused)
+            setState(() {
+              _hasFocus = focused;
+              if (!focused) _pointerFocus = false;
+            });
         },
         mouseCursor: enabled
             ? SystemMouseCursors.click
@@ -416,6 +428,7 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
             onTap: enabled ? _activate : null,
             onTapDown: enabled
                 ? (_) {
+                    _pointerFocus = true;
                     _focusNode.requestFocus();
                     _setPressed(true);
                   }
@@ -428,7 +441,15 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
       ),
     );
     return YaruTheme.maybeOf(context)?.focusBorders != false
-        ? YaruFocusBorder.primary(borderRadius: radius, child: action)
+        ? YaruFocusBorder.primary(
+            borderRadius: radius,
+            focused: true,
+            borderColor: _focused && !_pointerFocus
+                ? theme.colorScheme.primary
+                : theme.colorScheme.primary.withValues(alpha: 0),
+            onFocusChange: (_) {},
+            child: action,
+          )
         : action;
   }
 }
@@ -1202,9 +1223,7 @@ base class YaruGitPresentation implements git.GitPresentation {
       GitSizes.sidebarTreeControl +
       GitSpacing.xs +
       GitSizes.sidebarTreeControl +
-      GitSpacing.sm +
-      GitSizes.sidebarTreeControl +
-      GitSpacing.xs;
+      GitSpacing.sm;
   @override
   Widget changeRow(BuildContext context, git.GitChangeRow control) {
     if (control.trailing != null) {
@@ -1223,14 +1242,19 @@ base class YaruGitPresentation implements git.GitPresentation {
         onDoubleTap: control.onDoubleTap,
         onSecondaryTapUp: control.onSecondaryTapUp,
         tooltip: control.tooltip,
-        leading: Icon(
-          control.expanded != null
-              ? (control.expanded! ? YaruIcons.folder_open : YaruIcons.folder)
-              : _fileIcon(control.title),
-          size: GitSizes.iconSm,
-        ),
+        leading: control.identity == git.GitEntryIdentity.changeGroup
+            ? null
+            : Icon(switch (control.identity) {
+                git.GitEntryIdentity.directory =>
+                  control.expanded == true
+                      ? YaruIcons.folder_open
+                      : YaruIcons.folder,
+                git.GitEntryIdentity.symlink => YaruIcons.insert_link,
+                git.GitEntryIdentity.submodule => YaruIcons.folder,
+                _ => _fileIcon(control.title),
+              }, size: GitSizes.iconSm),
         status: control.status,
-        reserveStatus: true,
+        statusDescription: control.statusDescription,
       ),
     );
   }
@@ -1290,6 +1314,7 @@ base class YaruGitPresentation implements git.GitPresentation {
             title: control.title,
             depth: control.depth,
             leading: control.leading,
+            reserveDisclosure: false,
             selected: control.selected,
             expanded: control.expanded,
             onToggle: control.onToggle,
@@ -1914,6 +1939,58 @@ class _NativeGitTooltipState extends State<_NativeGitTooltip> {
   );
 }
 
+TextStyle gitFilenameStyle(
+  BuildContext context,
+  git.GitFileStatus? status, {
+  bool selected = false,
+}) {
+  final surface = NativeGitSurface.of(context);
+  final native = YaruColors.of(context);
+  var color = switch (status) {
+    git.GitFileStatus.added => native.success,
+    git.GitFileStatus.modified => native.link,
+    git.GitFileStatus.deleted => native.error,
+    git.GitFileStatus.renamed || git.GitFileStatus.copied => YaruColors.purple,
+    git.GitFileStatus.conflicted ||
+    git.GitFileStatus.typeChanged ||
+    git.GitFileStatus.unknown => native.warning,
+    git.GitFileStatus.untracked => native.link,
+    _ => surface.foreground,
+  };
+  final background = selected
+      ? Color.alphaBlend(surface.controlActive, surface.sidebar)
+      : surface.sidebar;
+  double contrast(Color value) {
+    final a = value.computeLuminance();
+    return [
+          surface.sidebar,
+          background,
+          Color.alphaBlend(surface.controlHover, surface.sidebar),
+          Color.alphaBlend(surface.controlActive, surface.sidebar),
+        ]
+        .map((surface) {
+          final b = surface.computeLuminance();
+          return (math.max(a, b) + .05) / (math.min(a, b) + .05);
+        })
+        .reduce(math.min);
+  }
+
+  final target = MediaQuery.highContrastOf(context) ? 7.0 : 4.5;
+  final endpoint = background.computeLuminance() < .5
+      ? const Color(0xffffffff)
+      : const Color(0xff000000);
+  for (var step = 0; contrast(color) < target && step < 20; step++) {
+    color = Color.lerp(color, endpoint, .12)!;
+  }
+  return TextStyle(
+    color: color,
+    fontStyle: status == git.GitFileStatus.untracked ? FontStyle.italic : null,
+    decoration: status == git.GitFileStatus.conflicted
+        ? TextDecoration.underline
+        : null,
+  );
+}
+
 class NativeGitTreeRow extends StatelessWidget {
   const NativeGitTreeRow({
     super.key,
@@ -1921,7 +1998,8 @@ class NativeGitTreeRow extends StatelessWidget {
     required this.depth,
     this.leading,
     this.status,
-    this.reserveStatus = false,
+    this.statusDescription,
+    this.reserveDisclosure = true,
     this.expanded,
     this.group = false,
     this.selected = false,
@@ -1934,9 +2012,10 @@ class NativeGitTreeRow extends StatelessWidget {
   final String title;
   final int depth;
   final Widget? leading;
-  final String? status, tooltip;
+  final git.GitFileStatus? status;
+  final String? statusDescription, tooltip;
   final bool? expanded;
-  final bool selected, group, reserveStatus;
+  final bool selected, group, reserveDisclosure;
   final VoidCallback? onToggle, onTap, onDoubleTap;
   final GestureTapUpCallback? onSecondaryTapUp;
   @override
@@ -1944,6 +2023,7 @@ class NativeGitTreeRow extends StatelessWidget {
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final row = Semantics(
       selected: selected,
+      tooltip: statusDescription,
       expanded: expanded,
       child: NativeGitRowSurface(
         enabled: true,
@@ -1975,61 +2055,68 @@ class NativeGitTreeRow extends StatelessWidget {
                   GitSizes.sidebarTreeDepthBase +
                   depth * GitSizes.sidebarTreeDepthIndent,
             ),
-            SizedBox.square(
-              dimension: GitSizes.sidebarTreeControl,
-              child: expanded == null
-                  ? null
-                  : GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: onToggle,
-                      child: AnimatedRotation(
-                        turns: expanded! ? (rtl ? -.25 : .25) : 0,
-                        duration: MediaQuery.disableAnimationsOf(context)
-                            ? Duration.zero
-                            : const Duration(milliseconds: 120),
-                        child: Icon(
-                          rtl ? YaruIcons.pan_start : YaruIcons.pan_end,
-                          size: GitSizes.sidebarTreeArrow,
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(width: GitSpacing.xs),
-            SizedBox.square(
-              dimension: GitSizes.sidebarTreeControl,
-              child: Center(child: leading),
-            ),
-            const SizedBox(width: GitSpacing.sm),
-            if (reserveStatus || status != null) ...[
+            if (reserveDisclosure || expanded != null) ...[
               SizedBox.square(
                 dimension: GitSizes.sidebarTreeControl,
-                child: Center(
-                  child: Text(
-                    status ?? '',
-                    style: _gitNativeTheme(context).textTheme.bodySmall,
-                  ),
-                ),
+                child: expanded == null
+                    ? null
+                    : GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onToggle,
+                        child: AnimatedRotation(
+                          turns: expanded! ? (rtl ? -.25 : .25) : 0,
+                          duration: MediaQuery.disableAnimationsOf(context)
+                              ? Duration.zero
+                              : const Duration(milliseconds: 120),
+                          child: Icon(
+                            rtl ? YaruIcons.pan_start : YaruIcons.pan_end,
+                            size: GitSizes.sidebarTreeArrow,
+                          ),
+                        ),
+                      ),
               ),
               const SizedBox(width: GitSpacing.xs),
+            ],
+            if (leading != null) ...[
+              SizedBox.square(
+                dimension: GitSizes.sidebarTreeControl,
+                child: Center(child: leading),
+              ),
+              const SizedBox(width: GitSpacing.sm),
             ],
             Expanded(
               child: Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: group
-                    ? _gitNativeTheme(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      )
-                    : null,
+                style: _gitNativeTheme(context).textTheme.bodyMedium?.merge(
+                  gitFilenameStyle(
+                    context,
+                    status,
+                    selected: selected,
+                  ).copyWith(fontWeight: group ? FontWeight.w700 : null),
+                ),
               ),
             ),
+            if (status == git.GitFileStatus.conflicted)
+              Icon(
+                YaruIcons.warning,
+                size: GitSizes.iconSm,
+                semanticLabel: statusDescription,
+              ),
             const SizedBox(width: GitSpacing.xs),
           ],
         ),
       ),
     );
-    return NativeGitTooltip.wrap(context, message: tooltip ?? '', child: row);
+    return NativeGitTooltip.wrap(
+      context,
+      message: [
+        tooltip,
+        statusDescription,
+      ].whereType<String>().where((s) => s.trim().isNotEmpty).join('\n'),
+      child: row,
+    );
   }
 }
 
@@ -2167,7 +2254,6 @@ class _GitHistoryLayout extends StatelessWidget {
                   key: const ValueKey('git-history-sidebar-toggle'),
                   tooltip: git.gitString(context, git.GitMessages.branches),
                   icon: YaruIcons.sidebar,
-                  selected: visible,
                   onPressed: wide
                       ? control.onToggle
                       : control.onToggleCompact ?? control.onToggle,

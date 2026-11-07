@@ -75,7 +75,12 @@ void main() {
           body: Row(
             children: [
               Expanded(child: GitLogView(session: session)),
-              Expanded(child: GitReviewContent(controller: session.feature)),
+              Expanded(
+                child: GitReviewContent(
+                  controller: session.feature,
+                  mayClose: () async => true,
+                ),
+              ),
             ],
           ),
         ),

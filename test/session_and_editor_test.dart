@@ -427,7 +427,7 @@ void main() {
       );
       await tester.enterText(find.byType(TextField), 'message stays');
       await tester.pump();
-      await tester.tap(find.text('Commit and Push…'));
+      await tester.tap(find.text('Commit and Push'));
       await tester.pumpAndSettle();
       expect(client.mutations, hasLength(1));
       expect(pushes, 0);
@@ -566,7 +566,13 @@ void main() {
       await session.start();
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(body: GitWorkspace(session: session)),
+          home: Scaffold(
+            body: GitWorkspace(
+              session: session,
+              sidebarHeader: const SizedBox.shrink(),
+              mayCloseReview: () async => true,
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -610,7 +616,13 @@ void main() {
       await session.start();
       await tester.pumpWidget(
         GitTestApp(
-          home: Scaffold(body: GitWorkspace(session: session)),
+          home: Scaffold(
+            body: GitWorkspace(
+              session: session,
+              sidebarHeader: const SizedBox.shrink(),
+              mayCloseReview: () async => true,
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();

@@ -1,3 +1,4 @@
+import 'file_status.dart';
 import 'presentation.dart';
 import 'feature.dart' show gitSidebarMinimumWidth;
 import 'dart:math' as math;
@@ -1568,7 +1569,7 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                                           },
                                         )
                                       : row.label
-                                : '${change.path.display}, ${gitString(context, row.group)}, ${change.index}${change.worktree}',
+                                : '${change.path.display}, ${gitFileStatusDescription(context, gitFileStatus(change, row.group == GitMessages.staged ? GitStatusContext.staged : GitStatusContext.unstaged), row.group == GitMessages.staged ? GitStatusContext.staged : GitStatusContext.unstaged)}',
                             child: GitChangeRow(
                               title: change == null && row.depth == 0
                                   ? gitString(context, row.group)
@@ -1582,16 +1583,43 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
                               onToggle: change == null
                                   ? () => _activate(row)
                                   : null,
-                              tooltip: change?.path.display ?? row.label,
+                              tooltip: change == null
+                                  ? row.label
+                                  : change.originalPath == null
+                                  ? change.path.display
+                                  : '${change.originalPath!.display} → ${change.path.display}',
                               status: change == null
                                   ? null
-                                  : change.conflicted
-                                  ? '!'
-                                  : change.untracked
-                                  ? '?'
-                                  : row.group == GitMessages.staged
-                                  ? change.index
-                                  : change.worktree,
+                                  : gitFileStatus(
+                                      change,
+                                      row.group == GitMessages.staged
+                                          ? GitStatusContext.staged
+                                          : GitStatusContext.unstaged,
+                                    ),
+                              statusDescription: change == null
+                                  ? null
+                                  : gitFileStatusDescription(
+                                      context,
+                                      gitFileStatus(
+                                        change,
+                                        row.group == GitMessages.staged
+                                            ? GitStatusContext.staged
+                                            : GitStatusContext.unstaged,
+                                      ),
+                                      row.group == GitMessages.staged
+                                          ? GitStatusContext.staged
+                                          : GitStatusContext.unstaged,
+                                    ),
+                              identity: change != null
+                                  ? gitEntryIdentity(
+                                      change,
+                                      row.group == GitMessages.staged
+                                          ? GitStatusContext.staged
+                                          : GitStatusContext.unstaged,
+                                    )
+                                  : row.depth == 0
+                                  ? GitEntryIdentity.changeGroup
+                                  : GitEntryIdentity.directory,
                               onPointerDown: (_) =>
                                   _pointerModifiers[row.key] = (
                                     shift: HardwareKeyboard
@@ -1876,26 +1904,10 @@ final class _GitChangeTreeState extends State<GitChangeTree> {
     final reviewContext = widget.reviewContext?.call();
     setState(() => _preparingStage = true);
     try {
-      final tokens = <String, String>{};
-      if (!unstage)
-        for (final path in paths) {
-          final content = await widget.session.client.content(
-            widget.session.repository,
-            path,
-            const ContentVersion.working(),
-          );
-          tokens[path.key] = content.token;
-        }
-      if (!mounted) return;
-      final result = await widget.session.mutate(
-        StagePaths(
-          paths,
-          expectedHead: snapshot.head,
-          expectedIndex: snapshot.indexToken,
-          unstage: unstage,
-          contentTokens: tokens,
-          expectedSnapshot: snapshot.token,
-        ),
+      final result = await widget.session.stagePaths(
+        paths,
+        reviewed: snapshot,
+        unstage: unstage,
       );
       if (mounted &&
           result?.completed == true &&

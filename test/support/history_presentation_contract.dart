@@ -3,6 +3,8 @@ import 'presentation_fixture.dart' show FixtureClient, repo;
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
+import 'package:yaru/yaru.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Measured against actual consumer controls, including their painted surfaces.
@@ -10,6 +12,146 @@ void historyPresentationContract({
   required Future<void> Function(WidgetTester, Widget, Brightness) mount,
 }) {
   for (final brightness in Brightness.values) {
+    testWidgets(
+      'native tooltip timers retire with empty text, reused candidates and disposed anchors $brightness',
+      (tester) async {
+        final message = ValueNotifier<String>('');
+        addTearDown(message.dispose);
+        await mount(
+          tester,
+          ValueListenableBuilder<String>(
+            valueListenable: message,
+            builder: (context, text, _) => text == 'disposed'
+                ? const Text('Replacement')
+                : NativeGitTooltip.wrap(
+                    context,
+                    message: text,
+                    child: const SizedBox(
+                      width: 160,
+                      height: 32,
+                      child: Text('Candidate'),
+                    ),
+                  ),
+          ),
+          brightness,
+        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        await mouse.moveTo(tester.getCenter(find.text('Candidate')));
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(OverlayPortal), findsNothing);
+        message.value = '   ';
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(OverlayPortal), findsNothing);
+        message.value = 'Reference label';
+        await tester.pump();
+        await mouse.moveTo(Offset.zero);
+        await mouse.moveTo(tester.getCenter(find.text('Candidate')));
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(find.text('Reference label'), findsOneWidget);
+        message.value = 'New candidate';
+        await tester.pump();
+        expect(find.text('Reference label'), findsNothing);
+        await mouse.moveTo(Offset.zero);
+        await mouse.moveTo(tester.getCenter(find.text('Candidate')));
+        await tester.pump(const Duration(milliseconds: 200));
+        message.value = 'disposed';
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.text('New candidate'), findsNothing);
+        await mouse.removePointer();
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
+      'native Date pointer and keyboard focus return without a stuck outline $brightness',
+      (tester) async {
+        await mount(
+          tester,
+          Builder(
+            builder: (context) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                NativeGitActionButton(
+                  role: NativeGitActionRole.standard,
+                  child: const Text('Date test'),
+                  onPressed: () async {
+                    await gitPresentation(context).dateRange(context);
+                  },
+                ),
+                NativeGitActionButton(
+                  role: NativeGitActionRole.standard,
+                  child: const Text('Next action'),
+                  onPressed: () {},
+                ),
+              ],
+            ),
+          ),
+          brightness,
+        );
+        double borderAlpha() {
+          final button = find.ancestor(
+            of: find.text('Date test'),
+            matching: find.byType(NativeGitActionButton),
+          );
+          final border = find.descendant(
+            of: button,
+            matching: find.byType(YaruFocusBorder),
+          );
+          final container = tester.widget<AnimatedContainer>(
+            find
+                .descendant(
+                  of: border,
+                  matching: find.byType(AnimatedContainer),
+                )
+                .first,
+          );
+          return ((container.foregroundDecoration! as BoxDecoration).border!
+                  as Border)
+              .top
+              .color
+              .a;
+        }
+
+        expect(borderAlpha(), 0);
+        await tester.tap(find.text('Date test'));
+        await tester.pumpAndSettle();
+        expect(find.text('Date filter'), findsOneWidget);
+        await tester.tap(
+          find
+              .text(
+                MaterialLocalizations.of(
+                  tester.element(find.text('Date filter')),
+                ).cancelButtonLabel,
+              )
+              .last,
+        );
+        await tester.pumpAndSettle();
+        expect(borderAlpha(), 0);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pumpAndSettle();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+        await tester.pumpAndSettle();
+        expect(borderAlpha(), greaterThan(0));
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(find.text('Date filter'), findsOneWidget);
+        await tester.tap(
+          find
+              .text(
+                MaterialLocalizations.of(
+                  tester.element(find.text('Date filter')),
+                ).cancelButtonLabel,
+              )
+              .last,
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      },
+    );
     testWidgets(
       'native history close exposes one named enabled button $brightness',
       (tester) async {

@@ -253,3 +253,41 @@ keyboard/accessibility semantics while retaining official Yaru rendering. Both
 hosts' complete action/presentation contracts pass after the correction. This is
 source/test evidence; new package builds and final native/installed acceptance
 must be completed before calling the correction accepted.
+
+## 2026-11-07 correction contract
+
+Application navigation belongs to each shell. BusyMark always retains its real
+workspace identity and ordinary sidebar-view menu. BusyFiles uses the same host
+sidebar header for Files, Commit and Git Log, with retained browser/Git subtrees.
+The shared feature takes a typed view and never constructs a repository-basename
+header or a Commit/Log selector. This supersedes the earlier header ownership
+statements above without retiring any shared workflows.
+
+`GitChangeRow` carries `GitFileStatus` and `GitEntryIdentity`. Index and working
+rows resolve their own XY side; historical rows resolve the selected commit's
+recorded index-side metadata. Filename styling belongs only to
+`gitFilenameStyle`, with approved native semantic roles and contrast correction.
+No status abbreviation cell or reserved status width is permitted. Change groups
+have disclosure/count semantics, without pretending to be filesystem folders.
+Reference roots/headings do not reserve nonexistent icons or disclosure cells.
+Filesystem siblings retain the Files disclosure grid (base 4, indent 14,
+control 18, gap 4, optional icon/control 18 plus gap 8; outer inset 8).
+The measured Files root filename begins 60 logical pixels inside its sidebar.
+
+Both footer labels come from localization: Commit and Commit and Push. Their
+shared measured width and horizontal spacing remain authoritative. The history
+toggle retains expanded/toggled accessibility state with neutral resting paint.
+Date and other text actions distinguish pointer focus from visible keyboard
+focus using supported public focus/border APIs. Official Yaru/Flutter remain
+unmodified.
+
+Closable review mounts require a nonnullable dismissal guard. Requests capture
+controller generation and exact review objects and coalesce repeated close
+requests. Both hosts retain their real draft/save/close registries. Files Stage
+and Unstage delegate to the canonical session's snapshot/content-token staging
+boundary; they do not orchestrate a second gateway mutation.
+
+Current correction evidence lives in the consumer's local
+`build/git-corrections-20261107/` directory. Baseline images are explicitly
+baseline evidence. Final source builds, installed parity and all native gates
+must be completed separately before this correction is accepted.

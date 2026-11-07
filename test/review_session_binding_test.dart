@@ -191,7 +191,12 @@ void main() {
             body: Row(
               children: [
                 Expanded(child: GitLogView(session: session)),
-                Expanded(child: GitReviewContent(controller: session.feature)),
+                Expanded(
+                  child: GitReviewContent(
+                    controller: session.feature,
+                    mayClose: () async => true,
+                  ),
+                ),
               ],
             ),
           ),
@@ -269,7 +274,13 @@ void main() {
     await session.start();
     await tester.pumpWidget(
       GitTestApp(
-        home: Scaffold(body: GitWorkspace(session: session)),
+        home: Scaffold(
+          body: GitWorkspace(
+            session: session,
+            sidebarHeader: const SizedBox.shrink(),
+            mayCloseReview: () async => true,
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();

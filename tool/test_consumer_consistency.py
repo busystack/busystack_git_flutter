@@ -2,10 +2,21 @@
 """Adversarial ownership checks; no Flutter rendering or source allowlists."""
 from pathlib import Path
 import unittest
-from check_consumer_consistency import check_screen_ownership, check_workspace_ownership, check_review_ownership
+from check_consumer_consistency import check_screen_ownership, check_workspace_ownership, check_review_ownership, check_feature_contracts
 
 
 class OwnershipTest(unittest.TestCase):
+    def test_navigation_geometry_captions_and_dismissal_reject_regressions(self):
+        root = Path(__file__).resolve().parents[1]
+        inputs = [(root / path).read_text() for path in ['lib/src/feature.dart', 'lib/src/linux_native.dart', 'lib/src/presentation.dart', 'lib/src/workspace.dart', 'lib/src/messages.dart']]
+        check_feature_contracts(*inputs)
+        for index, suffix in [(0, '\nGitFeatureHeader();'), (0, '\nGitSidebarSelector();'), (1, '\nreserveStatus: true'), (1, '\nselected: visible'), (2, '\nfinal String? status;')]:
+            mutated = inputs.copy(); mutated[index] += suffix
+            with self.subTest(suffix=suffix), self.assertRaises(AssertionError): check_feature_contracts(*mutated)
+        for index, old, new in [(0, 'required this.mayClose', 'this.mayClose'), (3, 'required this.mayCloseReview', 'this.mayCloseReview'), (4, 'Commit and Push"', 'Commit and Push…"')]:
+            mutated = inputs.copy(); mutated[index] = mutated[index].replace(old, new)
+            with self.subTest(old=old), self.assertRaises(AssertionError): check_feature_contracts(*mutated)
+
     def test_thin_host_mounts_are_permitted(self):
         check_screen_ownership('Widget build(c) => git.GitFeatureSidebar(controller: session.feature);', 'sidebar bridge')
         check_screen_ownership('Widget build(c) => git.GitWorkspace(session: session);', 'browser bridge')

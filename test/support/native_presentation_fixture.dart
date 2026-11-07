@@ -239,7 +239,7 @@ class TestGitPresentation implements GitPresentation {
             SizedBox(
               width: 24,
               child: c.expanded == null
-                  ? Text(c.status ?? '')
+                  ? const SizedBox.shrink()
                   : GestureDetector(
                       onTap: c.onToggle,
                       child: GitIcon(

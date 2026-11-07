@@ -2,8 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'dismissal.dart';
 import 'feature.dart';
 import 'host.dart';
-import 'messages.dart';
-import 'presentation.dart';
 import 'session.dart';
 
 /// Canonical sidebar and independent review-tab slots for hosts without a
@@ -13,18 +11,18 @@ final class GitWorkspace extends StatelessWidget {
   const GitWorkspace({
     super.key,
     required this.session,
-    this.onReturn,
     this.trusted = true,
     this.onTrust,
-    this.mayCloseReview,
+    required this.mayCloseReview,
+    required this.sidebarHeader,
     this.protectMessageDrafts = true,
   });
   final GitSession session;
   final bool trusted;
   final VoidCallback? onTrust;
-  final VoidCallback? onReturn;
   final bool protectMessageDrafts;
-  final Future<bool> Function()? mayCloseReview;
+  final Future<bool> Function() mayCloseReview;
+  final Widget sidebarHeader;
   @override
   Widget build(BuildContext context) => GitHostScope(
     host: session.host,
@@ -42,6 +40,7 @@ final class GitWorkspace extends StatelessWidget {
                   width: gitSidebarMinimumWidth(context),
                   child: Column(
                     children: [
+                      sidebarHeader,
                       Expanded(
                         child: GitFeatureSidebar(
                           controller: feature,
@@ -62,15 +61,6 @@ final class GitWorkspace extends StatelessWidget {
             Expanded(
               child: Column(
                 children: [
-                  if (onReturn != null)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: GitButton.icon(
-                        onPressed: onReturn,
-                        icon: const GitIcon(GitGlyph.back),
-                        label: const GitLabel(GitMessages.returnToFiles),
-                      ),
-                    ),
                   Expanded(
                     child: GitReviewContent(
                       controller: feature,

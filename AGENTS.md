@@ -3,7 +3,9 @@
 The parent BusyStack engineering and official-toolchain policy remains binding.
 
 The 2026-11-06 product decision requires one Git UI in both Linux hosts.
-GitFeatureSidebar owns the context header and Commit/Git Log navigation;
+The host owns its ordinary workspace header and application sidebar selector.
+Commit and Git Log are independent host destinations; GitFeatureSidebar owns
+their shared content without replacement navigation;
 GitReview/GitReviewTabs and GitReviewSurface own review identity/navigation;
 YaruGitPresentation and GitNativeDialog own native Git controls and layout.
 Both app presentation adapters are thin bridges without visual overrides.
@@ -57,7 +59,7 @@ its browser navigation, descendant discovery and authenticated daemon boundary.
 
 The required change-row builder and text inset come from the shared Linux
 implementation based on BusyMark's approved Files grid, so both hosts have the
-same file/folder/status slots, geometry and accessibility. Preserve flat native
+same conditional file/folder slots, geometry and accessibility; no status-letter column. Preserve flat native
 header actions; compact circular actions remain rejected even when aliased.
 BusyFiles consumes the same sidebar layout and preserves descendant discovery.
 

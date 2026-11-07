@@ -37,6 +37,18 @@ def check_review_ownership(source, location):
         assert re.search(r'Future<void> compareBase\(int stage\).*?GitDiffView\(.*?ContentKind\.conflictStage, stage: 1.*?ContentKind\.conflictStage, stage: stage', source, re.S), 'Only captured conflict-stage inspection is exempt'
 
 
+def check_feature_contracts(feature, native, presentation, workspace, messages):
+    assert not re.search(r'\b(?:GitFeatureHeader|GitSidebarSelector)\s*\(', feature), 'Git content must not replace application navigation'
+    assert 'reserveStatus' not in native, 'Reserved status column returned'
+    assert not re.search(r'final String\?\s+status\s*[,;]', presentation), 'Rows must receive semantic status'
+    assert re.search(r'gitFilenameStyle\(\s*context,\s*status', native), 'Shared filename status resolver missing'
+    assert re.search(r'commitAndPush\s*=\s*[\'"]Commit and Push[\'"]', messages), 'Commit and Push caption changed'
+    for source, parameter in [(feature, 'mayClose'), (workspace, 'mayCloseReview')]:
+        assert 'required this.' + parameter in source, 'Dismissal guard must be required'
+        assert not re.search(r'Function\(\)\?\s*' + parameter + r'\b', source), 'Dismissal guard must be nonnullable'
+    assert 'selected: visible' not in native, 'Expanded history sidebar must not select/accent its toggle'
+
+
 def main():
     workspace = Path(__file__).resolve().parents[2]
     shared = workspace / 'busystack_git_flutter'
@@ -47,6 +59,7 @@ def main():
     consumers = [p.resolve() for p in args.consumer] if args.consumer else [workspace / name for name in ['busymark', 'busyfiles']]
     assert consumers and len(set(consumers)) == len(consumers), 'Consumer selection must be explicit and non-duplicated'
     revision = subprocess.check_output(['git', '-C', str(shared), 'rev-parse', 'HEAD'], text=True).strip() if (shared / '.git').exists() else None
+    check_feature_contracts(*[(shared / path).read_text() for path in ['lib/src/feature.dart', 'lib/src/linux_native.dart', 'lib/src/presentation.dart', 'lib/src/workspace.dart', 'lib/src/messages.dart']])
     archives, revisions = [], []
     for root in consumers:
         name = root.name
