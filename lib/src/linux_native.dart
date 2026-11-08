@@ -1160,12 +1160,16 @@ base class YaruGitPresentation implements git.GitPresentation {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  YaruRadio<T>(
-                    value: segment.value,
-                    groupValue: control.selected.firstOrNull,
-                    onChanged: control.onSelectionChanged == null
-                        ? null
-                        : (value) => control.onSelectionChanged!({value as T}),
+                  NativeFocusIndicator(
+                    child: YaruRadio<T>(
+                      hasFocusBorder: false,
+                      value: segment.value,
+                      groupValue: control.selected.firstOrNull,
+                      onChanged: control.onSelectionChanged == null
+                          ? null
+                          : (value) =>
+                                control.onSelectionChanged!({value as T}),
+                    ),
                   ),
                   GestureDetector(
                     onTap: control.onSelectionChanged == null
@@ -1746,7 +1750,7 @@ class NativeGitIconAction extends StatelessWidget {
       button: true,
       enabled: onPressed != null,
       child: YaruTheme.maybeOf(context)?.focusBorders != false
-          ? YaruFocusBorder.primary(
+          ? NativeFocusIndicator(
               borderRadius: BorderRadius.circular(focusBorderRadius),
               child: button,
             )
@@ -1814,7 +1818,7 @@ class _NativeGitWindowCloseState extends State<_NativeGitWindowClose> {
       ),
     );
     return YaruTheme.maybeOf(context)?.focusBorders != false
-        ? YaruFocusBorder.primary(
+        ? NativeFocusIndicator(
             borderRadius: BorderRadius.circular(kYaruWindowControlSize / 2),
             child: action,
           )
@@ -1843,27 +1847,34 @@ class NativeGitCheckbox extends StatelessWidget {
           ? NativeGitSurface.of(context).disabledForeground
           : theme.colorScheme.onSurface,
     );
-    return YaruToggleButtonTheme(
-      data:
-          theme.extension<YaruToggleButtonThemeData>() ??
-          const YaruToggleButtonThemeData(),
-      child: YaruCheckboxTheme(
+    return NativeFocusIndicator(
+      enabled:
+          onChanged != null &&
+          YaruTheme.maybeOf(context)?.focusBorders != false,
+      child: YaruToggleButtonTheme(
         data:
-            theme.extension<YaruCheckboxThemeData>() ??
-            const YaruCheckboxThemeData(),
-        child: label == null
-            ? YaruCheckbox(
-                value: value,
-                tristate: tristate,
-                onChanged: onChanged,
-              )
-            : YaruCheckButton(
-                value: value,
-                tristate: tristate,
-                onChanged: onChanged,
-                contentPadding: EdgeInsets.zero,
-                title: Text(label!, style: titleStyle),
-              ),
+            theme.extension<YaruToggleButtonThemeData>() ??
+            const YaruToggleButtonThemeData(),
+        child: YaruCheckboxTheme(
+          data:
+              theme.extension<YaruCheckboxThemeData>() ??
+              const YaruCheckboxThemeData(),
+          child: label == null
+              ? YaruCheckbox(
+                  hasFocusBorder: false,
+                  value: value,
+                  tristate: tristate,
+                  onChanged: onChanged,
+                )
+              : YaruCheckButton(
+                  hasFocusBorder: false,
+                  value: value,
+                  tristate: tristate,
+                  onChanged: onChanged,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(label!, style: titleStyle),
+                ),
+        ),
       ),
     );
   }

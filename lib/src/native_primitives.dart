@@ -66,11 +66,12 @@ class NativeFocusIndicator extends StatefulWidget {
     this.borderRadius,
     this.borderStrokeAlign = BorderSide.strokeAlignInside,
     this.enabled = true,
+    this.editing = false,
   });
   final Widget child;
   final BorderRadiusGeometry? borderRadius;
   final double borderStrokeAlign;
-  final bool enabled;
+  final bool enabled, editing;
   @override
   State<NativeFocusIndicator> createState() => _NativeFocusIndicatorState();
 }
@@ -98,7 +99,8 @@ class _NativeFocusIndicatorState extends State<NativeFocusIndicator> {
 
   @override
   Widget build(BuildContext context) {
-    final visible = widget.enabled && _focused && _modality.keyboard;
+    final visible =
+        widget.enabled && _focused && (widget.editing || _modality.keyboard);
     final color = NativeFocusStyle.color(
       Theme.of(context).colorScheme,
       highContrast: MediaQuery.highContrastOf(context),

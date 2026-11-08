@@ -541,3 +541,10 @@ at 65% opacity (opaque in high contrast). Input fields keep their focused border
 for pointer editing too. Selection, hover, pressed state and accent roles remain
 independent. Upstream source is unmodified. See the maintained host rendered
 property tests and actual native evidence; a component name alone is insufficient.
+
+The focus boundary includes NativeGitIconAction, the keyboard-accessible native
+window-close wrapper, NativeGitCheckbox and choice-bar radios. Each keeps the
+upstream Yaru control and transfers its decoration through the public
+`hasFocusBorder` API. NativeFocusIndicator is the only first-party constructor of
+YaruFocusBorder. Its editing role permits an input's pointer focus without
+turning ordinary pointer-selected rows into keyboard-emphasis targets.

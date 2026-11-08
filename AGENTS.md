@@ -122,3 +122,9 @@ retaining focus nodes and traversal. NativeFocusStyle owns the restrained
 semantic outline and input focus borders; do not desaturate the app accent or
 change Flutter's global highlight strategy. Test actual mouse gestures on Linux,
 keyboard return, high contrast, both themes, RTL and enlarged text.
+
+The common NativeFocusIndicator is the sole first-party YaruFocusBorder owner.
+Git icon actions, modal close controls, checkboxes and radios must suppress only
+their upstream focus decoration through public APIs and use this owner. Preserve
+native controls, values, semantics and accent fills; never hide all focus or
+change global highlight strategy. Editing rows can retain pointer editing focus.
