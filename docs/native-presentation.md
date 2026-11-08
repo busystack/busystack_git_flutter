@@ -537,7 +537,7 @@ without consuming them or changing focus ownership/global highlight strategy.
 Pointer activation hides keyboard emphasis; the next keyboard event restores
 it, including on an already focused row. The pinned upstream Yaru border paints
 a two-pixel inside outline using `NativeFocusStyle`'s foreground semantic role
-at 60% opacity (opaque in high contrast). Input fields keep their focused border
+at 65% opacity (opaque in high contrast). Input fields keep their focused border
 for pointer editing too. Selection, hover, pressed state and accent roles remain
 independent. Upstream source is unmodified. See the maintained host rendered
 property tests and actual native evidence; a component name alone is insufficient.

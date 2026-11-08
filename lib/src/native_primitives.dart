@@ -8,7 +8,7 @@ import 'package:yaru/yaru.dart';
 
 abstract final class NativeFocusStyle {
   static Color color(ColorScheme scheme, {bool highContrast = false}) =>
-      scheme.onSurface.withValues(alpha: highContrast ? 1 : .6);
+      scheme.onSurface.withValues(alpha: highContrast ? 1 : .65);
 
   static InputDecorationThemeData inputs(
     InputDecorationThemeData base,
