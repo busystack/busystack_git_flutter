@@ -59,6 +59,17 @@ void main() {
         find.descendant(of: header, matching: find.text('Commit')),
         findsOneWidget,
       );
+      expect(
+        find.descendant(
+          of: header,
+          matching: find.byIcon(gitLinuxIcons[GitGlyph.branch]!),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byIcon(gitLinuxIcons[GitGlyph.selectCommit]!),
+        findsOneWidget,
+      );
       final branch = find.text('feature/long-native-context-branch');
       await tester.tap(branch);
       await tester.pumpAndSettle();
@@ -69,11 +80,11 @@ void main() {
         findsNothing,
       );
       final choose = find.byKey(const ValueKey('git-select-another-branch'));
-      expect(find.byTooltip('Select another branch'), findsOneWidget);
+      expect(find.byTooltip('Select branch'), findsOneWidget);
       final actions = find
           .descendant(of: header, matching: find.byType(GitIconButton))
           .last;
-      expect(tester.getRect(actions).left - tester.getRect(choose).right, 8);
+      expect(tester.getRect(actions).left - tester.getRect(choose).right, 4);
       expect(tester.getRect(header).right - tester.getRect(actions).right, 12);
       await tester.tap(choose);
       await tester.pumpAndSettle();

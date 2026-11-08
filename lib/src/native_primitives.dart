@@ -123,8 +123,7 @@ class _NativeFocusIndicatorState extends State<NativeFocusIndicator> {
   }
 }
 
-/// Local History's title/context hierarchy, shared with the Git presenters.
-/// Context may be an informational line or a view-specific native selector.
+/// Git-specific title/context geometry. Ordinary host UI owns its own headers.
 class NativeSidebarHeader extends StatelessWidget {
   const NativeSidebarHeader({
     super.key,
@@ -143,54 +142,49 @@ class NativeSidebarHeader extends StatelessWidget {
     final theme = Theme.of(context);
     return Padding(
       padding: padding,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (leading != null) ...[leading!, const SizedBox(width: 4)],
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: kYaruTitleBarItemHeight,
+            ),
+            child: Row(
               children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-                if (contextLine != null) ...[
-                  const SizedBox(height: 2),
-                  // A selector keeps its full native hit target. Informational
-                  // context shares the same centered line instead of sitting
-                  // above the selector's text in otherwise identical headers.
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minHeight: kYaruTitleBarItemHeight,
-                    ),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      heightFactor: 1,
-                      child: DefaultTextStyle.merge(
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        child: IconTheme.merge(
-                          data: IconThemeData(
-                            size: 16,
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                          child: contextLine!,
-                        ),
-                      ),
-                    ),
+                if (leading != null) ...[
+                  IconTheme.merge(
+                    data: const IconThemeData(size: 16),
+                    child: leading!,
                   ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+                for (final action in actions) ...[
+                  const SizedBox(width: 4),
+                  action,
                 ],
               ],
             ),
           ),
-          for (final action in actions) ...[const SizedBox(width: 8), action],
+          if (contextLine != null) ...[
+            const SizedBox(height: 4),
+            DefaultTextStyle.merge(
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              child: contextLine!,
+            ),
+          ],
         ],
       ),
     );

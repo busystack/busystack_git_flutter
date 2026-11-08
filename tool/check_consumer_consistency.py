@@ -92,7 +92,7 @@ def main():
         gate = root / ('tools/check_git_presentation.sh' if name == 'busymark' else 'scripts/verify.sh')
         assert 'check_native_presentation.dart' in gate.read_text(), f'{name}: missing native audit gate'
         host = 'BusyMarkGitPresentation' if name == 'busymark' else 'BusyFilesGitPresentation'
-        design = libraries / ('src/app/busymark_design.dart' if name == 'busymark' else 'src/app/busyfiles_design.dart')
+        design = libraries / ('src/git/application/shared_git_presentation.dart' if name == 'busymark' else 'src/app/busyfiles_design.dart')
         source = design.read_text()
         adapter = re.search(r'final class ' + host + r' extends git\.YaruGitPresentation\s*\{([^{}]*)\}', source)
         assert adapter, f'{name}: native Git renderer must be the canonical shared implementation'

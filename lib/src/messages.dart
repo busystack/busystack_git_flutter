@@ -18,8 +18,8 @@ abstract final class GitMessages {
   static const operationsRequireTrust =
       "Git operations require workspace trust.";
   static const trustWorkspace = "Trust workspace";
-  static const selectAnotherBranch = "Select another branch";
-  static const selectAnotherCommit = "Select another commit…";
+  static const selectAnotherBranch = "Select branch";
+  static const selectAnotherCommit = "Select commit";
   static const removeFilter = "Remove filter";
   static const noCommitsYet = "No commits yet";
   static const nativeMenuUnavailable =

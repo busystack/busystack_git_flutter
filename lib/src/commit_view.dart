@@ -524,26 +524,14 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
           GitLogHeader(
             key: const ValueKey('git-commit-sidebar-header'),
             title: GitMessages.commit,
-            subject: Row(
-              children: [
-                const GitIcon(GitGlyph.branch, size: 16),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: GitTooltip(
-                    message: branch,
-                    child: Text(
-                      branch,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-              ],
+            subject: GitTooltip(
+              message: branch,
+              child: Text(branch, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             choose: GitIconButton(
               key: const ValueKey('git-select-another-branch'),
               tooltip: gitString(context, GitMessages.selectAnotherBranch),
-              icon: const GitIcon(GitGlyph.branch),
+              icon: const GitIcon(GitGlyph.selectCommit),
               onPressed: () => _leaveReview(view.onBranches),
             ),
             actions: Builder(

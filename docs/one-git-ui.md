@@ -309,3 +309,18 @@ The Linux renderer resolves official Yaru typography with Flutter's public
 localized geometry API before measuring and painting. Modal titles and footer
 captions use their complete painted styles and current locale; header height
 follows the measured title while its horizontal center remains the full modal.
+
+## Sidebar design ownership correction (2026-11-08)
+
+BusyMark owns its ordinary focus, headers, rows, native controls and theme. Its
+Git presentation bridge lives in `src/git/application/shared_git_presentation.dart`,
+not the general design system. The resolved design-boundary check rejects shared
+Git primitives, aliases, re-exports and helper dependencies in ordinary host UI,
+while permitting the exact document-tab, lifecycle and Git mounting contracts.
+
+Git retains its own focus and header implementation. Commit and Log use a title
+icon, trailing selection/Actions controls and a neutral context line without a
+second icon. Branch/commit selectors both use the approved Yaru selection glyph.
+The branch selector still opens the complete Branches modal; the commit selector
+still opens the full explicitly confirmed history modal. This document records
+ownership; native acceptance remains independently required in both hosts.

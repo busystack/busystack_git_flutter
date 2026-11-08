@@ -240,7 +240,7 @@ const gitLinuxIcons = <git.GitGlyph, IconData>{
   git.GitGlyph.back: YaruIcons.go_previous,
   git.GitGlyph.branch: YaruIcons.share,
   git.GitGlyph.history: YaruIcons.history,
-  git.GitGlyph.selectCommit: YaruIcons.share,
+  git.GitGlyph.selectCommit: YaruIcons.selection,
   git.GitGlyph.repository: YaruIcons.folder,
   git.GitGlyph.refresh: YaruIcons.refresh,
   git.GitGlyph.copy: YaruIcons.copy,
@@ -1322,6 +1322,11 @@ base class YaruGitPresentation implements git.GitPresentation {
   Widget logHeader(BuildContext context, git.GitLogHeader control) =>
       NativeSidebarHeader(
         title: git.gitString(context, control.title),
+        leading: Icon(
+          control.title == git.GitMessages.commit
+              ? YaruIcons.share
+              : YaruIcons.history,
+        ),
         contextLine: control.subject,
         actions: [control.choose, control.actions],
       );
