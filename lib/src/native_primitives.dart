@@ -140,52 +140,55 @@ class NativeSidebarHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: padding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: kYaruTitleBarItemHeight,
-            ),
-            child: Row(
-              children: [
-                if (leading != null) ...[
-                  IconTheme.merge(
-                    data: const IconThemeData(size: 16),
-                    child: leading!,
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-                for (final action in actions) ...[
-                  const SizedBox(width: 4),
-                  action,
-                ],
-              ],
-            ),
-          ),
-          if (contextLine != null) ...[
-            const SizedBox(height: 4),
-            DefaultTextStyle.merge(
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+    return Semantics(
+      container: true,
+      child: Padding(
+        padding: padding,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: kYaruTitleBarItemHeight,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              child: contextLine!,
+              child: Row(
+                children: [
+                  if (leading != null) ...[
+                    IconTheme.merge(
+                      data: const IconThemeData(size: 16),
+                      child: leading!,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  for (final action in actions) ...[
+                    const SizedBox(width: 4),
+                    action,
+                  ],
+                ],
+              ),
             ),
+            if (contextLine != null) ...[
+              const SizedBox(height: 4),
+              DefaultTextStyle.merge(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                child: contextLine!,
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

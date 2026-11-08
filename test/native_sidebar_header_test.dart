@@ -22,6 +22,39 @@ class _HeaderClient extends FixtureClient {
 }
 
 void main() {
+  testWidgets('informational header stays separate from neighboring actions', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Column(
+              children: [
+                const NativeSidebarHeader(
+                  title: 'Git Log',
+                  contextLine: Text('Selected subject'),
+                ),
+                Semantics(
+                  button: true,
+                  onTap: () {},
+                  child: const Text('Commit details'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.byType(NativeSidebarHeader)),
+        matchesSemantics(label: 'Git Log\nSelected subject', isButton: false),
+      );
+    } finally {
+      semantics.dispose();
+    }
+  });
   testWidgets(
     'Commit context is informational; its separate action owns branch selection',
     (tester) async {
