@@ -142,6 +142,7 @@ class NativeSidebarHeader extends StatelessWidget {
     return Padding(
       padding: padding,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (leading != null) ...[leading!, const SizedBox(width: 4)],
           Expanded(
