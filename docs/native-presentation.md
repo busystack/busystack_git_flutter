@@ -548,3 +548,7 @@ upstream Yaru control and transfers its decoration through the public
 `hasFocusBorder` API. NativeFocusIndicator is the only first-party constructor of
 YaruFocusBorder. Its editing role permits an input's pointer focus without
 turning ordinary pointer-selected rows into keyboard-emphasis targets.
+
+Sidebar context occupies the upstream Yaru title-bar item minimum extent. Its
+text is centered for informational and interactive contexts alike; selectors
+keep their native hit targets. The title-to-context-container gap remains 2.

@@ -160,18 +160,30 @@ class NativeSidebarHeader extends StatelessWidget {
                 ),
                 if (contextLine != null) ...[
                   const SizedBox(height: 2),
-                  DefaultTextStyle.merge(
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                  // A selector keeps its full native hit target. Informational
+                  // context shares the same centered line instead of sitting
+                  // above the selector's text in otherwise identical headers.
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      minHeight: kYaruTitleBarItemHeight,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    child: IconTheme.merge(
-                      data: IconThemeData(
-                        size: 16,
-                        color: theme.colorScheme.onSurfaceVariant,
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      heightFactor: 1,
+                      child: DefaultTextStyle.merge(
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        child: IconTheme.merge(
+                          data: IconThemeData(
+                            size: 16,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                          child: contextLine!,
+                        ),
                       ),
-                      child: contextLine!,
                     ),
                   ),
                 ],
