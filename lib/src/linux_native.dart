@@ -1718,6 +1718,11 @@ class NativeGitIconAction extends StatelessWidget {
             alpha: states.contains(WidgetState.disabled) ? .38 : 1,
           ),
         ),
+        iconColor: WidgetStateProperty.resolveWith(
+          (states) => NativeGitSurface.of(context).foreground.withValues(
+            alpha: states.contains(WidgetState.disabled) ? .38 : 1,
+          ),
+        ),
         backgroundColor: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           final pressed = states.contains(WidgetState.pressed);

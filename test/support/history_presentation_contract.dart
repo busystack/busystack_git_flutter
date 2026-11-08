@@ -923,6 +923,17 @@ void historyToggleSemanticsContract({
               ),
             );
             expect(button.isSelected, expanded);
+            final renderedIcon = find.descendant(
+              of: find.byKey(const ValueKey('git-history-sidebar-toggle')),
+              matching: find.byType(Icon),
+            );
+            expect(
+              IconTheme.of(tester.element(renderedIcon)).color,
+              button.style!.foregroundColor!.resolve(
+                expanded ? {WidgetState.selected} : {},
+              ),
+            );
+
             final fill = button.style!.backgroundColor!.resolve(
               expanded ? {WidgetState.selected} : {},
             )!;
