@@ -10,10 +10,10 @@ class OwnershipTest(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         inputs = [(root / path).read_text() for path in ['lib/src/feature.dart', 'lib/src/linux_native.dart', 'lib/src/presentation.dart', 'lib/src/workspace.dart', 'lib/src/messages.dart']]
         check_feature_contracts(*inputs)
-        for index, suffix in [(0, '\nGitFeatureHeader();'), (0, '\nGitSidebarSelector();'), (1, '\nreserveStatus: true'), (1, '\nselected: visible'), (2, '\nfinal String? status;')]:
+        for index, suffix in [(0, '\nGitFeatureHeader();'), (0, '\nGitSidebarSelector();'), (1, '\nreserveStatus: true'), (2, '\nfinal String? status;')]:
             mutated = inputs.copy(); mutated[index] += suffix
             with self.subTest(suffix=suffix), self.assertRaises(AssertionError): check_feature_contracts(*mutated)
-        for index, old, new in [(0, 'required this.mayClose', 'this.mayClose'), (3, 'required this.mayCloseReview', 'this.mayCloseReview'), (4, 'Commit and Push"', 'Commit and Push…"')]:
+        for index, old, new in [(1, 'selected: visible', 'selected: false'), (0, 'required this.mayClose', 'this.mayClose'), (3, 'required this.mayCloseReview', 'this.mayCloseReview'), (4, 'Commit and Push"', 'Commit and Push…"')]:
             mutated = inputs.copy(); mutated[index] = mutated[index].replace(old, new)
             with self.subTest(old=old), self.assertRaises(AssertionError): check_feature_contracts(*mutated)
 

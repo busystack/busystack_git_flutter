@@ -916,6 +916,26 @@ void historyToggleSemanticsContract({
             expect(data.flagsCollection.isToggled == Tristate.isTrue, expanded);
             expect(data.hasAction(SemanticsAction.tap), isTrue);
             expect(data.hasAction(SemanticsAction.focus), isTrue);
+            final button = tester.widget<YaruIconButton>(
+              find.descendant(
+                of: find.byKey(const ValueKey('git-history-sidebar-toggle')),
+                matching: find.byType(YaruIconButton),
+              ),
+            );
+            expect(button.isSelected, expanded);
+            final fill = button.style!.backgroundColor!.resolve(
+              expanded ? {WidgetState.selected} : {},
+            )!;
+            expect(fill.a, expanded ? closeTo(.10, .005) : 0);
+            for (final state in [WidgetState.hovered, WidgetState.pressed]) {
+              expect(
+                button.style!.backgroundColor!.resolve({
+                  if (expanded) WidgetState.selected,
+                  state,
+                })!.a,
+                greaterThan(fill.a),
+              );
+            }
             expect(visible, expanded);
             node.owner!.performAction(node.id, SemanticsAction.tap);
             await tester.pumpAndSettle();

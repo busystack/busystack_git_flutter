@@ -129,12 +129,15 @@ class NativeSidebarHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.contextLine,
+    this.contextDetail,
+    this.contextDetailSpacing = 2,
     this.actions = const [],
     this.leading,
     this.padding = const EdgeInsetsDirectional.fromSTEB(12, 8, 12, 8),
   });
   final String title;
-  final Widget? contextLine, leading;
+  final Widget? contextLine, contextDetail, leading;
+  final double contextDetailSpacing;
   final List<Widget> actions;
   final EdgeInsetsGeometry padding;
   @override
@@ -185,6 +188,17 @@ class NativeSidebarHeader extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 child: contextLine!,
+              ),
+            ],
+            if (contextDetail != null) ...[
+              SizedBox(height: contextDetailSpacing),
+              DefaultTextStyle.merge(
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                child: contextDetail!,
               ),
             ],
           ],

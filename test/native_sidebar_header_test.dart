@@ -4,6 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
 class _HeaderClient extends FixtureClient {
+  _HeaderClient({
+    this.upstream,
+    this.ahead = 0,
+    this.behind = 0,
+    this.known = true,
+  });
+  final String? upstream;
+  final int ahead, behind;
+  final bool known;
   @override
   Future<GitSnapshot> status(
     RepositoryId repository, {
@@ -12,6 +21,10 @@ class _HeaderClient extends FixtureClient {
   }) async => GitSnapshot(
     repository: repository,
     token: 'snapshot',
+    upstream: upstream,
+    ahead: ahead,
+    behind: behind,
+    trackingCountsKnown: known,
     indexToken: 'index',
     branch: 'feature/long-native-context-branch',
     head: GitOid('a' * 40),
@@ -22,6 +35,75 @@ class _HeaderClient extends FixtureClient {
 }
 
 void main() {
+  for (final value in [
+    (
+      upstream: 'origin/main',
+      ahead: 0,
+      behind: 0,
+      known: true,
+      label: 'Tracks origin/main',
+    ),
+    (
+      upstream: 'origin/main',
+      ahead: 3,
+      behind: 2,
+      known: true,
+      label: 'Tracks origin/main · ↑3 ↓2',
+    ),
+    (
+      upstream: 'origin/main',
+      ahead: 0,
+      behind: 0,
+      known: false,
+      label: 'Tracks origin/main',
+    ),
+    (upstream: null, ahead: 0, behind: 0, known: false, label: 'No upstream'),
+  ]) {
+    testWidgets('Commit tracking ${value.label} known=${value.known}', (
+      tester,
+    ) async {
+      final session = GitSession(
+        client: _HeaderClient(
+          upstream: value.upstream,
+          ahead: value.ahead,
+          behind: value.behind,
+          known: value.known,
+        ),
+        repository: repo,
+        host: host(presentation: const YaruGitPresentation()),
+      );
+      addTearDown(session.dispose);
+      await session.start();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GitHostScope(
+            host: session.host,
+            child: Scaffold(
+              body: GitCommitView(
+                session: session,
+                onReview: (_) {},
+                onLog: () {},
+                onBranches: () {},
+                onPush: () {},
+                onMore: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final tracking = find.text(value.label);
+      expect(tracking, findsOneWidget);
+      final branch = find.text('feature/long-native-context-branch');
+      expect(tester.getTopLeft(tracking).dx, tester.getTopLeft(branch).dx);
+      expect(
+        tester.getTopLeft(tracking).dy - tester.getBottomLeft(branch).dy,
+        2,
+      );
+      expect(find.textContaining('↑0 ↓0'), findsNothing);
+    });
+  }
+
   testWidgets('informational header stays separate from neighboring actions', (
     tester,
   ) async {

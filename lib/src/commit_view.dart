@@ -528,6 +528,43 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
               message: branch,
               child: Text(branch, maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
+            contextDetail: snapshot == null
+                ? null
+                : GitTooltip(
+                    message:
+                        snapshot.upstream != null &&
+                            !snapshot.trackingCountsKnown
+                        ? '${gitString(context, GitMessages.cachedTracking)} · ${snapshot.upstream}'
+                        : view.trackingDescription?.call(snapshot) ??
+                              (snapshot.upstream == null
+                                  ? gitString(context, GitMessages.noUpstream)
+                                  : gitString(
+                                      context,
+                                      GitMessages
+                                          .cachedTrackingUpstreamAheadAheadBehindBehind,
+                                      values: {
+                                        'upstream': snapshot.upstream,
+                                        'ahead': snapshot.ahead,
+                                        'behind': snapshot.behind,
+                                      },
+                                    )),
+                    child: Semantics(
+                      label: snapshot.trackingCountsKnown
+                          ? view.trackingDescription?.call(snapshot)
+                          : null,
+                      excludeSemantics:
+                          snapshot.trackingCountsKnown &&
+                          view.trackingDescription != null,
+                      child: Text(
+                        snapshot.upstream == null
+                            ? gitString(context, GitMessages.noUpstream)
+                            : '${gitString(context, GitMessages.tracksArg0, values: {'arg0': snapshot.upstream})}${snapshot.trackingCountsKnown && (snapshot.ahead != 0 || snapshot.behind != 0) ? ' · ↑${snapshot.ahead} ↓${snapshot.behind}' : ''}',
+                        style: GitTheme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
             choose: GitIconButton(
               key: const ValueKey('git-select-another-branch'),
               tooltip: gitString(context, GitMessages.selectAnotherBranch),
@@ -548,38 +585,6 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if ((snapshot != null)) ...[
-                  SizedBox(height: host.spacing),
-                  GitTooltip(
-                    message:
-                        view.trackingDescription?.call(snapshot) ??
-                        (snapshot.upstream == null
-                            ? gitString(context, GitMessages.noUpstream)
-                            : gitString(
-                                context,
-                                GitMessages
-                                    .cachedTrackingUpstreamAheadAheadBehindBehind,
-                                values: {
-                                  'upstream': snapshot.upstream,
-                                  'ahead': snapshot.ahead,
-                                  'behind': snapshot.behind,
-                                },
-                              )),
-                    child: Semantics(
-                      label: view.trackingDescription?.call(snapshot),
-                      excludeSemantics: view.trackingDescription != null,
-                      child: Text(
-                        snapshot.upstream == null
-                            ? gitString(context, GitMessages.noUpstream)
-                            : '${snapshot.upstream} · ↑${snapshot.trackingCountsKnown ? snapshot.ahead : '?'} ↓${snapshot.trackingCountsKnown ? snapshot.behind : '?'}',
-                        style: GitTheme.of(context).textTheme.bodySmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ],
-
                 if (session.repository.bare)
                   const GitLabel(
                     GitMessages.bareRepositoryNoWorkingTreeOpenLogToInspectIts,

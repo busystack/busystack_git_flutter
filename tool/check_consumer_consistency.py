@@ -46,7 +46,8 @@ def check_feature_contracts(feature, native, presentation, workspace, messages):
     for source, parameter in [(feature, 'mayClose'), (workspace, 'mayCloseReview')]:
         assert 'required this.' + parameter in source, 'Dismissal guard must be required'
         assert not re.search(r'Function\(\)\?\s*' + parameter + r'\b', source), 'Dismissal guard must be nonnullable'
-    assert 'selected: visible' not in native, 'Expanded history sidebar must not select/accent its toggle'
+    assert 'selected: visible' in native, 'History toggle must reflect actual reference sidebar visibility'
+    assert 'foreground.withValues(alpha: alpha)' in native or ').foreground.withValues(alpha: alpha)' in native, 'Selected native action must retain neutral fill'
 
 
 def main():

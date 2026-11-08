@@ -1328,6 +1328,8 @@ base class YaruGitPresentation implements git.GitPresentation {
               : YaruIcons.history,
         ),
         contextLine: control.subject,
+        contextDetail: control.contextDetail,
+        contextDetailSpacing: GitSpacing.xxs,
         actions: [control.choose, control.actions],
       );
 
@@ -2295,6 +2297,7 @@ class _GitHistoryLayout extends StatelessWidget {
                   toggled: visible,
                   child: NativeGitIconAction(
                     key: const ValueKey('git-history-sidebar-toggle'),
+                    selected: visible,
                     tooltip: git.gitString(context, git.GitMessages.branches),
                     icon: YaruIcons.sidebar,
                     onPressed: wide
