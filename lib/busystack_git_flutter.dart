@@ -30,3 +30,5 @@ export 'src/linux_native.dart';
 export 'src/notifications.dart';
 
 export 'src/file_status.dart';
+
+export 'src/native_primitives.dart';

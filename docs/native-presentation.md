@@ -522,3 +522,22 @@ traversal-policy order. Search composition remains with its editor, and toolbar
 arrows do not enter the reference scope. A results-only closed loop traps native
 Tab before Date, Actions and the history table; the shared and actual-host
 contracts cover both traversal boundaries as well as local arrow wraparound.
+
+## Sidebar identity and focus
+
+`NativeSidebarHeader` uses Local History's body-medium title, a secondary
+body-small context line, directional 12 px content insets, 8 px vertical insets,
+2 px title/context gap, and 8 px action gaps. Titles and contexts elide within
+the available width. No context widget means no reserved second line. Context
+may retain a view-specific selector; Git branch/commit identities are plain text.
+Commit and Log have separate selection actions immediately before Actions.
+
+`NativeFocusIndicator` observes supported Flutter pointer and keyboard events,
+without consuming them or changing focus ownership/global highlight strategy.
+Pointer activation hides keyboard emphasis; the next keyboard event restores
+it, including on an already focused row. The pinned upstream Yaru border paints
+a two-pixel inside outline using `NativeFocusStyle`'s foreground semantic role
+at 60% opacity (opaque in high contrast). Input fields keep their focused border
+for pointer editing too. Selection, hover, pressed state and accent roles remain
+independent. Upstream source is unmodified. See the maintained host rendered
+property tests and actual native evidence; a component name alone is insufficient.

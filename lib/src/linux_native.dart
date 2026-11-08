@@ -2,6 +2,7 @@
 // primitives. Both hosts use these exact controls; no upstream source is copied
 // or modified. Native services, localization and modal lifetime stay host-owned.
 import 'dart:async';
+import 'native_primitives.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -157,6 +158,11 @@ ThemeData _gitNativeTheme(BuildContext context) {
   );
   return base.copyWith(
     colorScheme: scheme,
+    inputDecorationTheme: NativeFocusStyle.inputs(
+      base.inputDecorationTheme,
+      scheme,
+      highContrast: highContrast,
+    ),
     dividerColor: scheme.outlineVariant,
     textSelectionTheme: base.textSelectionTheme.copyWith(
       cursorColor: app.colorScheme.primary,
@@ -468,13 +474,9 @@ class NativeGitActionButtonState extends State<NativeGitActionButton> {
       ),
     );
     return YaruTheme.maybeOf(context)?.focusBorders != false
-        ? YaruFocusBorder.primary(
+        ? NativeFocusIndicator(
             borderRadius: radius,
-            focused: true,
-            borderColor: _focused
-                ? theme.colorScheme.primary
-                : theme.colorScheme.primary.withValues(alpha: 0),
-            onFocusChange: (_) {},
+            enabled: enabled,
             child: action,
           )
         : action;
@@ -919,7 +921,8 @@ class NativeGitRowSurfaceState extends State<NativeGitRowSurface> {
       ),
     );
     return YaruTheme.maybeOf(context)?.focusBorders != false && widget.clickable
-        ? YaruFocusBorder.primary(
+        ? NativeFocusIndicator(
+            enabled: widget.enabled,
             borderRadius: radius,
             borderStrokeAlign: BorderSide.strokeAlignInside,
             child: surface,
@@ -1312,26 +1315,12 @@ base class YaruGitPresentation implements git.GitPresentation {
         GitSpacing.sm,
       );
   @override
-  Widget logHeader(BuildContext context, git.GitLogHeader control) => Padding(
-    padding: const EdgeInsetsDirectional.fromSTEB(
-      GitSpacing.mdPlus,
-      0,
-      GitSpacing.sm,
-      GitSpacing.sm,
-    ),
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: GitSizes.iconButton),
-      child: Row(
-        children: [
-          Expanded(child: control.subject),
-          const SizedBox(width: GitSpacing.sm),
-          control.choose,
-          const SizedBox(width: GitSpacing.sm),
-          control.actions,
-        ],
-      ),
-    ),
-  );
+  Widget logHeader(BuildContext context, git.GitLogHeader control) =>
+      NativeSidebarHeader(
+        title: git.gitString(context, control.title),
+        contextLine: control.subject,
+        actions: [control.choose, control.actions],
+      );
 
   @override
   Widget historyLayout(BuildContext context, git.GitHistoryLayout control) =>

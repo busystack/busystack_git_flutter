@@ -815,5 +815,6 @@
   "fileTypeChanged": "Type changed",
   "fileStatusStaged": "{status}, staged",
   "fileStatusUnstaged": "{status}, unstaged",
-  "fileStatusHistorical": "{status} in this commit"
+  "fileStatusHistorical": "{status} in this commit",
+  "selectAnotherBranch": "Select another branch"
 }

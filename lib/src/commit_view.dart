@@ -508,80 +508,58 @@ final class _GitCommitViewState extends State<_GitCommitSession> {
     required double messageMinimum,
   }) {
     final snapshot = session.snapshot;
-    final branchButton = GitTooltip(
-      message:
-          view.branchActionLabel ?? gitString(context, GitMessages.branches),
-      child: Semantics(
-        label: view.branchActionLabel,
-        child:
-            gitPresentation(context).entryActionPlacement ==
-                GitEntryActionPlacement.contextMenu
-            ? GitActionRow(
-                dense: true,
-                leading: const GitIcon(GitGlyph.branch, size: 16),
-                title: Text(
-                  snapshot?.branch ??
-                      (snapshot?.head == null
-                          ? gitString(context, GitMessages.repository)
-                          : gitString(
-                              context,
-                              GitMessages.detachedArg0,
-                              values: {'arg0': snapshot!.head!.abbreviated},
-                            )),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                onTap: () => _leaveReview(view.onBranches),
-              )
-            : GitButton.icon(
-                onPressed: () => _leaveReview(view.onBranches),
-                icon: GitIcon(GitGlyph.branch, size: 16),
-                label: Text(
-                  snapshot?.branch ??
-                      (snapshot?.head == null
-                          ? gitString(context, GitMessages.repository)
-                          : gitString(
-                              context,
-                              GitMessages.detachedArg0,
-                              values: {'arg0': snapshot!.head!.abbreviated},
-                            )),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-      ),
-    );
+    final branch =
+        snapshot?.branch ??
+        (snapshot?.head == null
+            ? gitString(context, GitMessages.repository)
+            : gitString(
+                context,
+                GitMessages.detachedArg0,
+                values: {'arg0': snapshot!.head!.abbreviated},
+              ));
     return FocusTraversalGroup(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          GitLogHeader(
+            key: const ValueKey('git-commit-sidebar-header'),
+            title: GitMessages.commit,
+            subject: Row(
+              children: [
+                const GitIcon(GitGlyph.branch, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GitTooltip(
+                    message: branch,
+                    child: Text(
+                      branch,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            choose: GitIconButton(
+              key: const ValueKey('git-select-another-branch'),
+              tooltip: gitString(context, GitMessages.selectAnotherBranch),
+              icon: const GitIcon(GitGlyph.branch),
+              onPressed: () => _leaveReview(view.onBranches),
+            ),
+            actions: Builder(
+              builder: (anchor) => GitIconButton.actions(
+                tooltip: gitPresentation(
+                  context,
+                ).repositoryActionsLabel(context),
+                onPressed: () => _leaveReview(() => view.onMore(anchor)),
+              ),
+            ),
+          ),
           Padding(
-            padding: EdgeInsets.all(host.spacing),
+            padding: EdgeInsets.symmetric(horizontal: host.spacing),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: (Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: branchButton,
-                      )),
-                    ),
-                    SizedBox(width: host.spacing),
-
-                    Builder(
-                      builder: (anchor) => GitIconButton.actions(
-                        tooltip: gitPresentation(
-                          context,
-                        ).repositoryActionsLabel(context),
-                        onPressed: () =>
-                            _leaveReview(() => view.onMore(anchor)),
-                      ),
-                    ),
-                  ],
-                ),
-
                 if ((snapshot != null)) ...[
                   SizedBox(height: host.spacing),
                   GitTooltip(

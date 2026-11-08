@@ -112,3 +112,13 @@ Reference results keep Up/Down navigation local, including wraparound, while
 Tab and Shift+Tab leave the results scope for the surrounding dialog controls.
 Do not use a closed-loop results scope for all traversal or consume search
 composition keys. Verify the full native history Tab route after pointer Cancel.
+
+NativeSidebarHeader owns the title/context grid for both Git destinations and
+BusyMark's other sidebars. Commit's branch and Log's immutable subject are
+informational; separate compact selection actions precede Actions. Do not put
+selection back on the context label or duplicate it in Actions.
+NativeFocusIndicator separates pointer selection from keyboard emphasis while
+retaining focus nodes and traversal. NativeFocusStyle owns the restrained
+semantic outline and input focus borders; do not desaturate the app accent or
+change Flutter's global highlight strategy. Test actual mouse gestures on Linux,
+keyboard return, high contrast, both themes, RTL and enlarged text.

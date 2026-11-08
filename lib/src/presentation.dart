@@ -735,10 +735,12 @@ final class GitLogHeader extends StatelessWidget {
   const GitLogHeader({
     super.key,
     required this.subject,
+    this.title = GitMessages.gitLog,
     required this.choose,
     required this.actions,
   });
   final Widget subject, choose, actions;
+  final String title;
   @override
   Widget build(BuildContext context) =>
       gitPresentation(context).logHeader(context, this);

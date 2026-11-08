@@ -1709,22 +1709,25 @@ final class _GitLogViewState extends State<GitLogView> {
     children: [
       GitLogHeader(
         key: const ValueKey('git-commit-header'),
-        subject: GitActionRow(
+        subject: Row(
           key: const ValueKey('git-selected-commit'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: const GitIcon(GitGlyph.history, size: 16),
-          title: GitTooltip(
-            message:
-                _selected?.subject ??
-                gitString(context, GitMessages.selectACommit),
-            child: Text(
-              _selected?.subject ??
-                  gitString(context, GitMessages.selectACommit),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+          children: [
+            const GitIcon(GitGlyph.history, size: 16),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GitTooltip(
+                message:
+                    _selected?.subject ??
+                    gitString(context, GitMessages.selectACommit),
+                child: Text(
+                  _selected?.subject ??
+                      gitString(context, GitMessages.selectACommit),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
-          ),
+          ],
         ),
         choose: GitIconButton(
           key: const ValueKey('git-select-another-commit'),

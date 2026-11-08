@@ -18,6 +18,7 @@ abstract final class GitMessages {
   static const operationsRequireTrust =
       "Git operations require workspace trust.";
   static const trustWorkspace = "Trust workspace";
+  static const selectAnotherBranch = "Select another branch";
   static const selectAnotherCommit = "Select another commit…";
   static const removeFilter = "Remove filter";
   static const noCommitsYet = "No commits yet";
@@ -1847,5 +1848,6 @@ abstract final class GitMessages {
     fileStatusStaged,
     fileStatusUnstaged,
     fileStatusHistorical,
+    selectAnotherBranch,
   ];
 }
