@@ -816,5 +816,6 @@
   "fileStatusStaged": "{status}, staged",
   "fileStatusUnstaged": "{status}, unstaged",
   "fileStatusHistorical": "{status} in this commit",
-  "selectAnotherBranch": "Select branch"
+  "selectAnotherBranch": "Select branch",
+  "directoryChanges": "Git changes: {immediate} directly in this directory, {descendant} in nested directories; {deleted} deleted. Review paths in Git Changes."
 }

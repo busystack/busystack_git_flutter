@@ -1,5 +1,7 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const directoryChanges =
+      "Git changes: {immediate} directly in this directory, {descendant} in nested directories; {deleted} deleted. Review paths in Git Changes.";
   static const fileUnchanged = "Unchanged";
   static const fileAdded = "Added";
   static const fileModified = "Modified";

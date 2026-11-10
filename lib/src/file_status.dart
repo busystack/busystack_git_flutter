@@ -62,19 +62,7 @@ String gitFileStatusDescription(
   GitFileStatus status,
   GitStatusContext side,
 ) {
-  final label = gitString(context, switch (status) {
-    GitFileStatus.unchanged => GitMessages.fileUnchanged,
-    GitFileStatus.added => GitMessages.fileAdded,
-    GitFileStatus.modified => GitMessages.fileModified,
-    GitFileStatus.deleted => GitMessages.fileDeleted,
-    GitFileStatus.renamed => GitMessages.fileRenamed,
-    GitFileStatus.copied => GitMessages.fileCopied,
-    GitFileStatus.conflicted => GitMessages.fileConflicted,
-    GitFileStatus.untracked => GitMessages.untracked,
-    GitFileStatus.ignored => GitMessages.fileIgnored,
-    GitFileStatus.typeChanged => GitMessages.fileTypeChanged,
-    GitFileStatus.unknown => GitMessages.statusNotInspected,
-  });
+  final label = gitString(context, gitFileStatusMessage(status));
   return gitString(
     context,
     switch (side) {
@@ -85,3 +73,17 @@ String gitFileStatusDescription(
     values: {'status': label},
   );
 }
+
+String gitFileStatusMessage(GitFileStatus status) => switch (status) {
+  GitFileStatus.unchanged => GitMessages.fileUnchanged,
+  GitFileStatus.added => GitMessages.fileAdded,
+  GitFileStatus.modified => GitMessages.fileModified,
+  GitFileStatus.deleted => GitMessages.fileDeleted,
+  GitFileStatus.renamed => GitMessages.fileRenamed,
+  GitFileStatus.copied => GitMessages.fileCopied,
+  GitFileStatus.conflicted => GitMessages.fileConflicted,
+  GitFileStatus.untracked => GitMessages.untracked,
+  GitFileStatus.ignored => GitMessages.fileIgnored,
+  GitFileStatus.typeChanged => GitMessages.fileTypeChanged,
+  GitFileStatus.unknown => GitMessages.statusNotInspected,
+};

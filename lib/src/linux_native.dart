@@ -2006,13 +2006,30 @@ TextStyle gitFilenameStyle(
     git.GitFileStatus.added => native.success,
     git.GitFileStatus.modified => native.link,
     git.GitFileStatus.deleted => native.error,
-    git.GitFileStatus.renamed || git.GitFileStatus.copied => YaruColors.purple,
-    git.GitFileStatus.conflicted ||
+    git.GitFileStatus.renamed => YaruColors.purple,
+    git.GitFileStatus.copied => YaruColors.prussianGreen,
+    git.GitFileStatus.conflicted => native.warning,
     git.GitFileStatus.typeChanged ||
     git.GitFileStatus.unknown => native.warning,
-    git.GitFileStatus.untracked => native.link,
+    git.GitFileStatus.untracked => YaruColors.wartyBrown,
     _ => surface.foreground,
   };
+  color = _gitLegibleFilenameColor(context, color, selected: selected);
+  return TextStyle(
+    color: color,
+    fontStyle: status == git.GitFileStatus.untracked ? FontStyle.italic : null,
+    decoration: status == git.GitFileStatus.conflicted
+        ? TextDecoration.underline
+        : null,
+  );
+}
+
+Color _gitLegibleFilenameColor(
+  BuildContext context,
+  Color color, {
+  required bool selected,
+}) {
+  final surface = NativeGitSurface.of(context);
   final background = selected
       ? Color.alphaBlend(surface.controlActive, surface.sidebar)
       : surface.sidebar;
@@ -2036,12 +2053,32 @@ TextStyle gitFilenameStyle(
   for (var step = 0; contrast(color) < target && step < 20; step++) {
     color = Color.lerp(color, endpoint, .12)!;
   }
-  return TextStyle(
-    color: color,
-    fontStyle: status == git.GitFileStatus.untracked ? FontStyle.italic : null,
-    decoration: status == git.GitFileStatus.conflicted
-        ? TextDecoration.underline
-        : null,
+  return color;
+}
+
+/// The shared browser palette uses the same legibility correction as Git rows.
+TextStyle gitTreeDecorationStyle(
+  BuildContext context,
+  git.GitTreeDecoration decoration, {
+  bool selected = false,
+}) {
+  if (decoration.directoryState == null) {
+    return gitFilenameStyle(context, decoration.status, selected: selected);
+  }
+  final direct =
+      decoration.directoryState == git.GitDirectoryChangeState.immediate;
+  return gitFilenameStyle(
+    context,
+    git.GitFileStatus.modified,
+    selected: selected,
+  ).copyWith(
+    color: direct
+        ? null
+        : _gitLegibleFilenameColor(
+            context,
+            YaruColors.adwaitaSlate,
+            selected: selected,
+          ),
   );
 }
 
