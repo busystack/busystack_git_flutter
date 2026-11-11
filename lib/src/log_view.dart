@@ -106,7 +106,6 @@ final class _GitLogViewState extends State<GitLogView> {
   final _contextMenuKeys = GitContextMenuKeys();
   int _selectionAnchor = 0;
   GitOid? _parent;
-  GitOid? _inspectorOid;
   bool _choosing = false, _choiceSubmitted = false;
   bool get _selectionOnly =>
       widget.onChooseCommit != null && !widget.preserveActionsWhenChoosing;
@@ -134,12 +133,6 @@ final class _GitLogViewState extends State<GitLogView> {
     _observedHead = widget.session.snapshot?.head;
     widget.session.addListener(_repositoryChanged);
     _graphScroll.addListener(_graphScrolled);
-    if (widget.inspector) {
-      final saved = widget.session.viewState['inspectorRevision'];
-      _inspectorOid = saved is String
-          ? GitOid(saved)
-          : widget.session.snapshot?.head;
-    }
     if (widget.onChooseCommit != null) {
       final state = widget.session.viewState;
       _branches = widget.session.option('selectorBranches', true);
@@ -194,6 +187,10 @@ final class _GitLogViewState extends State<GitLogView> {
       _dialogRequest++;
     }
     if (oldWidget.session != widget.session || oldWidget.path != widget.path) {
+      if (oldWidget.session.repository != widget.session.repository) {
+        oldWidget.session.feature.clearLogSelection();
+        widget.session.feature.clearLogSelection();
+      }
       oldWidget.session.removeListener(_repositoryChanged);
       widget.session.addListener(_repositoryChanged);
       _readCancellation?.cancel();
@@ -204,12 +201,6 @@ final class _GitLogViewState extends State<GitLogView> {
       _clearReview();
       _path.text = widget.path?.utf8Path ?? '';
       _observedHead = widget.session.snapshot?.head;
-      if (widget.inspector) {
-        final saved = widget.session.viewState['inspectorRevision'];
-        _inspectorOid = saved is String
-            ? GitOid(saved)
-            : widget.session.snapshot?.head;
-      }
       unawaited(_load());
     } else if (widget.active && !oldWidget.active) {
       _repositoryChanged();
@@ -227,21 +218,14 @@ final class _GitLogViewState extends State<GitLogView> {
 
   Future<void> _checkReferences() async {
     if (widget.inspector) {
-      if (_selected == null &&
-          _inspectorOid == null &&
-          widget.session.snapshot?.head != null) {
-        _inspectorOid = widget.session.snapshot!.head;
-        await _loadInspector();
-      } else {
-        final session = widget.session, generation = _generation;
-        try {
-          final refs = await session.client.references(session.repository);
-          if (mounted && session == widget.session && generation == _generation)
-            setState(() => _references = refs);
-        } on GitException catch (error) {
-          if (mounted && session == widget.session && generation == _generation)
-            setState(() => _failure = error);
-        }
+      final session = widget.session, generation = _generation;
+      try {
+        final refs = await session.client.references(session.repository);
+        if (mounted && session == widget.session && generation == _generation)
+          setState(() => _references = refs);
+      } on GitException catch (error) {
+        if (mounted && session == widget.session && generation == _generation)
+          setState(() => _failure = error);
       }
       return;
     }
@@ -469,12 +453,8 @@ final class _GitLogViewState extends State<GitLogView> {
         session.setViewState('selectorCandidate', commit.oid.value);
       _parent = comparisonParent;
       if (widget.inspector) {
-        _inspectorOid = commit.oid;
-        widget.session.setViewState('inspectorRevision', commit.oid.value);
-        widget.session.setViewState(
-          'inspectorParent',
-          comparisonParent?.value ?? '',
-        );
+        session.feature.logCommit = commit;
+        session.feature.logParent = comparisonParent;
       }
       _files = [];
       _selectedFile = null;
@@ -1605,7 +1585,7 @@ final class _GitLogViewState extends State<GitLogView> {
     final generation = ++_generation, session = widget.session;
     _readCancellation?.cancel();
     final cancellation = _readCancellation = GitCancellation();
-    final oid = target ?? _inspectorOid;
+    final oid = target ?? session.feature.logCommit?.oid;
     setState(() {
       _loading = true;
       _failure = null;
@@ -1637,18 +1617,16 @@ final class _GitLogViewState extends State<GitLogView> {
         _references = refs;
         _loading = false;
       });
-      final savedParent = session.viewState['inspectorParent'];
+      final savedParent = session.feature.logParent;
       await _select(
         commit,
-        parent: commit.parents
-            .where((oid) => oid.value == savedParent)
-            .firstOrNull,
+        parent: commit.parents.where((oid) => oid == savedParent).firstOrNull,
       );
-      final selectedFile = session.viewState['inspectorFile'];
+      final selectedFile = session.feature.logFile;
       if (mounted && generation == _generation)
         setState(() {
           _selectedFile = _files
-              .where((file) => file.path.toJson() == selectedFile)
+              .where((file) => file.path == selectedFile)
               .firstOrNull;
         });
     } on Object catch (error) {
@@ -1673,7 +1651,7 @@ final class _GitLogViewState extends State<GitLogView> {
       final commit = await gitSelectHistoryCommit(
         context,
         session,
-        initialCommit: _selected?.oid ?? _inspectorOid,
+        initialCommit: _selected?.oid ?? session.feature.logCommit?.oid,
         onRoute: (route) => _selectorRoute = route,
       );
       if (!_ownsInteraction(session, epoch) || commit == null) return;
@@ -1681,7 +1659,7 @@ final class _GitLogViewState extends State<GitLogView> {
       // Retire an initial/refresh read that may still resolve the previous OID.
       _generation++;
       _readCancellation?.cancel();
-      session.setViewState('inspectorFile', '');
+      session.feature.logFile = null;
       setState(() {
         _loading = false;
         _failure = null;
@@ -1770,7 +1748,9 @@ final class _GitLogViewState extends State<GitLogView> {
         Expanded(child: _detailPane())
       else if (!_loading && _failure == null)
         const Expanded(
-          child: Center(child: GitLabel(GitMessages.noCommitsYet)),
+          child: Center(
+            child: GitLabel(GitMessages.selectACommitForDetailsAndChangedFiles),
+          ),
         ),
     ],
   );
@@ -1816,8 +1796,7 @@ final class _GitLogViewState extends State<GitLogView> {
     void highlight(GitChange file) {
       if (!current()) return;
       setState(() => _selectedFile = file);
-      if (widget.inspector)
-        session.setViewState('inspectorFile', file.path.toJson());
+      if (widget.inspector) session.feature.logFile = file.path;
     }
 
     void open(GitChange file) {
@@ -1887,7 +1866,7 @@ final class _GitLogViewState extends State<GitLogView> {
         generation != _selectionGeneration ||
         _selected?.oid != commit.oid)
       return;
-    widget.session.setViewState('inspectorFile', '');
+    widget.session.feature.logFile = null;
     unawaited(_loadInspector(target: parent));
   }
 
@@ -2125,7 +2104,7 @@ final class _GitLogViewState extends State<GitLogView> {
                                       generation,
                                     );
                                   } else {
-                                    session.setViewState('inspectorFile', '');
+                                    session.feature.logFile = null;
                                     unawaited(
                                       _select(
                                         commit,
@@ -2247,7 +2226,7 @@ final class _GitLogViewState extends State<GitLogView> {
                 GitButton(
                   onPressed: () {
                     if (widget.inspector) {
-                      widget.session.setViewState('inspectorFile', '');
+                      widget.session.feature.logFile = null;
                       unawaited(_loadInspector(target: parent));
                       return;
                     }
@@ -2307,8 +2286,7 @@ final class _GitLogViewState extends State<GitLogView> {
                 if (mounted &&
                     generation == _selectionGeneration &&
                     parent != null) {
-                  if (widget.inspector)
-                    widget.session.setViewState('inspectorFile', '');
+                  if (widget.inspector) widget.session.feature.logFile = null;
                   unawaited(_select(commit, parent: parent));
                 }
               },

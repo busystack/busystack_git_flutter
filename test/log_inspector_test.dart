@@ -95,6 +95,7 @@ Future<GitSession> _mount(
   _Client client, {
   void Function(GitComparison, List<GitComparison>)? review,
   GitPresentMenu? menu,
+  bool selectedCommit = true,
 }) async {
   tester.view.physicalSize = const Size(1200, 850);
   tester.view.devicePixelRatio = 1;
@@ -125,6 +126,7 @@ Future<GitSession> _mount(
     host: nativeHost,
   );
   await session.start();
+  if (selectedCommit) session.feature.logCommit = client.historyCommits.first;
   addTearDown(session.dispose);
   await tester.pumpWidget(
     GitTestApp(
@@ -148,6 +150,131 @@ Future<GitSession> _mount(
 }
 
 void main() {
+  testWidgets(
+    'unselected Log stays empty through status refresh and cancellation',
+    (tester) async {
+      final client = _Client();
+      final session = await _mount(tester, client, selectedCommit: false);
+      expect(find.text('Select commit to view changes'), findsOneWidget);
+      expect(find.byKey(const ValueKey('git-changed-files')), findsNothing);
+      expect(client.historyFilters, isEmpty);
+      expect(client.changed, isEmpty);
+      await session.refresh();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pumpAndSettle();
+      expect(find.text('Select commit to view changes'), findsOneWidget);
+      expect(client.historyFilters, isEmpty);
+      expect(client.changed, isEmpty);
+
+      await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Subject b'));
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(session.feature.logCommit, isNull);
+      expect(find.text('Select commit to view changes'), findsOneWidget);
+      expect(find.byKey(const ValueKey('git-changed-files')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select this commit'));
+      await tester.pumpAndSettle();
+      expect(session.feature.logCommit?.oid, _commit('b').oid);
+      expect(find.text('Subject b'), findsOneWidget);
+      expect(find.text('Changed files (1)'), findsOneWidget);
+      expect(find.text('new-${'b' * 40}.md'), findsOneWidget);
+      expect(find.text('Select commit to view changes'), findsNothing);
+    },
+  );
+
+  testWidgets('Log selection survives views and clears on repository changes', (
+    tester,
+  ) async {
+    final client = _Client();
+    final session = await _mount(tester, client, selectedCommit: false);
+    // A repository's old saved preferences are not an explicit selection.
+    session.setViewState('inspectorRevision', 'a' * 40);
+    final other = GitSession(
+      client: _Client(),
+      repository: const RepositoryId(
+        root: '/fixture/other',
+        gitDir: '/fixture/other/.git',
+        commonDir: '/fixture/other/.git',
+        objectFormat: 'sha1',
+      ),
+      host: session.host,
+    );
+    await other.start();
+    addTearDown(other.dispose);
+    final binding = ValueNotifier((
+      session: session,
+      view: GitSidebarView.log,
+      shown: true,
+    ));
+    addTearDown(binding.dispose);
+    await tester.pumpWidget(
+      GitTestApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 300,
+            child: ValueListenableBuilder(
+              valueListenable: binding,
+              builder: (_, value, _) => value.shown
+                  ? GitFeatureSidebar(
+                      controller: value.session.feature,
+                      view: value.view,
+                      onSelectView: (_) {},
+                      onReview: (_) {},
+                    )
+                  : const Text('Files view'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Select commit to view changes'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Subject b'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select this commit'));
+    await tester.pumpAndSettle();
+    binding.value = (
+      session: session,
+      view: GitSidebarView.commit,
+      shown: true,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Subject b'), findsNothing);
+    binding.value = (session: session, view: GitSidebarView.log, shown: true);
+    await tester.pumpAndSettle();
+    expect(find.text('Subject b'), findsOneWidget);
+    expect(find.text('new-${'b' * 40}.md'), findsOneWidget);
+    binding.value = (session: session, view: GitSidebarView.log, shown: false);
+    await tester.pumpAndSettle();
+    binding.value = (session: session, view: GitSidebarView.log, shown: true);
+    await tester.pumpAndSettle();
+    expect(find.text('Subject b'), findsOneWidget);
+    expect(find.text('new-${'b' * 40}.md'), findsOneWidget);
+    await session.refresh();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+    expect(session.feature.logCommit?.oid, _commit('b').oid);
+
+    binding.value = (session: other, view: GitSidebarView.log, shown: true);
+    await tester.pumpAndSettle();
+    expect(find.text('Select commit to view changes'), findsOneWidget);
+    expect(find.byKey(const ValueKey('git-changed-files')), findsNothing);
+    expect(session.feature.logCommit, isNull);
+    expect(other.feature.logCommit, isNull);
+    binding.value = (session: session, view: GitSidebarView.log, shown: true);
+    await tester.pumpAndSettle();
+    expect(find.text('Select commit to view changes'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'inspector information precedes independently scrollable files and ordinary activation captures endpoints',
     (tester) async {
@@ -216,11 +343,11 @@ void main() {
 
       await tester.tap(find.text('Subject b'));
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'a' * 40);
+      expect(session.feature.logCommit?.oid.value, 'a' * 40);
       expect(opened, 0);
       await tester.binding.handlePopRoute();
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'a' * 40);
+      expect(session.feature.logCommit?.oid.value, 'a' * 40);
       await tester.tap(find.byKey(const ValueKey('git-select-another-commit')));
       await tester.pumpAndSettle();
       final reopened = tester.widget<GitNativeTable>(
@@ -236,7 +363,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Select this commit'));
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'b' * 40);
+      expect(session.feature.logCommit?.oid.value, 'b' * 40);
       expect(opened, 0);
       expect(client.mutations, isEmpty);
       expect(find.byType(GitLogView), findsOneWidget);
@@ -313,7 +440,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'a' * 40);
+      expect(session.feature.logCommit?.oid.value, 'a' * 40);
       expect(find.byType(GitFailurePanel), findsOneWidget);
       expect(find.text('Subject b'), findsNothing);
     },
@@ -343,7 +470,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('Select this commit'));
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'b' * 40);
+      expect(session.feature.logCommit?.oid.value, 'b' * 40);
       pending.complete(
         HistoryPage(
           [_commit('a')],
@@ -353,7 +480,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'b' * 40);
+      expect(session.feature.logCommit?.oid.value, 'b' * 40);
       expect(find.text('new-${'b' * 40}.md'), findsOneWidget);
       expect(find.text('new-${'a' * 40}.md'), findsNothing);
       expect(client.mutations, isEmpty);
@@ -386,7 +513,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Select this commit'));
         await tester.pumpAndSettle();
-        expect(session.viewState['inspectorRevision'], 'b' * 40);
+        expect(session.feature.logCommit?.oid.value, 'b' * 40);
         pending.complete(action);
         await tester.pumpAndSettle();
         expect(opened, isEmpty);
@@ -405,7 +532,7 @@ void main() {
       await tester.ensureVisible(find.text('Parent bbbbbbbbbb'));
       await tester.tap(find.text('Parent bbbbbbbbbb'));
       await tester.pumpAndSettle();
-      expect(session.viewState['inspectorRevision'], 'b' * 40);
+      expect(session.feature.logCommit?.oid.value, 'b' * 40);
       expect(client.changed.last, (GitOid('b' * 40), null));
       expect(client.mutations, isEmpty);
     },

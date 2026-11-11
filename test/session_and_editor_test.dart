@@ -576,7 +576,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      session.setViewState('inspectorRevision', 'a' * 40);
+      session.feature.logCommit = client.historyCommits.single;
       await tester.enterText(find.byType(TextField), 'a retained draft');
       session.feature.select(GitSidebarView.log);
       await tester.pumpAndSettle();

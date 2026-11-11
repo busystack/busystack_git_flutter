@@ -631,7 +631,7 @@ abstract final class GitMessages {
   static const resetPlan = "Reset plan";
   static const branchBlockArg02 = " · branch block {arg0}";
   static const selectACommitForDetailsAndChangedFiles =
-      "Select a commit for details and changed files";
+      "Select commit to view changes";
   static const previewCombinedCommitMessages =
       "Preview combined commit messages…";
   static const altMovesTheSelectedCommitUnrelatedBranchReferencesWillNot =

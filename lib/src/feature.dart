@@ -101,6 +101,17 @@ final class GitReviewTabs {
 final class GitFeatureController extends ChangeNotifier {
   GitFeatureController(this.session);
   final GitSession session;
+  // Log selection belongs to this repository attachment, not saved preferences.
+  GitCommit? logCommit;
+  GitOid? logParent;
+  RepoPath? logFile;
+
+  void clearLogSelection() {
+    logCommit = null;
+    logParent = null;
+    logFile = null;
+  }
+
   GitReviewTabs _tabs = const GitReviewTabs();
   GitReviewTabs get tabs => _tabs;
   int _generation = 0;
@@ -240,7 +251,14 @@ final class _GitFeatureSidebarState extends State<GitFeatureSidebar> {
   @override
   void didUpdateWidget(GitFeatureSidebar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.controller != widget.controller) _logVisited = false;
+    if (oldWidget.controller != widget.controller) {
+      _logVisited = false;
+      if (oldWidget.controller.session.repository !=
+          widget.controller.session.repository) {
+        oldWidget.controller.clearLogSelection();
+        widget.controller.clearLogSelection();
+      }
+    }
   }
 
   @override

@@ -467,7 +467,7 @@
   "moveDown": "Move down",
   "resetPlan": "Reset plan",
   "branchBlockArg02": " · branch block {arg0}",
-  "selectACommitForDetailsAndChangedFiles": "Select a commit for details and changed files",
+  "selectACommitForDetailsAndChangedFiles": "Select commit to view changes",
   "previewCombinedCommitMessages": "Preview combined commit messages…",
   "altMovesTheSelectedCommitUnrelatedBranchReferencesWillNot": "Alt+↑/↓ moves the selected commit. Unrelated branch references will not be updated automatically.",
   "cancelPlan": "Cancel plan",
