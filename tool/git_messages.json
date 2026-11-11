@@ -817,5 +817,7 @@
   "fileStatusUnstaged": "{status}, unstaged",
   "fileStatusHistorical": "{status} in this commit",
   "selectAnotherBranch": "Select branch",
-  "directoryChanges": "Git changes: {immediate} directly in this directory, {descendant} in nested directories; {deleted} deleted. Review paths in Git Changes."
+  "directoryChanges": "Git changes: {immediate} directly in this directory, {descendant} in nested directories; {deleted} deleted. Review paths in Git Changes.",
+  "hideSidebarPanel": "Hide sidebar panel",
+  "showSidebarPanel": "Show sidebar panel"
 }

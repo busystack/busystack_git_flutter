@@ -905,7 +905,9 @@ void historyToggleSemanticsContract({
           for (final expanded in [true, false, true]) {
             final label = gitString(
               tester.element(find.byType(GitHistoryLayout)),
-              GitMessages.branches,
+              expanded
+                  ? GitMessages.hideSidebarPanel
+                  : GitMessages.showSidebarPanel,
             );
             final named = find.bySemanticsLabel(label);
             expect(named, findsOneWidget);

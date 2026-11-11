@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "native/git_table.h"
+#include "native/sidebar_icon.h"
 
 namespace {
 constexpr char kHostKey[] = "busystack-git-accessibility-host";
@@ -32,15 +33,18 @@ struct TableEntry {
 struct PluginState {
   GWeakRef view;
   GWeakRef channel;
+  GWeakRef icons_channel;
   std::map<std::string, std::unique_ptr<TableEntry>> tables;
   PluginState() {
     g_weak_ref_init(&view, nullptr);
     g_weak_ref_init(&channel, nullptr);
+    g_weak_ref_init(&icons_channel, nullptr);
   }
   ~PluginState() {
     tables.clear();
     g_weak_ref_clear(&view);
     g_weak_ref_clear(&channel);
+    g_weak_ref_clear(&icons_channel);
   }
 };
 
@@ -232,6 +236,48 @@ void respond_error(FlMethodCall* call, const char* code, const char* message) {
       FL_METHOD_RESPONSE(fl_method_error_response_new(code, message, nullptr));
   fl_method_call_respond(call, response, nullptr);
 }
+void icons_changed(GtkIconTheme*, BusystackGitFlutterPlugin* self) {
+  g_autoptr(GObject) channel =
+      G_OBJECT(g_weak_ref_get(&self->state->icons_channel));
+  if (channel)
+    fl_method_channel_invoke_method(FL_METHOD_CHANNEL(channel), "changed",
+                                    nullptr, nullptr, nullptr, nullptr);
+}
+void icon_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
+  auto* self = BUSYSTACK_GIT_FLUTTER_PLUGIN(data);
+  auto* args = fl_method_call_get_args(call);
+  int scale;
+  bool rtl;
+  if (strcmp(fl_method_call_get_name(call), "sidebar") != 0 ||
+      !integer(field(args, "scale"), &scale) || scale < 1 || scale > 8 ||
+      !boolean(field(args, "rtl"), &rtl)) {
+    respond_error(call, "invalid", "Invalid sidebar icon request");
+    return;
+  }
+  g_autoptr(GObject) view = G_OBJECT(g_weak_ref_get(&self->state->view));
+  if (!view) {
+    respond_error(call, "unavailable", "Native view is unavailable");
+    return;
+  }
+  auto* theme = gtk_icon_theme_get_for_screen(
+      gtk_widget_get_screen(GTK_WIDGET(view)));
+  g_autoptr(GError) error = nullptr;
+  g_autoptr(GdkPixbuf) pixbuf = busystack_git_ui::LoadSidebarIcon(
+      theme, scale, rtl ? GTK_TEXT_DIR_RTL : GTK_TEXT_DIR_LTR, &error);
+  gchar* bytes = nullptr;
+  gsize length = 0;
+  if (!pixbuf || !gdk_pixbuf_save_to_buffer(pixbuf, &bytes, &length, "png",
+                                            &error, nullptr)) {
+    respond_error(call, "unavailable", error ? error->message : "Icon load failed");
+    return;
+  }
+  g_autofree gchar* owned_bytes = bytes;
+  g_autoptr(FlValue) value = fl_value_new_uint8_list(
+      reinterpret_cast<const uint8_t*>(owned_bytes), length);
+  g_autoptr(FlMethodResponse) response =
+      FL_METHOD_RESPONSE(fl_method_success_response_new(value));
+  fl_method_call_respond(call, response, nullptr);
+}
 void method_call(FlMethodChannel*, FlMethodCall* call, gpointer data) {
   auto* self = BUSYSTACK_GIT_FLUTTER_PLUGIN(data);
   auto* state = self->state;
@@ -360,6 +406,18 @@ void busystack_git_flutter_plugin_register_with_registrar(
   g_weak_ref_set(&self->state->channel, channel);
   fl_method_channel_set_method_call_handler(channel, method_call,
                                             g_object_ref(self), g_object_unref);
+  g_autoptr(FlMethodChannel) icons =
+      fl_method_channel_new(fl_plugin_registrar_get_messenger(registrar),
+                            "busystack_git_flutter/icons", FL_METHOD_CODEC(codec));
+  g_weak_ref_set(&self->state->icons_channel, icons);
+  fl_method_channel_set_method_call_handler(icons, icon_call,
+                                            g_object_ref(self), g_object_unref);
+  if (view) {
+    auto* theme = gtk_icon_theme_get_for_screen(
+        gtk_widget_get_screen(GTK_WIDGET(view)));
+    g_signal_connect_object(theme, "changed", G_CALLBACK(icons_changed), self,
+                             static_cast<GConnectFlags>(0));
+  }
   if (view)
     g_signal_connect_object(view, "destroy", G_CALLBACK(clear_tables), self,
                             G_CONNECT_SWAPPED);

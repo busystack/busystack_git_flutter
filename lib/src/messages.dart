@@ -1,5 +1,7 @@
 // Shared message templates. Translation belongs to each host’s Flutter ARB catalog.
 abstract final class GitMessages {
+  static const hideSidebarPanel = "Hide sidebar panel";
+  static const showSidebarPanel = "Show sidebar panel";
   static const directoryChanges =
       "Git changes: {immediate} directly in this directory, {descendant} in nested directories; {deleted} deleted. Review paths in Git Changes.";
   static const fileUnchanged = "Unchanged";
@@ -1852,5 +1854,7 @@ abstract final class GitMessages {
     fileStatusHistorical,
     selectAnotherBranch,
     directoryChanges,
+    hideSidebarPanel,
+    showSidebarPanel,
   ];
 }

@@ -3,6 +3,7 @@
 // or modified. Native services, localization and modal lifetime stay host-owned.
 import 'dart:async';
 import 'native_primitives.dart';
+import 'sidebar_icon.dart';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1060,7 +1061,7 @@ base class YaruGitPresentation implements git.GitPresentation {
       child: NativeGitIconAction(
         focusBorderRadius: GitRadius.headerButton,
         tooltip: git.gitString(context, control.tooltip),
-        icon: glyph,
+        icon: Icon(glyph, size: GitSizes.iconSm),
         onPressed: control.onPressed,
       ),
     );
@@ -1625,7 +1626,10 @@ class _GitDateRangeState extends State<_GitDateRange> {
                     key: ValueKey('$key-clear'),
                     focusBorderRadius: GitRadius.headerButton,
                     tooltip: labels.deleteButtonTooltip,
-                    icon: YaruIcons.edit_clear,
+                    icon: const Icon(
+                      YaruIcons.edit_clear,
+                      size: GitSizes.iconSm,
+                    ),
                     onPressed: () => setState(entry.clear),
                   ),
           ),
@@ -1697,7 +1701,7 @@ class NativeGitIconAction extends StatelessWidget {
     this.selected = false,
   });
   final String tooltip;
-  final IconData icon;
+  final Widget icon;
   final VoidCallback? onPressed;
   final double focusBorderRadius;
   final bool selected;
@@ -1708,7 +1712,7 @@ class NativeGitIconAction extends StatelessWidget {
       isSelected: selected,
       tooltip: tooltip.trim().isEmpty ? null : tooltip,
       onPressed: onPressed,
-      icon: Icon(icon, size: GitSizes.iconSm),
+      icon: icon,
       iconSize: GitSizes.iconButton,
       padding: EdgeInsets.zero,
       style: ButtonStyle(
@@ -2340,8 +2344,13 @@ class _GitHistoryLayout extends StatelessWidget {
                   child: NativeGitIconAction(
                     key: const ValueKey('git-history-sidebar-toggle'),
                     selected: visible,
-                    tooltip: git.gitString(context, git.GitMessages.branches),
-                    icon: YaruIcons.sidebar,
+                    tooltip: git.gitString(
+                      context,
+                      visible
+                          ? git.GitMessages.hideSidebarPanel
+                          : git.GitMessages.showSidebarPanel,
+                    ),
+                    icon: const NativeGitSidebarIcon(),
                     onPressed: wide
                         ? control.onToggle
                         : control.onToggleCompact ?? control.onToggle,
