@@ -1,4 +1,5 @@
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yaru/yaru.dart';
@@ -77,6 +78,9 @@ void main() {
           .where((row) => row.status == GitFileStatus.deleted);
       expect(deleted, hasLength(1));
       await tester.tap(find.text('releasev051.md').first);
+      // The row also accepts double clicks. Let the gesture recognizer resolve
+      // the single click; pumpAndSettle alone does not advance this timer.
+      await tester.pump(kDoubleTapTimeout);
       await tester.pumpAndSettle();
       expect(opened, hasLength(1));
       expect(opened.single.path.utf8Path, 'topics/releasev051.md');

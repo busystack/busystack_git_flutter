@@ -1851,5 +1851,6 @@ abstract final class GitMessages {
     fileStatusUnstaged,
     fileStatusHistorical,
     selectAnotherBranch,
+    directoryChanges,
   ];
 }
