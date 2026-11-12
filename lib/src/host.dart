@@ -184,6 +184,7 @@ final class GitHost {
     this.translate,
     this.localize,
     this.spacing = 8,
+    this.actionShortcutsEnabled = true,
     this.minimumRowHeight = 30,
     this.measureText,
     required this.icons,
@@ -199,6 +200,10 @@ final class GitHost {
   /// Optional document-tab mount. Hosts using GitWorkspace consume the
   /// controller's tabs directly; an editor bridges its existing content strip.
   final ValueChanged<GitReview>? mountReview;
+
+  /// Hosts may reserve their keymap for application commands. Standard control
+  /// traversal, selection, editing and context-menu keys remain available.
+  final bool actionShortcutsEnabled;
   final GitPresentSurface _present;
   final GitPresentMenu presentMenu;
   final GitPresentation presentation;

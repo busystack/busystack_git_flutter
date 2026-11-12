@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -101,6 +102,77 @@ Future<void> _ready(WidgetTester tester) async {
 }
 
 void main() {
+  for (final enabled in [true, false]) {
+    testWidgets(
+      'host action-shortcut policy preserves comparison controls enabled=$enabled',
+      (tester) async {
+        final original = host();
+        final configured = GitHost(
+          actionShortcutsEnabled: enabled,
+          presentation: const TestGitPresentation(),
+          icons: testGitIcons,
+          presentMenu: original.presentMenu,
+          present: <T>(context, title, child, {bool expanded = false}) async =>
+              null,
+          openDocument: original.openDocument,
+          prepareMutation: original.prepareMutation,
+          chooseDirectory: original.chooseDirectory,
+          notify: original.notify,
+          drafts: MemoryGitDraftStore(),
+        );
+        final session = GitSession(
+          client: _Client(),
+          repository: repo,
+          host: configured,
+        );
+        await session.start();
+        addTearDown(session.dispose);
+        await tester.pumpWidget(
+          GitTestApp(
+            home: Scaffold(
+              body: GitDiffView(
+                session: session,
+                comparison: GitComparison(
+                  RepoPath.text('chapter/notes.md'),
+                  const ContentVersion.index(),
+                  const ContentVersion.working(),
+                ),
+                onPreviousFile: () {},
+                onNextFile: () {},
+              ),
+            ),
+          ),
+        );
+        await _ready(tester);
+        final bindings = tester
+            .widgetList<CallbackShortcuts>(
+              find.descendant(
+                of: find.byType(GitDiffView),
+                matching: find.byType(CallbackShortcuts),
+              ),
+            )
+            .expand((widget) => widget.bindings.keys)
+            .whereType<SingleActivator>()
+            .toList();
+        for (final key in [
+          LogicalKeyboardKey.f3,
+          LogicalKeyboardKey.f4,
+          LogicalKeyboardKey.f7,
+          LogicalKeyboardKey.keyF,
+        ]) {
+          expect(
+            bindings.any((binding) => binding.trigger == key),
+            enabled,
+            reason: '${key.keyLabel} must follow the host policy',
+          );
+        }
+        expect(find.byKey(const ValueKey('git-diff-mode')), findsOneWidget);
+        expect(find.byKey(const ValueKey('git-diff-overflow')), findsOneWidget);
+        expect(find.byType(SelectableRegion), findsWidgets);
+      },
+    );
+  }
+
   testWidgets(
     'tab header ownership, checked mode choices and every toolbar destination',
     (tester) async {

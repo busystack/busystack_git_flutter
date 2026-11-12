@@ -56,7 +56,7 @@ any workflow below. This is a source inventory, not a runtime acceptance claim.
 | Discover repository, descendant discovery in BusyFiles; init/clone without repository | Host attachment/entry, existing GitCreationView |
 | Limited passive inspection; trust/revoke, credential prompts | Shared trust notice; host authorization and existing prompt/revoke services |
 | Current branch, upstream and known/unknown ahead/behind | Commit context header; branch opens complete GitBranchesView |
-| Refresh/F5, Git commands/shortcuts | Commit Actions and host shortcut bridge |
+| Refresh and Git operations | Native controls and Actions menus; BusyMark has no Git action shortcuts |
 | Staged/Unstaged/Untracked/Conflicts, folders, folding, selection | Shared Commit sidebar tree |
 | File, selected, directory and group stage/unstage; discard/restore/delete, ignore; conflict resolution | Existing contextual Commit actions and guarded transactions |
 | Working file diff, original/open document, history/blame, source snapshots | Shared review tabs and existing file context/history workflows |

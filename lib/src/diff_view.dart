@@ -530,25 +530,28 @@ final class _GitDiffViewState extends State<GitDiffView> {
     final comparison = widget.comparison, host = widget.session.host;
     final generation = _generation;
     return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyF, control: true):
-            _openSearch,
-        if (_canOpenSource)
-          const SingleActivator(LogicalKeyboardKey.f4): () =>
-              _openSource(generation),
-        const SingleActivator(LogicalKeyboardKey.f7): () => _jump(1),
-        const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
-            _jump(-1),
-        const SingleActivator(LogicalKeyboardKey.f3): () => _stepSearch(1),
-        const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
-            _stepSearch(-1),
-        if (widget.onPreviousFile != null)
-          const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
-              widget.onPreviousFile!,
-        if (widget.onNextFile != null)
-          const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
-              widget.onNextFile!,
-      },
+      bindings: widget.session.host.actionShortcutsEnabled
+          ? {
+              const SingleActivator(LogicalKeyboardKey.keyF, control: true):
+                  _openSearch,
+              if (_canOpenSource)
+                const SingleActivator(LogicalKeyboardKey.f4): () =>
+                    _openSource(generation),
+              const SingleActivator(LogicalKeyboardKey.f7): () => _jump(1),
+              const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
+                  _jump(-1),
+              const SingleActivator(LogicalKeyboardKey.f3): () =>
+                  _stepSearch(1),
+              const SingleActivator(LogicalKeyboardKey.f3, shift: true): () =>
+                  _stepSearch(-1),
+              if (widget.onPreviousFile != null)
+                const SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true):
+                    widget.onPreviousFile!,
+              if (widget.onNextFile != null)
+                const SingleActivator(LogicalKeyboardKey.arrowRight, alt: true):
+                    widget.onNextFile!,
+            }
+          : const {},
       child: Column(
         children: [
           if (_stale)
@@ -2376,24 +2379,28 @@ final class _GitIndexEditorState extends State<GitIndexEditor> {
       revisionIdentity: () => _draftIdentity,
       confirmDiscard: () => _saving ? Future.value(false) : _confirmClose(),
       child: CallbackShortcuts(
-        bindings: {
-          const SingleActivator(LogicalKeyboardKey.f7): () =>
-              _navigateRegion(1),
-          const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
-              _navigateRegion(-1),
-          if (_activeTransfer(GitHighlightKind.staged) case final transfer?)
-            const SingleActivator(
-              LogicalKeyboardKey.arrowRight,
-              control: true,
-              alt: true,
-            ): transfer,
-          if (_activeTransfer(GitHighlightKind.unstaged) case final transfer?)
-            const SingleActivator(
-              LogicalKeyboardKey.arrowLeft,
-              control: true,
-              alt: true,
-            ): transfer,
-        },
+        bindings: widget.session.host.actionShortcutsEnabled
+            ? {
+                const SingleActivator(LogicalKeyboardKey.f7): () =>
+                    _navigateRegion(1),
+                const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
+                    _navigateRegion(-1),
+                if (_activeTransfer(GitHighlightKind.staged)
+                    case final transfer?)
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowRight,
+                    control: true,
+                    alt: true,
+                  ): transfer,
+                if (_activeTransfer(GitHighlightKind.unstaged)
+                    case final transfer?)
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowLeft,
+                    control: true,
+                    alt: true,
+                  ): transfer,
+              }
+            : const {},
         child: Column(
           children: [
             Directionality(

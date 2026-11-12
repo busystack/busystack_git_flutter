@@ -786,42 +786,48 @@ final class _ConflictState extends GitDialogState<GitConflictView> {
       revisionIdentity: () => (_draftRevision, _versionGeneration),
       confirmDiscard: _confirmDiscard,
       child: CallbackShortcuts(
-        bindings: {
-          if (text &&
-              !_busy &&
-              _ownsCorrespondence(_correspondence) &&
-              _remaining.isNotEmpty) ...{
-            const SingleActivator(LogicalKeyboardKey.f7): () => navigate(1),
-            const SingleActivator(LogicalKeyboardKey.f7, shift: true): () =>
-                navigate(-1),
-          },
-          if (text &&
-              !_busy &&
-              !stale &&
-              activeRegion >= 0 &&
-              regions.isNotEmpty) ...{
-            const SingleActivator(
-              LogicalKeyboardKey.arrowRight,
-              control: true,
-              alt: true,
-            ): _regionAction(
-              true,
-            ),
-            const SingleActivator(
-              LogicalKeyboardKey.arrowLeft,
-              control: true,
-              alt: true,
-            ): _regionAction(
-              false,
-            ),
-          },
-          if (_keepManualAction() case final keep?)
-            const SingleActivator(
-              LogicalKeyboardKey.keyK,
-              control: true,
-              alt: true,
-            ): keep,
-        },
+        bindings: widget.session.host.actionShortcutsEnabled
+            ? {
+                if (text &&
+                    !_busy &&
+                    _ownsCorrespondence(_correspondence) &&
+                    _remaining.isNotEmpty) ...{
+                  const SingleActivator(LogicalKeyboardKey.f7): () =>
+                      navigate(1),
+                  const SingleActivator(
+                    LogicalKeyboardKey.f7,
+                    shift: true,
+                  ): () =>
+                      navigate(-1),
+                },
+                if (text &&
+                    !_busy &&
+                    !stale &&
+                    activeRegion >= 0 &&
+                    regions.isNotEmpty) ...{
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowRight,
+                    control: true,
+                    alt: true,
+                  ): _regionAction(
+                    true,
+                  ),
+                  const SingleActivator(
+                    LogicalKeyboardKey.arrowLeft,
+                    control: true,
+                    alt: true,
+                  ): _regionAction(
+                    false,
+                  ),
+                },
+                if (_keepManualAction() case final keep?)
+                  const SingleActivator(
+                    LogicalKeyboardKey.keyK,
+                    control: true,
+                    alt: true,
+                  ): keep,
+              }
+            : const {},
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
