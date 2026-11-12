@@ -144,7 +144,8 @@ must not map to filled standard buttons. Resting fills, interaction states,
 localized truncation and actual modal/menu destinations are tested.
 
 BusyMark's Commit repository menu contains Refresh and excludes its duplicate
-Branches entry. F5 and the dedicated branch keyboard commands remain. Both hosts consume these same shared menu destinations. Workspace
+Branches entry. BusyMark invokes Git actions through controls and menus, with no
+Git action shortcuts. Both hosts consume these shared menu destinations. Workspace
 identity owns the full-path tooltip. The earlier branch-path-tooltip and
 standalone-Refresh mapping above is superseded by this refinement.
 

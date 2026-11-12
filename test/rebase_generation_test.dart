@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/presentation_fixture.dart';
 
@@ -92,6 +93,7 @@ Future<GitSession> showRebase(
   WidgetTester tester,
   RebaseClient client, {
   bool fromLog = true,
+  GitHost? configuredHost,
   Size size = const Size(1280, 1000),
   double textScale = 1,
 }) async {
@@ -99,7 +101,11 @@ Future<GitSession> showRebase(
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  final session = GitSession(client: client, repository: repo, host: host());
+  final session = GitSession(
+    client: client,
+    repository: repo,
+    host: configuredHost ?? host(),
+  );
   await session.start();
   addTearDown(session.dispose);
   await tester.pumpWidget(
@@ -133,6 +139,64 @@ Future<void> prepare(WidgetTester tester, RebaseClient client) async {
 }
 
 void main() {
+  for (final enabled in [true, false]) {
+    testWidgets(
+      'rebase action key policy keeps move controls enabled=$enabled',
+      (tester) async {
+        final original = host();
+        final configured = GitHost(
+          actionShortcutsEnabled: enabled,
+          presentation: const TestGitPresentation(),
+          icons: testGitIcons,
+          presentMenu: original.presentMenu,
+          present: <T>(context, title, child, {bool expanded = false}) async =>
+              null,
+          openDocument: original.openDocument,
+          prepareMutation: original.prepareMutation,
+          chooseDirectory: original.chooseDirectory,
+          notify: original.notify,
+          drafts: MemoryGitDraftStore(),
+        );
+        final client = RebaseClient()..delayDetails = false;
+        await showRebase(tester, client, configuredHost: configured);
+        await prepare(tester, client);
+        const key = ValueKey('git-rebase-plan-keys');
+        List<String> order() => tester
+            .widgetList<GitActionRow>(
+              find.descendant(
+                of: find.byKey(key),
+                matching: find.byType(GitActionRow),
+              ),
+            )
+            .map((row) => row.title)
+            .whereType<Text>()
+            .map((text) => text.data!)
+            .where((text) => text.startsWith('Commit '))
+            .toList();
+        expect(order(), ['Commit 2', 'Commit 3']);
+        final planBody = find
+            .descendant(of: find.byKey(key), matching: find.byType(Column))
+            .first;
+        Focus.of(tester.element(planBody)).requestFocus();
+        await tester.pump();
+        await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+        await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
+        await tester.pump();
+        expect(
+          order(),
+          enabled ? ['Commit 3', 'Commit 2'] : ['Commit 2', 'Commit 3'],
+        );
+        await tester.tap(find.text(enabled ? 'Move up' : 'Move down'));
+        await tester.pump();
+        expect(
+          order(),
+          enabled ? ['Commit 2', 'Commit 3'] : ['Commit 3', 'Commit 2'],
+        );
+      },
+    );
+  }
+
   testWidgets(
     'old detail success after clearing plan cannot index an empty selection',
     (tester) async {

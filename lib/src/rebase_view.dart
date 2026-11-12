@@ -659,8 +659,10 @@ final class _RebaseState extends GitDialogState<GitRebaseView> {
                   initial: .56,
                   minimum: 260,
                   first: Focus(
+                    key: const ValueKey('git-rebase-plan-keys'),
                     onKeyEvent: (_, event) {
-                      if (event is KeyDownEvent &&
+                      if (session.host.actionShortcutsEnabled &&
+                          event is KeyDownEvent &&
                           HardwareKeyboard.instance.isAltPressed &&
                           {
                             LogicalKeyboardKey.arrowUp,
