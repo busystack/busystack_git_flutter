@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """Verify the same reviewed shared source and native contract gates in both apps."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
-import tarfile
-from shared_source_archives import tree_digest
+from tempfile import TemporaryDirectory
+from shared_source_archives import materialize, tree_digest
 
 def check_screen_ownership(source, location):
     # Match calls regardless of an import prefix. Shared layout primitives in
@@ -72,20 +71,9 @@ def main():
             assert pin['revision'] == revision, f'{name}: shared UI revision differs from reviewed HEAD'
         assert tree_digest(shared) == pin['tree_sha256'], f'{name}: actual compiled shared tree differs from pinned archive'
         revisions.append(pin['revision'])
-        archive = root / pin['archive']
-        assert hashlib.sha256(archive.read_bytes()).hexdigest() == pin['sha256'], f'{name}: archive checksum differs'
-        with tarfile.open(archive) as source:
-            files = {m.name.removeprefix(shared.name + '/'): source.extractfile(m).read()
-                     for m in source.getmembers() if m.isfile()}
-        for key in ['pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml', 'AGENTS.md', '.github/workflows/check.yml']:
-            path = shared / key
-            if path.exists():
-                assert files.get(key) == path.read_bytes(), f'{name}: archive differs at {key}'
-        for folder in ['lib', 'test', 'tool', 'docs', 'linux']:
-            for path in (shared / folder).rglob('*'):
-                if path.is_file() and not any(p in path.parts for p in ['build', '.dart_tool', '__pycache__']):
-                    key = path.relative_to(shared).as_posix()
-                    assert files.get(key) == path.read_bytes(), f'{name}: archive differs at {key}'
+        # Check the same extraction contract used by clean consumer builds.
+        with TemporaryDirectory(prefix='shared-git-archive-') as temporary:
+            materialize(root, pin, Path(temporary) / shared.name)
         archives.append(pin['sha256'])
         libraries = root / ('lib' if name == 'busymark' else 'apps/busyfiles_ui/lib')
         for path in libraries.rglob('*.dart'):

@@ -1,5 +1,5 @@
 import 'messages.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/scheduler.dart';
 
 /// Keeps an immediate undo reversible, including an IME commit or cancellation.

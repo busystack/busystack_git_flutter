@@ -1,6 +1,6 @@
 import 'support/presentation_fixture.dart';
 import 'package:busystack_git_flutter/src/text_pane.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

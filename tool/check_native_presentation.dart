@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -89,6 +90,10 @@ const forbiddenMaterial = {
 };
 const forbiddenConstructors = {'Theme', 'ThemeData', 'ColorScheme', 'Color'};
 
+bool _isMaterialLibrary(String library) =>
+    library.startsWith('package:material_ui/') ||
+    library.startsWith('package:flutter/src/material/');
+
 final class NativeUiViolation {
   const NativeUiViolation(this.path, this.offset, this.symbol);
   final String path, symbol;
@@ -168,7 +173,11 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
         );
       }
     }
-    if (!library.startsWith('package:flutter/') && library != 'dart:ui') return;
+    if (!_isMaterialLibrary(library) &&
+        !library.startsWith('package:flutter/') &&
+        library != 'dart:ui') {
+      return;
+    }
     final owner = element is ConstructorElement
         ? element.enclosingElement
         : element;
@@ -188,12 +197,11 @@ class _NativeVisitor extends RecursiveAstVisitor<void> {
           method?.isStatic == true &&
           result is InterfaceType &&
           result.element.name == 'ColorScheme' &&
-          result.element.library.uri.toString() ==
-              'package:flutter/src/material/color_scheme.dart')
+          _isMaterialLibrary(result.element.library.uri.toString()))
         return;
     }
     final materialWidget =
-        library.startsWith('package:flutter/src/material/') &&
+        _isMaterialLibrary(library) &&
         owner is InterfaceElement &&
         owner.allSupertypes.any(
           (type) =>
@@ -709,7 +717,7 @@ final class _FirstPartyChainVisitor extends _NativeVisitor {
       }
     }
     final library = element.library?.uri.toString() ?? '';
-    if (!library.startsWith('package:flutter/src/material/')) return;
+    if (!_isMaterialLibrary(library)) return;
     final owner = element is ConstructorElement
         ? element.enclosingElement
         : element;

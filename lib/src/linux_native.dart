@@ -5,7 +5,7 @@ import 'dart:async';
 import 'native_primitives.dart';
 import 'sidebar_icon.dart';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:yaru/yaru.dart';
 import 'package:intl/intl.dart' as intl;

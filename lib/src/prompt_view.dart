@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:busystack_git/busystack_git.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'host.dart';
 
 Future<Uint8List?> presentGitPrompt(

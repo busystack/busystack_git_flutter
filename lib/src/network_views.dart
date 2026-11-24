@@ -2,7 +2,7 @@ import 'presentation.dart';
 import 'messages.dart';
 import 'dart:async';
 import 'package:busystack_git/busystack_git.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'feature.dart' show GitReviewSurface, gitOpenComparison;
 import 'historical_change_tree.dart';
 import 'history_actions.dart';

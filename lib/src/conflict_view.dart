@@ -5,7 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:isolate';
 import 'package:busystack_git/busystack_git.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'diff_view.dart';
 import 'host.dart';

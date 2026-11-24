@@ -2,7 +2,7 @@ import 'presentation.dart';
 import 'dart:async';
 
 import 'package:busystack_git/busystack_git.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/rendering.dart';
 
 /// Keeps the aligned, virtualized diff rows while selecting one source document.

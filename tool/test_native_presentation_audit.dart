@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'check_native_presentation.dart';
 
 Future<void> main() async {
@@ -21,7 +22,7 @@ Future<void> main() async {
     // A host service callback is part of the Git rendering chain too.
     final notificationHelper = File('${temp.path}/notification_helper.dart')
       ..writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 void showFeedback(BuildContext context, String message) =>
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 """);
@@ -49,7 +50,7 @@ GitHost createHost(BuildContext context, GitHost base) => GitHost(
       'Git notification callback concealed a Material snackbar',
     );
     notificationHelper.writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 void showFeedback(BuildContext context, String message) =>
     context.findAncestorStateOfType<HostToastState>()?.enqueue(message);
 class HostToastState extends State<StatefulWidget> {
@@ -71,7 +72,7 @@ void showFeedback(BuildContext context, String message) {
       'A host retained its own Git notification widget tree',
     );
     notificationHelper.writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:busystack_git_flutter/busystack_git_flutter.dart';
 void showFeedback(BuildContext context, String message) =>
     showGitNotification(context, message: message);
@@ -83,7 +84,7 @@ Widget unrelated() => const Material(child: Text('not Git'));
     }
     final nonGitSidebar = File('${temp.path}/non_git_sidebar.dart')
       ..writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 class NativeSidebar extends StatelessWidget {
   const NativeSidebar({super.key});
   @override
@@ -111,7 +112,7 @@ class AppFeedbackState extends State<StatefulWidget> {
       throw StateError('The full Git audit lost stateful service rendering');
     }
     nonGitSidebar.writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 class NativeSidebar extends StatefulWidget {
   const NativeSidebar({super.key});
   @override
@@ -148,14 +149,15 @@ final class NativeSidebar extends YaruGitPresentation { const NativeSidebar(); }
         'A Git presentation root escaped the mandatory full audit',
       );
     final forbidden = <String>[
-      "import 'package:flutter/material.dart'; Widget surface() => TextButton(onPressed: () {}, child: const Text('bad'));",
-      "import 'package:flutter/material.dart' as m; m.Widget surface() => m.TextField();",
-      "import 'package:flutter/material.dart' as m; typedef Hidden = m.FilledButton; final construct = Hidden.new;",
-      "import 'package:flutter/material.dart' as m; final icon = m.Icons.add; final palette = m.Colors.purple;",
-      "import 'package:flutter/material.dart' as m; Future<void> fallback(m.BuildContext c) async { await m.showDialog<void>(context:c,builder:(_)=>m.AlertDialog()); }",
-      "import 'package:flutter/material.dart' as m; final construct = m.Color.new;",
-      "import 'package:flutter/material.dart' as m; m.Widget surface() => m.Scrollbar(child: m.SizedBox());",
-      "import 'package:flutter/material.dart' as m; m.Widget surface() => m.SearchBar();",
+      "import 'package:material_ui/material_ui.dart'; Widget surface() => TextButton(onPressed: () {}, child: const Text('bad'));",
+      "import 'package:material_ui/material_ui.dart' as m; m.Widget surface() => m.TextField();",
+      "import 'package:material_ui/material_ui.dart' as m; typedef Hidden = m.FilledButton; final construct = Hidden.new;",
+      "import 'package:material_ui/material_ui.dart' as m; final icon = m.Icons.add; final palette = m.Colors.purple;",
+      "import 'package:material_ui/material_ui.dart' as m; Future<void> fallback(m.BuildContext c) async { await m.showDialog<void>(context:c,builder:(_)=>m.AlertDialog()); }",
+      "import 'package:material_ui/material_ui.dart' as m; final construct = m.Color.new;",
+      "import 'package:material_ui/material_ui.dart' as m; m.Widget surface() => m.Scrollbar(child: m.SizedBox());",
+      "import 'package:material_ui/material_ui.dart' as m; m.Widget surface() => m.SearchBar();",
+      "import 'package:flutter/material.dart' as legacy; final construct = legacy.ElevatedButton.new;",
       "import 'package:flutter/painting.dart' as p; final style = p.TextStyle(fontFamily: 'unapproved');",
     ];
     for (var i = 0; i < forbidden.length; i++) {
@@ -187,7 +189,7 @@ final class NativeSidebar extends YaruGitPresentation { const NativeSidebar(); }
     }
     final glyphCatalog = File('${temp.path}/glyph_catalog.dart')
       ..writeAsStringSync(
-        "import 'package:flutter/material.dart' as m; class NativeCatalog { static const branch = m.Icons.fork_right; }",
+        "import 'package:material_ui/material_ui.dart' as m; class NativeCatalog { static const branch = m.Icons.fork_right; }",
       );
     final indirectGlyph = File('${temp.path}/indirect_glyph.dart')
       ..writeAsStringSync(
@@ -284,7 +286,7 @@ Widget surface() => Column(children: [GitButton(onPressed: () {}, child: const T
       throw StateError('Rejected approved host-bound controls');
     final hiddenWrapper = File('${temp.path}/approved_wrapper.dart')
       ..writeAsStringSync('''
-import 'package:flutter/material.dart' as material;
+import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/widgets.dart' as widgets;
 class ApprovedLookingWrapper extends widgets.StatelessWidget {
   const ApprovedLookingWrapper({super.key});
@@ -346,7 +348,7 @@ class GitHostAdapter {
     // mixins. Unreachable static helpers remain outside the rendering chain.
     for (final inheritance in ['extends Renderer', 'with Rendering']) {
       hostChain.writeAsStringSync("""
-import 'package:flutter/material.dart' as material;
+import 'package:material_ui/material_ui.dart' as material;
 class Renderer {
   Object button() => material.TextButton(onPressed: () {}, child: const material.Text('bad'));
 }
@@ -395,7 +397,7 @@ class GitHostAdapter extends SharedRenderer {}
 """);
     for (final forbidden in [true, false]) {
       File('${sharedFixture.path}/lib/renderer.dart').writeAsStringSync("""
-import 'package:flutter/material.dart' as material;
+import 'package:material_ui/material_ui.dart' as material;
 class SharedRenderer {
   Object button() => ${forbidden ? "material.TextButton(onPressed: () {}, child: const material.Text('bad'))" : "const material.Text('approved')"};
 }
@@ -428,7 +430,7 @@ class Unreachable {
       ('GitPalette', 'resolve', true, false),
     ]) {
       palette.writeAsStringSync("""
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 abstract final class $type {
   static ColorScheme $method(BuildContext context) {
     ${hiddenControl ? "TextButton(onPressed: () {}, child: const Text('bad'));" : ''}

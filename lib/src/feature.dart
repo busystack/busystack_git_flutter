@@ -16,7 +16,7 @@ import 'session.dart';
 import 'workflow_ui.dart';
 import 'value_labels.dart';
 import 'reference_context_menu.dart';
-import 'package:flutter/material.dart' show MaterialLocalizations;
+import 'package:material_ui/material_ui.dart' show MaterialLocalizations;
 
 enum GitSidebarView { commit, log }
 

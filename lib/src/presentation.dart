@@ -1,11 +1,17 @@
 import 'file_status.dart';
+
 import 'package:busystack_git/busystack_git.dart'
     show GitException, GitErrorCode;
+
 import 'messages.dart';
-import 'package:flutter/material.dart' show ThemeData, TextAlignVertical;
+
+import 'package:material_ui/material_ui.dart' show ThemeData;
 import 'package:flutter/widgets.dart';
+
 import 'host.dart';
+
 import 'dart:async';
+
 import 'reference_context_menu.dart';
 
 /// Required native control boundary, implemented once by the shared Linux

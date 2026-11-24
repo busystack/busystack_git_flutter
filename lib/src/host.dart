@@ -2,7 +2,7 @@ import 'feature.dart' show GitReview;
 import 'presentation.dart';
 import 'messages.dart';
 import 'package:busystack_git/busystack_git.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 
 typedef GitPresentSurface =
